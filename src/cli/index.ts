@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { analyzeFile } from '../core/analyzer.js';
+import { dedupeFile } from '../core/deduplicator.js';
 import { fixFile } from '../core/fixer.js';
 import { mergeFile } from '../core/merger.js';
 import type { Config } from '../core/rules.js';
@@ -8,11 +9,12 @@ import { scanFiles } from '../core/scanner.js';
 const args = process.argv.slice(2);
 const fix = args.includes('--fix');
 const merge = args.includes('--merge');
+const dedup = args.includes('--dedup');
 const targets = args.filter((a) => !a.startsWith('--'));
 
 if (targets.length === 0) {
   console.error(
-    'Usage: tailwind-canonical [--fix] [--merge] <dir|file> [dir|file...]',
+    'Usage: tailwind-canonical [--fix] [--merge] [--dedup] <dir|file> [dir|file...]',
   );
   process.exit(1);
 }
@@ -40,6 +42,7 @@ const files = targets.flatMap((t) => scanFiles(t));
 let totalFindings = 0;
 let totalFixed = 0;
 let totalMerged = 0;
+let totalDeduped = 0;
 
 for (const file of files) {
   if (fix) {
@@ -49,6 +52,16 @@ for (const file of files) {
         `  fixed  ${file} (${count} replacement${count > 1 ? 's' : ''})`,
       );
       totalFixed += count;
+    }
+  }
+
+  if (dedup) {
+    const count = dedupeFile(file);
+    if (count > 0) {
+      console.log(
+        `  deduped ${file} (${count} class string${count > 1 ? 's' : ''})`,
+      );
+      totalDeduped += count;
     }
   }
 
@@ -62,7 +75,7 @@ for (const file of files) {
     }
   }
 
-  if (!fix && !merge) {
+  if (!fix && !dedup && !merge) {
     const findings = analyzeFile(file, config);
     for (const f of findings) {
       const tag = f.suggestion.isCustomToken ? ' [custom token]' : '';
@@ -74,10 +87,12 @@ for (const file of files) {
   }
 }
 
-if (fix || merge) {
+if (fix || dedup || merge) {
   const parts: string[] = [];
   if (fix)
     parts.push(`${totalFixed} replacement${totalFixed !== 1 ? 's' : ''}`);
+  if (dedup)
+    parts.push(`${totalDeduped} dedup${totalDeduped !== 1 ? 's' : ''}`);
   if (merge)
     parts.push(`${totalMerged} conflict${totalMerged !== 1 ? 's' : ''} merged`);
   console.log(
