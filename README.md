@@ -5,7 +5,9 @@ Lint and auto-fix Tailwind CSS arbitrary values that have canonical equivalents.
 ## Install
 
 ```bash
+pnpm add -D tailwind-canonical
 npm install -D tailwind-canonical
+yarn add -D tailwind-canonical
 ```
 
 ## CLI
