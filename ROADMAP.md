@@ -29,14 +29,16 @@ Goal: flag and auto-fix Tailwind arbitrary pixel values that have a canonical eq
 
 ---
 
-## v0.3 — Class deduplication
+## v0.3 — Class deduplication ✅
 
 Goal: detect redundant class combinations.
 
-- `p-4 px-4` → `px-4 py-4` (px overrides p on x axis)
-- `text-sm text-sm` → `text-sm` (exact duplicate)
-- `m-4 mx-2` → `mx-2 my-4` (partial override)
-- `flex block` → `block` (conflicting display)
+- [x] `p-4 px-4` → `p-4` (shorthand collapse via expand-apply-collapse)
+- [x] `p-4 px-2` → `py-4 px-2` (partial override)
+- [x] `text-sm text-sm` → `text-sm` (exact duplicate)
+- [x] `m-4 mx-2` → `my-4 mx-2` (partial override)
+- [x] `flex block` → `block` (conflicting display, last wins)
+- [x] `relative absolute` → `absolute` (conflicting position, last wins)
 
 ---
 
