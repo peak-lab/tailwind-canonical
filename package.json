@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Lint and auto-fix Tailwind CSS arbitrary values that have canonical equivalents",
   "type": "module",
+  "packageManager": "pnpm@11.4.0",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -23,22 +24,31 @@
     "dev": "tsc --watch",
     "test": "node --import=tsx/esm --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/",
     "prepublishOnly": "pnpm build"
   },
-  "keywords": ["tailwind", "tailwindcss", "linter", "canonical", "arbitrary-values", "eslint-plugin"],
+  "keywords": [
+    "tailwind",
+    "tailwindcss",
+    "linter",
+    "canonical",
+    "arbitrary-values",
+    "eslint-plugin"
+  ],
   "license": "MIT",
   "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
     "@types/node": "^22.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.8.0"
+    "typescript": "^6.0.0"
   },
   "peerDependencies": {
     "eslint": ">=8.0.0"
   },
   "peerDependenciesMeta": {
-    "eslint": { "optional": true }
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "eslint": {
+      "optional": true
+    }
   }
 }
