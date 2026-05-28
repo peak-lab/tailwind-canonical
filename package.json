@@ -19,6 +19,26 @@
   "bin": {
     "tailwind-canonical": "./dist/cli/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/peak-lab/tailwind-canonical.git"
+  },
+  "bugs": {
+    "url": "https://github.com/peak-lab/tailwind-canonical/issues"
+  },
+  "homepage": "https://github.com/peak-lab/tailwind-canonical#readme",
+  "author": "Fahari Hamada Sidi",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -26,6 +46,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
+    "prepare": "lefthook install || true",
     "prepublishOnly": "pnpm build"
   },
   "keywords": [
@@ -40,6 +61,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
     "@types/node": "^22.0.0",
+    "lefthook": "^2.1.8",
     "tsx": "^4.0.0",
     "typescript": "^6.0.0"
   },
