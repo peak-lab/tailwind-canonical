@@ -330,3 +330,204 @@ test('suggestCanonical - edge cases', async (t: TestContext) => {
     });
   });
 });
+
+test('suggestCanonical - rem values', async (t: TestContext) => {
+  await t.test('text-[0.75rem] maps to text-xs (0.75*16=12px)', () => {
+    assert.deepEqual(suggestCanonical('text-[0.75rem]'), {
+      original: 'text-[0.75rem]',
+      canonical: 'text-xs',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('text-[0.875rem] maps to text-sm (0.875*16=14px)', () => {
+    assert.deepEqual(suggestCanonical('text-[0.875rem]'), {
+      original: 'text-[0.875rem]',
+      canonical: 'text-sm',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('text-[1rem] maps to text-base (1*16=16px)', () => {
+    assert.deepEqual(suggestCanonical('text-[1rem]'), {
+      original: 'text-[1rem]',
+      canonical: 'text-base',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('h-[4rem] maps to h-16 (4*16=64px, ÷4=16)', () => {
+    assert.deepEqual(suggestCanonical('h-[4rem]'), {
+      original: 'h-[4rem]',
+      canonical: 'h-16',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('w-[2rem] maps to w-8 (2*16=32px, ÷4=8)', () => {
+    assert.deepEqual(suggestCanonical('w-[2rem]'), {
+      original: 'w-[2rem]',
+      canonical: 'w-8',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('p-[1rem] maps to p-4 (1*16=16px, ÷4=4)', () => {
+    assert.deepEqual(suggestCanonical('p-[1rem]'), {
+      original: 'p-[1rem]',
+      canonical: 'p-4',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('h-[1.5rem] maps to h-6 (1.5*16=24px, ÷4=6)', () => {
+    assert.deepEqual(suggestCanonical('h-[1.5rem]'), {
+      original: 'h-[1.5rem]',
+      canonical: 'h-6',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('h-[0.375rem] returns null (0.375*16=6px, not ÷4)', () => {
+    assert.strictEqual(suggestCanonical('h-[0.375rem]'), null);
+  });
+
+  await t.test(
+    'text-[0.5rem] returns null (0.5*16=8px, no built-in text-3xs)',
+    () => {
+      const result = suggestCanonical('text-[0.5rem]');
+      assert.ok(result === null || result.isCustomToken === true);
+    },
+  );
+});
+
+test('suggestCanonical - percentage values', async (t: TestContext) => {
+  await t.test('w-[50%] maps to w-1/2', () => {
+    assert.deepEqual(suggestCanonical('w-[50%]'), {
+      original: 'w-[50%]',
+      canonical: 'w-1/2',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('w-[33.333333%] maps to w-1/3', () => {
+    assert.deepEqual(suggestCanonical('w-[33.333333%]'), {
+      original: 'w-[33.333333%]',
+      canonical: 'w-1/3',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('w-[66.666667%] maps to w-2/3', () => {
+    assert.deepEqual(suggestCanonical('w-[66.666667%]'), {
+      original: 'w-[66.666667%]',
+      canonical: 'w-2/3',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('w-[25%] maps to w-1/4', () => {
+    assert.deepEqual(suggestCanonical('w-[25%]'), {
+      original: 'w-[25%]',
+      canonical: 'w-1/4',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('w-[75%] maps to w-3/4', () => {
+    assert.deepEqual(suggestCanonical('w-[75%]'), {
+      original: 'w-[75%]',
+      canonical: 'w-3/4',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('h-[50%] maps to h-1/2', () => {
+    assert.deepEqual(suggestCanonical('h-[50%]'), {
+      original: 'h-[50%]',
+      canonical: 'h-1/2',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('max-w-[50%] maps to max-w-1/2', () => {
+    assert.deepEqual(suggestCanonical('max-w-[50%]'), {
+      original: 'max-w-[50%]',
+      canonical: 'max-w-1/2',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('w-[33%] returns null (not in fraction map)', () => {
+    assert.strictEqual(suggestCanonical('w-[33%]'), null);
+  });
+
+  await t.test(
+    'p-[50%] returns null (padding has no fraction variants)',
+    () => {
+      assert.strictEqual(suggestCanonical('p-[50%]'), null);
+    },
+  );
+
+  await t.test('w-[20%] maps to w-1/5', () => {
+    assert.deepEqual(suggestCanonical('w-[20%]'), {
+      original: 'w-[20%]',
+      canonical: 'w-1/5',
+      isCustomToken: false,
+    });
+  });
+});
+
+test('suggestCanonical - opacity values', async (t: TestContext) => {
+  await t.test('opacity-[0.5] maps to opacity-50', () => {
+    assert.deepEqual(suggestCanonical('opacity-[0.5]'), {
+      original: 'opacity-[0.5]',
+      canonical: 'opacity-50',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('opacity-[0.75] maps to opacity-75', () => {
+    assert.deepEqual(suggestCanonical('opacity-[0.75]'), {
+      original: 'opacity-[0.75]',
+      canonical: 'opacity-75',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('opacity-[0] maps to opacity-0', () => {
+    assert.deepEqual(suggestCanonical('opacity-[0]'), {
+      original: 'opacity-[0]',
+      canonical: 'opacity-0',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('opacity-[1] maps to opacity-100', () => {
+    assert.deepEqual(suggestCanonical('opacity-[1]'), {
+      original: 'opacity-[1]',
+      canonical: 'opacity-100',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('opacity-[0.25] maps to opacity-25', () => {
+    assert.deepEqual(suggestCanonical('opacity-[0.25]'), {
+      original: 'opacity-[0.25]',
+      canonical: 'opacity-25',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('opacity-[0.33] returns null (33 not in opacity scale)', () => {
+    assert.strictEqual(suggestCanonical('opacity-[0.33]'), null);
+  });
+
+  await t.test('opacity-[0.05] maps to opacity-5', () => {
+    assert.deepEqual(suggestCanonical('opacity-[0.05]'), {
+      original: 'opacity-[0.05]',
+      canonical: 'opacity-5',
+      isCustomToken: false,
+    });
+  });
+});
