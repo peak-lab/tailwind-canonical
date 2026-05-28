@@ -12,12 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: pnpm/action-setup@v6.0.8
-        with:
-          version: 9
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install
+      - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
