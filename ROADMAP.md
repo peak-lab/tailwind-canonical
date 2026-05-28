@@ -19,13 +19,13 @@ Goal: flag and auto-fix Tailwind arbitrary pixel values that have a canonical eq
 
 ---
 
-## v0.2 — rem + % support
+## v0.2 — rem + % + opacity support ✅
 
-- `text-[0.75rem]` → `text-xs`
-- `h-[4rem]` → `h-16`
-- `w-[50%]` → `w-1/2`
-- `w-[33.333%]` → `w-1/3`
-- `opacity-[0.5]` → `opacity-50`
+- [x] `text-[0.75rem]` → `text-xs`
+- [x] `h-[4rem]` → `h-16`
+- [x] `w-[50%]` → `w-1/2`
+- [x] `w-[33.333%]` → `w-1/3`
+- [x] `opacity-[0.5]` → `opacity-50`
 
 ---
 
