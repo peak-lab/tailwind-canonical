@@ -72,9 +72,67 @@ const noArbitraryCanonical = {
   },
 };
 
+type TwMerge = (classes: string) => string;
+
+const noConflictingClasses = {
+  meta: {
+    type: 'suggestion' as const,
+    fixable: 'code' as const,
+    schema: [],
+    messages: {
+      conflicting:
+        "Conflicting Tailwind classes detected. Use '{{merged}}' instead.",
+    },
+  },
+  create(context: RuleContext & { options: [] }) {
+    let twMerge: TwMerge | null = null;
+    let peerMissing = false;
+
+    try {
+      // eslint plugins run synchronously — require() is the only option here
+      // biome-ignore lint/suspicious/noExplicitAny: dynamic require for optional peer
+      const mod = (require as any)('tailwind-merge');
+      twMerge = mod.twMerge as TwMerge;
+    } catch {
+      peerMissing = true;
+    }
+
+    function checkLiteral(node: {
+      value: unknown;
+      raw?: string;
+      type: string;
+    }) {
+      if (peerMissing || !twMerge) return;
+      if (typeof node.value !== 'string') return;
+      const merged = twMerge(node.value);
+      if (merged === node.value) return;
+      context.report({
+        node,
+        message: `Conflicting Tailwind classes detected. Use '${merged}' instead.`,
+        fix(fixer) {
+          const quote = node.raw?.startsWith('"') ? '"' : "'";
+          return fixer.replaceText(node, `${quote}${merged}${quote}`);
+        },
+      });
+    }
+
+    return {
+      Literal: checkLiteral,
+      TemplateLiteral(node: {
+        quasis: Array<{ value: { raw: string }; type: string }>;
+      }) {
+        for (const quasi of node.quasis) {
+          checkLiteral({ value: quasi.value.raw, type: 'Literal' });
+        }
+      },
+    };
+  },
+};
+
 export default {
   rules: {
     'no-arbitrary-canonical': noArbitraryCanonical,
+    'no-conflicting-classes': noConflictingClasses,
   },
   configs: {
     recommended: {
