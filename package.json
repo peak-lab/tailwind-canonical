@@ -1,0 +1,41 @@
+{
+  "name": "tailwind-canonical",
+  "version": "0.1.0",
+  "description": "Lint and auto-fix Tailwind CSS arbitrary values that have canonical equivalents",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./eslint": {
+      "import": "./dist/eslint/plugin.js",
+      "types": "./dist/eslint/plugin.d.ts"
+    }
+  },
+  "bin": {
+    "tailwind-canonical": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "node --import=tsx/esm --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": ["tailwind", "tailwindcss", "linter", "canonical", "arbitrary-values", "eslint-plugin"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.8.0"
+  },
+  "peerDependencies": {
+    "eslint": ">=8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "eslint": { "optional": true }
+  }
+}
