@@ -1,4 +1,7 @@
+import { createRequire } from 'node:module';
 import { type Config, suggestCanonical } from '../core/rules.js';
+
+const _require = createRequire(import.meta.url);
 
 type RuleContext = {
   options: [Config?];
@@ -89,10 +92,8 @@ const noConflictingClasses = {
     let peerMissing = false;
 
     try {
-      // eslint plugins run synchronously — require() is the only option here
-      // biome-ignore lint/suspicious/noExplicitAny: dynamic require for optional peer
-      const mod = (require as any)('tailwind-merge');
-      twMerge = mod.twMerge as TwMerge;
+      const mod = _require('tailwind-merge') as { twMerge: TwMerge };
+      twMerge = mod.twMerge;
     } catch {
       peerMissing = true;
     }

@@ -108,3 +108,65 @@ test('mergeFile - no-op cases', async (t: TestContext) => {
     }
   });
 });
+
+test('mergeFile - quote styles', async (t: TestContext) => {
+  await t.test('preserves double quotes', async () => {
+    const file = join(tmpdir(), `merger-test-${Date.now()}.tsx`);
+    writeFileSync(
+      file,
+      '<div className="bg-red-500 bg-blue-500">x</div>',
+      'utf8',
+    );
+    try {
+      await mergeFile(file);
+      assert.ok(readFileSync(file, 'utf8').includes('className="bg-blue-500"'));
+    } finally {
+      unlinkSync(file);
+    }
+  });
+
+  await t.test('preserves single quotes', async () => {
+    const file = join(tmpdir(), `merger-test-${Date.now()}.tsx`);
+    writeFileSync(
+      file,
+      "<div className='bg-red-500 bg-blue-500'>x</div>",
+      'utf8',
+    );
+    try {
+      await mergeFile(file);
+      assert.ok(readFileSync(file, 'utf8').includes("className='bg-blue-500'"));
+    } finally {
+      unlinkSync(file);
+    }
+  });
+});
+
+test('mergeFile - combined with fixFile', async (t: TestContext) => {
+  await t.test(
+    'fix then merge produces canonical conflict-free output',
+    async () => {
+      const { fixFile } = await import('./fixer.js');
+      const file = join(tmpdir(), `merger-test-${Date.now()}.tsx`);
+      writeFileSync(
+        file,
+        '<div className="text-[12px] text-[14px]">x</div>',
+        'utf8',
+      );
+      try {
+        const fixed = fixFile(file);
+        assert.strictEqual(fixed, 2);
+        const afterFix = readFileSync(file, 'utf8');
+        assert.ok(afterFix.includes('text-xs'));
+        assert.ok(afterFix.includes('text-sm'));
+
+        const merged = await mergeFile(file);
+        assert.strictEqual(merged, 1);
+        const result = readFileSync(file, 'utf8');
+        assert.ok(result.includes('text-sm'));
+        assert.ok(!result.includes('text-xs'));
+      } finally {
+        unlinkSync(file);
+      }
+    },
+  );
+});

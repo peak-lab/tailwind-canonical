@@ -1,0 +1,167 @@
+import assert from 'node:assert';
+import { test } from 'node:test';
+import plugin from './plugin.js';
+
+const {
+  'no-arbitrary-canonical': noArbitraryCanonical,
+  'no-conflicting-classes': noConflictingClasses,
+} = plugin.rules;
+
+function makeContext(reports: unknown[]) {
+  return {
+    options: [] as [],
+    report(descriptor: unknown) {
+      reports.push(descriptor);
+    },
+  };
+}
+
+function literal(value: string, raw = `"${value}"`) {
+  return { type: 'Literal' as const, value, raw };
+}
+
+test('no-arbitrary-canonical rule', async (t) => {
+  await t.test('reports text-[12px] with canonical text-xs', () => {
+    const reports: unknown[] = [];
+    const ctx = {
+      options: [{}] as [{}],
+      report: (d: unknown) => reports.push(d),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    (rule.Literal as (n: unknown) => void)(literal('text-[12px]'));
+    assert.strictEqual(reports.length, 1);
+    assert.ok(JSON.stringify(reports[0]).includes('text-xs'));
+  });
+
+  await t.test('reports nothing for plain text-xs', () => {
+    const reports: unknown[] = [];
+    const ctx = {
+      options: [{}] as [{}],
+      report: (d: unknown) => reports.push(d),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    (rule.Literal as (n: unknown) => void)(literal('text-xs'));
+    assert.strictEqual(reports.length, 0);
+  });
+
+  await t.test('reports nothing for non-string literal', () => {
+    const reports: unknown[] = [];
+    const ctx = {
+      options: [{}] as [{}],
+      report: (d: unknown) => reports.push(d),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    (rule.Literal as (n: unknown) => void)({
+      type: 'Literal',
+      value: 42,
+      raw: '42',
+    });
+    assert.strictEqual(reports.length, 0);
+  });
+
+  await t.test('reports multiple classes in one literal', () => {
+    const reports: unknown[] = [];
+    const ctx = {
+      options: [{}] as [{}],
+      report: (d: unknown) => reports.push(d),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    (rule.Literal as (n: unknown) => void)(
+      literal('text-[12px] h-[64px] flex'),
+    );
+    assert.strictEqual(reports.length, 2);
+  });
+
+  await t.test('applies fix that replaces arbitrary with canonical', () => {
+    const reports: Array<{
+      fix?: (f: { replaceText: (n: unknown, s: string) => string }) => string;
+    }> = [];
+    const ctx = {
+      options: [{}] as [{}],
+      report: (d: unknown) => reports.push(d as never),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    const node = literal('text-[12px]');
+    (rule.Literal as (n: unknown) => void)(node);
+    assert.ok(reports[0].fix);
+    const result = reports[0].fix!({ replaceText: (_n, s) => s });
+    assert.ok((result as string).includes('text-xs'));
+  });
+
+  await t.test('respects customTextTokens from config', () => {
+    const reports: unknown[] = [];
+    const ctx = {
+      options: [{ customTextTokens: { 11: 'tiny' } }] as [{}],
+      report: (d: unknown) => reports.push(d),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    (rule.Literal as (n: unknown) => void)(literal('text-[11px]'));
+    assert.strictEqual(reports.length, 1);
+    assert.ok(JSON.stringify(reports[0]).includes('tiny'));
+  });
+});
+
+test('no-conflicting-classes rule', async (t) => {
+  await t.test('reports conflicting bg classes', () => {
+    const reports: unknown[] = [];
+    const rule = noConflictingClasses.create(makeContext(reports) as never);
+    (rule.Literal as (n: unknown) => void)(literal('bg-red-500 bg-blue-500'));
+    assert.strictEqual(reports.length, 1);
+    assert.ok(JSON.stringify(reports[0]).includes('bg-blue-500'));
+  });
+
+  await t.test('reports conflicting text size', () => {
+    const reports: unknown[] = [];
+    const rule = noConflictingClasses.create(makeContext(reports) as never);
+    (rule.Literal as (n: unknown) => void)(literal('text-sm text-xs'));
+    assert.strictEqual(reports.length, 1);
+  });
+
+  await t.test('does not report non-conflicting classes', () => {
+    const reports: unknown[] = [];
+    const rule = noConflictingClasses.create(makeContext(reports) as never);
+    (rule.Literal as (n: unknown) => void)(
+      literal('flex items-center text-sm'),
+    );
+    assert.strictEqual(reports.length, 0);
+  });
+
+  await t.test('does not report variant + base (no conflict)', () => {
+    const reports: unknown[] = [];
+    const rule = noConflictingClasses.create(makeContext(reports) as never);
+    (rule.Literal as (n: unknown) => void)(literal('text-sm hover:text-lg'));
+    assert.strictEqual(reports.length, 0);
+  });
+
+  await t.test('fix replaces with merged value', () => {
+    const reports: Array<{
+      fix?: (f: { replaceText: (n: unknown, s: string) => string }) => string;
+    }> = [];
+    const rule = noConflictingClasses.create({
+      options: [] as [],
+      report: (d: unknown) => reports.push(d as never),
+    } as never);
+    const node = literal('bg-red-500 bg-blue-500');
+    (rule.Literal as (n: unknown) => void)(node);
+    assert.ok(reports[0]?.fix);
+    const result = reports[0].fix!({ replaceText: (_n, s) => s });
+    assert.ok((result as string).includes('bg-blue-500'));
+    assert.ok(!(result as string).includes('bg-red-500'));
+  });
+});
+
+test('plugin exports', async (t) => {
+  await t.test('exposes both rules', () => {
+    assert.ok('no-arbitrary-canonical' in plugin.rules);
+    assert.ok('no-conflicting-classes' in plugin.rules);
+  });
+
+  await t.test(
+    'recommended config only activates no-arbitrary-canonical',
+    () => {
+      const rules = plugin.configs.recommended.rules;
+      assert.ok('tailwind-canonical/no-arbitrary-canonical' in rules);
+      assert.ok(!('tailwind-canonical/no-conflicting-classes' in rules));
+    },
+  );
+});
