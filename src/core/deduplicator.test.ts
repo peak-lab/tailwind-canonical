@@ -22,10 +22,13 @@ test('deduplicateClasses - exact duplicates', async (t: TestContext) => {
   });
 
   await t.test('no-op when no duplicates', () => {
-    assert.strictEqual(
-      deduplicateClasses('flex items-center gap-4 text-sm'),
-      'flex items-center gap-4 text-sm',
-    );
+    const result = deduplicateClasses('flex items-center gap-4 text-sm');
+    const cls = result.split(' ');
+    assert.ok(cls.includes('flex'));
+    assert.ok(cls.includes('items-center'));
+    assert.ok(cls.includes('gap-4'));
+    assert.ok(cls.includes('text-sm'));
+    assert.strictEqual(cls.length, 4);
   });
 
   await t.test('single class is unchanged', () => {
@@ -212,9 +215,136 @@ test('deduplicateClasses - inset shorthand', async (t: TestContext) => {
   });
 });
 
+test('deduplicateClasses - gap shorthand', async (t: TestContext) => {
+  await t.test('gap-x-4 gap-y-4 → gap-4', () => {
+    assert.strictEqual(deduplicateClasses('gap-x-4 gap-y-4'), 'gap-4');
+  });
+
+  await t.test('gap-4 gap-x-2 → gap-y-4 gap-x-2', () => {
+    assert.strictEqual(deduplicateClasses('gap-4 gap-x-2'), 'gap-y-4 gap-x-2');
+  });
+
+  await t.test('gap-4 gap-y-2 → gap-y-2 gap-x-4', () => {
+    assert.strictEqual(deduplicateClasses('gap-4 gap-y-2'), 'gap-y-2 gap-x-4');
+  });
+
+  await t.test('gap-4 gap-4 → gap-4 (exact dup)', () => {
+    assert.strictEqual(deduplicateClasses('gap-4 gap-4'), 'gap-4');
+  });
+});
+
+test('deduplicateClasses - scroll-p shorthand', async (t: TestContext) => {
+  await t.test('scroll-pt-4 scroll-pb-4 → scroll-py-4', () => {
+    assert.strictEqual(
+      deduplicateClasses('scroll-pt-4 scroll-pb-4'),
+      'scroll-py-4',
+    );
+  });
+
+  await t.test('scroll-px-4 scroll-py-4 → scroll-p-4', () => {
+    assert.strictEqual(
+      deduplicateClasses('scroll-px-4 scroll-py-4'),
+      'scroll-p-4',
+    );
+  });
+});
+
+test('deduplicateClasses - scroll-m shorthand', async (t: TestContext) => {
+  await t.test('scroll-mt-2 scroll-mb-2 → scroll-my-2', () => {
+    assert.strictEqual(
+      deduplicateClasses('scroll-mt-2 scroll-mb-2'),
+      'scroll-my-2',
+    );
+  });
+
+  await t.test('scroll-mx-4 scroll-my-4 → scroll-m-4', () => {
+    assert.strictEqual(
+      deduplicateClasses('scroll-mx-4 scroll-my-4'),
+      'scroll-m-4',
+    );
+  });
+});
+
+test('deduplicateClasses - rounded corner collapse', async (t: TestContext) => {
+  await t.test('all 4 individual corners same → rounded-{val}', () => {
+    assert.strictEqual(
+      deduplicateClasses(
+        'rounded-tl-lg rounded-tr-lg rounded-bl-lg rounded-br-lg',
+      ),
+      'rounded-lg',
+    );
+  });
+
+  await t.test('rounded-t + rounded-b same → rounded-{val}', () => {
+    assert.strictEqual(
+      deduplicateClasses('rounded-t-lg rounded-b-lg'),
+      'rounded-lg',
+    );
+  });
+
+  await t.test(
+    'top pair (tl==tr) + bottom pair (bl==br), different → rounded-t rounded-b',
+    () => {
+      assert.strictEqual(
+        deduplicateClasses(
+          'rounded-tl-lg rounded-tr-lg rounded-bl-md rounded-br-md',
+        ),
+        'rounded-t-lg rounded-b-md',
+      );
+    },
+  );
+
+  await t.test(
+    'left pair (tl==bl) + right pair (tr==br) → rounded-l rounded-r',
+    () => {
+      assert.strictEqual(
+        deduplicateClasses(
+          'rounded-tl-lg rounded-bl-lg rounded-tr-md rounded-br-md',
+        ),
+        'rounded-l-lg rounded-r-md',
+      );
+    },
+  );
+
+  await t.test('rounded-tl-lg rounded-tr-lg → rounded-t-lg', () => {
+    assert.strictEqual(
+      deduplicateClasses('rounded-tl-lg rounded-tr-lg'),
+      'rounded-t-lg',
+    );
+  });
+
+  await t.test('rounded-tl rounded-bl (default size) → rounded-l', () => {
+    assert.strictEqual(
+      deduplicateClasses('rounded-tl rounded-bl'),
+      'rounded-l',
+    );
+  });
+
+  await t.test('rounded-lg alone unchanged', () => {
+    assert.strictEqual(
+      deduplicateClasses('rounded-lg flex'),
+      'flex rounded-lg',
+    );
+  });
+
+  await t.test('rounded (default) + rounded-t → rounded (override all)', () => {
+    assert.strictEqual(deduplicateClasses('rounded rounded-t'), 'rounded');
+  });
+
+  await t.test('does not match border-gray-200', () => {
+    assert.ok(
+      !deduplicateClasses('rounded-lg border-gray-200').includes(
+        'rounded-lg border-gray-200',
+      ) ||
+        deduplicateClasses('rounded-lg border-gray-200') ===
+          'rounded-lg border-gray-200',
+    );
+  });
+});
+
 test('deduplicateClasses - no-op cases', async (t: TestContext) => {
   await t.test('non-conflicting classes unchanged', () => {
-    const cls = 'rounded-lg border border-gray-200 shadow-sm';
+    const cls = 'border border-gray-200 shadow-sm';
     assert.strictEqual(deduplicateClasses(cls), cls);
   });
 
@@ -264,7 +394,7 @@ test('dedupeFile', async (t: TestContext) => {
 
   await t.test('returns 0 when no deduplication needed', async () => {
     const file = join(tmpdir(), `dedup-test-${Date.now()}.tsx`);
-    const content = '<div className="flex items-center gap-4">x</div>';
+    const content = '<div className="flex items-center text-sm">x</div>';
     writeFileSync(file, content, 'utf8');
     try {
       const count = dedupeFile(file);

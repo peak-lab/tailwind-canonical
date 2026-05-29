@@ -1,84 +1,72 @@
 # Roadmap
 
-## v0.1 — Arbitrary → Canonical (current)
+## v0.1 — Arbitrary → Canonical ✅
+- [x] `text-[12px]` → `text-xs`, `h-[64px]` → `h-16`, `rounded-[8px]` → `rounded-lg`
+- [x] CLI `--fix`, ESLint plugin `no-arbitrary-canonical`, config file
 
-Goal: flag and auto-fix Tailwind arbitrary pixel values that have a canonical equivalent.
-
-- [x] CLI: `tailwind-canonical check ./src`
-- [x] CLI: `tailwind-canonical --fix ./src`
-- [x] Config: `tailwind-canonical.config.js` for custom tokens
-- [x] ESLint plugin: `tailwind-canonical/no-arbitrary-canonical`
-- [ ] Tests (unit + integration)
-- [ ] CI (GitHub Actions)
-- [ ] npm publish
-
-**Rules in v0.1:**
-- `text-[12px]` → `text-xs`, `text-[14px]` → `text-sm`, etc.
-- `h-[64px]` → `h-16` (spacing ÷ 4)
-- `rounded-[8px]` → `rounded-lg`
-
----
-
-## v0.2 — rem + % + opacity support ✅
-
-- [x] `text-[0.75rem]` → `text-xs`
-- [x] `h-[4rem]` → `h-16`
-- [x] `w-[50%]` → `w-1/2`
-- [x] `w-[33.333%]` → `w-1/3`
-- [x] `opacity-[0.5]` → `opacity-50`
-
----
+## v0.2 — rem + % + opacity ✅
+- [x] `text-[0.75rem]` → `text-xs`, `h-[4rem]` → `h-16`
+- [x] `w-[50%]` → `w-1/2`, `opacity-[0.5]` → `opacity-50`
 
 ## v0.3 — Class deduplication ✅
+- [x] `p-4 px-4` → `p-4`, `p-4 px-2` → `py-4 px-2`
+- [x] `text-sm text-sm` → `text-sm`, `flex block` → `block`
 
-Goal: detect redundant class combinations.
-
-- [x] `p-4 px-4` → `p-4` (shorthand collapse via expand-apply-collapse)
-- [x] `p-4 px-2` → `py-4 px-2` (partial override)
-- [x] `text-sm text-sm` → `text-sm` (exact duplicate)
-- [x] `m-4 mx-2` → `my-4 mx-2` (partial override)
-- [x] `flex block` → `block` (conflicting display, last wins)
-- [x] `relative absolute` → `absolute` (conflicting position, last wins)
-
----
-
-## v0.4 — Class merging (shorthand) ✅
-
-Goal: extend the expand-apply-collapse algorithm to all directional utility families.
-
+## v0.4 — Extended shorthand collapse (border, inset) ✅
 - [x] `border-t-2 border-b-2 border-l-2 border-r-2` → `border-2`
-- [x] `border-t-2 border-b-2` → `border-y-2`
-- [x] `border-l-4 border-r-4` → `border-x-4`
 - [x] `top-4 right-4 bottom-4 left-4` → `inset-4`
-- [x] `top-4 bottom-4` → `inset-y-4`
-- [x] `left-2 right-2` → `inset-x-2`
-
----
+- [x] Generic `BoxFamily` system (extensible)
 
 ## v0.5 — Class sorting ✅
-
-Goal: enforce canonical class order without Prettier.
-
-Order: layout → position → display → flex/grid → sizing → border → spacing → typography → colors → effects → transitions → transforms → interactivity → a11y → variants
-
-```
-// before
-className="text-sm bg-red-500 flex h-10 w-full p-4 rounded"
-
-// after
-className="flex h-10 w-full rounded p-4 text-sm bg-red-500"
-```
-
-- [x] `--sort` flag rewrites class order in-place
-- [x] Stable sort (preserves relative order within same category)
-- [x] Variants (hover:, sm:) sorted after base classes, responsive before state
+- [x] `--sort` flag: layout → position → display → flex/grid → sizing → border → spacing → typography → colors → effects → variants
+- [x] Stable sort, responsive before state variants
 
 ---
 
-## v1.0 — Full linter
+## v0.6 — Extended BoxFamily (gap, rounded, scroll)
 
-- Biome plugin (GritQL, when stable)
-- VS Code extension
-- `// tailwind-canonical-disable` inline suppression
-- `--reporter json` for CI integrations
-- Watch mode: `tailwind-canonical --watch ./src`
+- [ ] `gap-x-4 gap-y-4` → `gap-4`, `gap-4 gap-x-2` → `gap-y-4 gap-x-2`
+- [ ] `rounded-tl-lg rounded-tr-lg rounded-bl-lg rounded-br-lg` → `rounded-lg`
+- [ ] `rounded-tl-lg rounded-tr-lg` → `rounded-t-lg`
+- [ ] `scroll-pt-4 scroll-pb-4` → `scroll-py-4` (scroll-p/m families)
+
+---
+
+## v0.7 — cn()/clsx() function call support
+
+Goal: analyze string literals inside utility function calls — the dominant pattern in modern React.
+
+- [ ] `cn('flex p-4', 'text-sm')` → `--fix`, `--dedup`, `--sort` all work
+- [ ] Configurable function names: `functionNames: ['cn', 'clsx', 'cx', 'tv', 'cva']`
+- [ ] ESLint rule support for cn()/clsx() literals
+
+---
+
+## v0.8 — CI/DX improvements
+
+- [ ] `--reporter json` — structured output for GitHub Actions / Reviewdog
+- [ ] Glob pattern support: `tailwind-canonical 'src/**/*.tsx' '!src/generated/**'`
+- [ ] Inline suppression: `// tailwind-canonical-disable-next-line`
+- [ ] `--watch` mode for development workflow
+
+---
+
+## v0.9 — Responsive cascade collapse
+
+Goal: remove redundant responsive variants (Tailwind mobile-first cascade semantics).
+
+- [ ] `sm:p-4 md:p-4 lg:p-4` → `p-4` (all breakpoints identical = use base)
+- [ ] `sm:p-6 md:p-6` → `sm:p-6` (md inherits from sm via cascade)
+- [ ] `p-4 sm:p-4` → `p-4` (sm: redundant when matches base)
+
+---
+
+## v1.0 — Full ecosystem
+
+- [ ] Configurable attribute names: `attributeNames: ['className', 'class', ':class', 'tw']`
+- [ ] Configurable sort order in `tailwind-canonical.config.js`
+- [ ] VS Code extension (hover preview, inline fix)
+- [ ] Biome plugin (GritQL, when stable)
+- [ ] Cross-file consistency analysis (flag 3 different red shades for same intent)
+- [ ] `// tailwind-canonical-disable` block suppression
+- [ ] Unknown class detection (typo: `text-gry-500`)
