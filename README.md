@@ -30,6 +30,10 @@ npx tailwind-canonical --merge ./src
 
 # Combine: fix → dedup → merge → sort
 npx tailwind-canonical --fix --dedup --merge --sort ./src
+
+# Structured output for CI (check mode only)
+npx tailwind-canonical --reporter json ./src
+npx tailwind-canonical --reporter sarif ./src
 ```
 
 ## What each flag does
@@ -41,6 +45,37 @@ npx tailwind-canonical --fix --dedup --merge --sort ./src
 | `--dedup` | Directional shorthand collapse | `border-t-2 border-b-2` → `border-y-2`, `top-4 bottom-4` → `inset-y-4` |
 | `--sort` | Canonical class order | `text-sm flex p-4` → `flex p-4 text-sm` |
 | `--merge` | tailwind-merge conflict resolution | `bg-red-500 bg-blue-500` → `bg-blue-500` |
+| `--reporter json` | JSON output (check mode) or fix summary | machine-readable for CI pipelines |
+| `--reporter sarif` | SARIF 2.1.0 output (check mode) | GitHub Code Scanning / VS Code |
+
+## Structured output (`--reporter`)
+
+```bash
+# JSON — check mode: outputs findings, exits 1 if any found
+npx tailwind-canonical --reporter json ./src
+```
+```json
+{
+  "files": 3,
+  "total": 2,
+  "findings": [
+    { "file": "src/Button.tsx", "line": 12, "col": 17, "original": "text-[14px]", "canonical": "text-sm", "isCustomToken": false }
+  ]
+}
+```
+
+```bash
+# JSON — fix mode: outputs summary of changes
+npx tailwind-canonical --fix --reporter json ./src
+```
+```json
+{ "files": 3, "changedFiles": ["src/Button.tsx"], "fixed": 1, "deduped": 0, "merged": 0, "sorted": 0 }
+```
+
+```bash
+# SARIF — compatible with GitHub Code Scanning and VS Code Problem Matcher
+npx tailwind-canonical --reporter sarif ./src > results.sarif
+```
 
 ## Canonical class order (`--sort`)
 
