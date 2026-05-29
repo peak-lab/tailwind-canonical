@@ -1,29 +1,25 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { replaceClassStrings } from './class-strings.js';
 import { type Config, suggestCanonical } from './rules.js';
 
 export function fixFile(filePath: string, config: Config = {}): number {
-  let content = readFileSync(filePath, 'utf8');
+  const content = readFileSync(filePath, 'utf8');
   let count = 0;
 
-  const CLASS_ATTR_REGEX = /className\s*=\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`)/g;
-
-  content = content.replace(CLASS_ATTR_REGEX, (full, dq, sq, bt) => {
-    const raw = dq ?? sq ?? bt ?? '';
-    const quote = dq !== undefined ? '"' : sq !== undefined ? "'" : '`';
-    const fixed = raw.replace(/[^\s]+/g, (cls: string) => {
-      const suggestion = suggestCanonical(cls, config);
-      if (suggestion) {
+  const transform = (raw: string) =>
+    raw.replace(/[^\s]+/g, (cls: string) => {
+      const s = suggestCanonical(cls, config);
+      if (s) {
         count++;
-        return suggestion.canonical;
+        return s.canonical;
       }
       return cls;
     });
-    return full
-      .replace(raw, fixed)
-      .replace(/["'`]/, quote)
-      .replace(/["'`]$/, quote);
+
+  const { result } = replaceClassStrings(content, transform, {
+    functionNames: config.functionNames,
   });
 
-  if (count > 0) writeFileSync(filePath, content, 'utf8');
+  if (count > 0) writeFileSync(filePath, result, 'utf8');
   return count;
 }

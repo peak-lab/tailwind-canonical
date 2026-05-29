@@ -93,6 +93,7 @@ export type Config = {
   customTextTokens?: Record<number, string>;
   customSpacingTokens?: Record<number, string>;
   ignorePatterns?: RegExp[];
+  functionNames?: string[];
 };
 
 function remToPx(rem: number): number {
