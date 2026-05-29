@@ -5,16 +5,18 @@ import { fixFile } from '../core/fixer.js';
 import { mergeFile } from '../core/merger.js';
 import type { Config } from '../core/rules.js';
 import { scanFiles } from '../core/scanner.js';
+import { sortFile } from '../core/sorter.js';
 
 const args = process.argv.slice(2);
 const fix = args.includes('--fix');
 const merge = args.includes('--merge');
 const dedup = args.includes('--dedup');
+const sort = args.includes('--sort');
 const targets = args.filter((a) => !a.startsWith('--'));
 
 if (targets.length === 0) {
   console.error(
-    'Usage: tailwind-canonical [--fix] [--merge] [--dedup] <dir|file> [dir|file...]',
+    'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] <dir|file> [dir|file...]',
   );
   process.exit(1);
 }
@@ -43,6 +45,7 @@ let totalFindings = 0;
 let totalFixed = 0;
 let totalMerged = 0;
 let totalDeduped = 0;
+let totalSorted = 0;
 
 for (const file of files) {
   if (fix) {
@@ -75,7 +78,17 @@ for (const file of files) {
     }
   }
 
-  if (!fix && !dedup && !merge) {
+  if (sort) {
+    const count = sortFile(file);
+    if (count > 0) {
+      console.log(
+        `  sorted ${file} (${count} class string${count > 1 ? 's' : ''})`,
+      );
+      totalSorted += count;
+    }
+  }
+
+  if (!fix && !dedup && !merge && !sort) {
     const findings = analyzeFile(file, config);
     for (const f of findings) {
       const tag = f.suggestion.isCustomToken ? ' [custom token]' : '';
@@ -87,7 +100,7 @@ for (const file of files) {
   }
 }
 
-if (fix || dedup || merge) {
+if (fix || dedup || merge || sort) {
   const parts: string[] = [];
   if (fix)
     parts.push(`${totalFixed} replacement${totalFixed !== 1 ? 's' : ''}`);
@@ -95,6 +108,7 @@ if (fix || dedup || merge) {
     parts.push(`${totalDeduped} dedup${totalDeduped !== 1 ? 's' : ''}`);
   if (merge)
     parts.push(`${totalMerged} conflict${totalMerged !== 1 ? 's' : ''} merged`);
+  if (sort) parts.push(`${totalSorted} sorted`);
   console.log(
     `\n✓ Fixed ${parts.join(', ')} across ${files.length} file${files.length !== 1 ? 's' : ''}`,
   );

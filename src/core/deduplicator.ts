@@ -34,79 +34,150 @@ const POSITION_GROUP = new Set([
 
 type Box = { t: string; b: string; l: string; r: string };
 
-function expandSpacing(prefix: string, suffix: string): Partial<Box> | null {
-  if (prefix === 'p' || prefix === 'm')
-    return { t: suffix, b: suffix, l: suffix, r: suffix };
-  if (prefix === 'px' || prefix === 'mx') return { l: suffix, r: suffix };
-  if (prefix === 'py' || prefix === 'my') return { t: suffix, b: suffix };
-  if (prefix === 'pt' || prefix === 'mt') return { t: suffix };
-  if (prefix === 'pb' || prefix === 'mb') return { b: suffix };
-  if (prefix === 'pl' || prefix === 'ml') return { l: suffix };
-  if (prefix === 'pr' || prefix === 'mr') return { r: suffix };
+interface BoxFamily {
+  kind: string;
+  full: string;
+  x: string;
+  y: string;
+  t: string;
+  b: string;
+  l: string;
+  r: string;
+  regex: RegExp;
+}
+
+const SIDE_MAP: Record<string, ReadonlyArray<keyof Box>> = {
+  p: ['t', 'b', 'l', 'r'],
+  m: ['t', 'b', 'l', 'r'],
+  border: ['t', 'b', 'l', 'r'],
+  inset: ['t', 'b', 'l', 'r'],
+  px: ['l', 'r'],
+  mx: ['l', 'r'],
+  'border-x': ['l', 'r'],
+  'inset-x': ['l', 'r'],
+  py: ['t', 'b'],
+  my: ['t', 'b'],
+  'border-y': ['t', 'b'],
+  'inset-y': ['t', 'b'],
+  pt: ['t'],
+  mt: ['t'],
+  'border-t': ['t'],
+  top: ['t'],
+  pb: ['b'],
+  mb: ['b'],
+  'border-b': ['b'],
+  bottom: ['b'],
+  pl: ['l'],
+  ml: ['l'],
+  'border-l': ['l'],
+  left: ['l'],
+  pr: ['r'],
+  mr: ['r'],
+  'border-r': ['r'],
+  right: ['r'],
+};
+
+const FAMILIES: BoxFamily[] = [
+  {
+    kind: 'p',
+    full: 'p',
+    x: 'px',
+    y: 'py',
+    t: 'pt',
+    b: 'pb',
+    l: 'pl',
+    r: 'pr',
+    regex: /^(p|px|py|pt|pb|pl|pr)-(.+)$/,
+  },
+  {
+    kind: 'm',
+    full: 'm',
+    x: 'mx',
+    y: 'my',
+    t: 'mt',
+    b: 'mb',
+    l: 'ml',
+    r: 'mr',
+    regex: /^(m|mx|my|mt|mb|ml|mr)-(.+)$/,
+  },
+  {
+    kind: 'border-width',
+    full: 'border',
+    x: 'border-x',
+    y: 'border-y',
+    t: 'border-t',
+    b: 'border-b',
+    l: 'border-l',
+    r: 'border-r',
+    regex:
+      /^(border|border-x|border-y|border-t|border-b|border-l|border-r)-(\d.*)$/,
+  },
+  {
+    kind: 'inset',
+    full: 'inset',
+    x: 'inset-x',
+    y: 'inset-y',
+    t: 'top',
+    b: 'bottom',
+    l: 'left',
+    r: 'right',
+    regex: /^(inset-x|inset-y|inset|top|bottom|left|right)-(.+)$/,
+  },
+];
+
+function parseBoxClass(
+  cls: string,
+): { family: BoxFamily; sides: Partial<Box> } | null {
+  for (const family of FAMILIES) {
+    const m = cls.match(family.regex);
+    if (!m) continue;
+    const sides: Partial<Box> = {};
+    for (const side of SIDE_MAP[m[1]] ?? []) sides[side] = m[2];
+    return { family, sides };
+  }
   return null;
 }
 
-function collapseBox(box: Box, kind: 'p' | 'm'): string {
+function collapseBox(box: Box, f: BoxFamily): string {
   const { t, b, l, r } = box;
+  const fmt = (pfx: string, val: string) => `${pfx}-${val}`;
 
   if (t && b && l && r) {
-    if (t === b && b === l && l === r) return `${kind}-${t}`;
-    if (t === b && l === r) return `${kind}y-${t} ${kind}x-${l}`;
-    if (l === r) return `${kind}x-${l} ${kind}t-${t} ${kind}b-${b}`;
-    if (t === b) return `${kind}y-${t} ${kind}l-${l} ${kind}r-${r}`;
-    return `${kind}t-${t} ${kind}b-${b} ${kind}l-${l} ${kind}r-${r}`;
+    if (t === b && b === l && l === r) return fmt(f.full, t);
+    if (t === b && l === r) return `${fmt(f.y, t)} ${fmt(f.x, l)}`;
+    if (l === r) return `${fmt(f.x, l)} ${fmt(f.t, t)} ${fmt(f.b, b)}`;
+    if (t === b) return `${fmt(f.y, t)} ${fmt(f.l, l)} ${fmt(f.r, r)}`;
+    return `${fmt(f.t, t)} ${fmt(f.b, b)} ${fmt(f.l, l)} ${fmt(f.r, r)}`;
   }
 
   const parts: string[] = [];
   if (l && r) {
-    parts.push(l === r ? `${kind}x-${l}` : `${kind}l-${l} ${kind}r-${r}`);
+    parts.push(l === r ? fmt(f.x, l) : `${fmt(f.l, l)} ${fmt(f.r, r)}`);
   } else {
-    if (l) parts.push(`${kind}l-${l}`);
-    if (r) parts.push(`${kind}r-${r}`);
+    if (l) parts.push(fmt(f.l, l));
+    if (r) parts.push(fmt(f.r, r));
   }
   if (t && b) {
-    parts.push(t === b ? `${kind}y-${t}` : `${kind}t-${t} ${kind}b-${b}`);
+    parts.push(t === b ? fmt(f.y, t) : `${fmt(f.t, t)} ${fmt(f.b, b)}`);
   } else {
-    if (t) parts.push(`${kind}t-${t}`);
-    if (b) parts.push(`${kind}b-${b}`);
+    if (t) parts.push(fmt(f.t, t));
+    if (b) parts.push(fmt(f.b, b));
   }
   return parts.join(' ');
-}
-
-function parseSpacing(
-  cls: string,
-): { kind: 'p' | 'm'; prefix: string; suffix: string } | null {
-  const m = cls.match(/^(p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr)-(.+)$/);
-  if (!m) return null;
-  const kind = m[1].startsWith('p') ? 'p' : 'm';
-  return { kind, prefix: m[1], suffix: m[2] };
-}
-
-function processSpacingGroup(
-  classes: string[],
-  box: Box,
-  kind: 'p' | 'm',
-): string[] {
-  if (classes.length === 0) return [];
-  const collapsed = collapseBox(box, kind);
-  const original = classes.filter((c, i) => classes.indexOf(c) === i).join(' ');
-  return collapsed === original ? original.split(' ') : collapsed.split(' ');
 }
 
 export function deduplicateClasses(classStr: string): string {
   const classes = classStr.split(/\s+/).filter(Boolean);
   if (classes.length <= 1) return classStr;
 
-  const result: string[] = [];
   let displayWinner: string | null = null;
   let positionWinner: string | null = null;
   const seen = new Set<string>();
-
-  const pBox: Box = { t: '', b: '', l: '', r: '' };
-  const mBox: Box = { t: '', b: '', l: '', r: '' };
-  const pClasses: string[] = [];
-  const mClasses: string[] = [];
   const others: string[] = [];
+  const boxGroups = new Map<
+    string,
+    { family: BoxFamily; box: Box; classes: string[] }
+  >();
 
   for (const cls of classes) {
     if (DISPLAY_GROUP.has(cls)) {
@@ -118,18 +189,20 @@ export function deduplicateClasses(classStr: string): string {
       continue;
     }
 
-    const sp = parseSpacing(cls);
-    if (sp) {
-      const expansion = expandSpacing(sp.prefix, sp.suffix);
-      if (expansion) {
-        const box = sp.kind === 'p' ? pBox : mBox;
-        (sp.kind === 'p' ? pClasses : mClasses).push(cls);
-        if (expansion.t !== undefined) box.t = expansion.t;
-        if (expansion.b !== undefined) box.b = expansion.b;
-        if (expansion.l !== undefined) box.l = expansion.l;
-        if (expansion.r !== undefined) box.r = expansion.r;
-        continue;
+    const parsed = parseBoxClass(cls);
+    if (parsed) {
+      const { family, sides } = parsed;
+      let group = boxGroups.get(family.kind);
+      if (!group) {
+        group = { family, box: { t: '', b: '', l: '', r: '' }, classes: [] };
+        boxGroups.set(family.kind, group);
       }
+      group.classes.push(cls);
+      if (sides.t !== undefined) group.box.t = sides.t;
+      if (sides.b !== undefined) group.box.b = sides.b;
+      if (sides.l !== undefined) group.box.l = sides.l;
+      if (sides.r !== undefined) group.box.r = sides.r;
+      continue;
     }
 
     if (!seen.has(cls)) {
@@ -138,12 +211,22 @@ export function deduplicateClasses(classStr: string): string {
     }
   }
 
+  const result: string[] = [];
   if (displayWinner) result.push(displayWinner);
   if (positionWinner) result.push(positionWinner);
-  result.push(...processSpacingGroup(pClasses, pBox, 'p'));
-  result.push(...processSpacingGroup(mClasses, mBox, 'm'));
-  result.push(...others);
 
+  for (const { family, box, classes: groupClasses } of boxGroups.values()) {
+    if (groupClasses.length === 0) continue;
+    const collapsed = collapseBox(box, family);
+    const original = groupClasses
+      .filter((c, i) => groupClasses.indexOf(c) === i)
+      .join(' ');
+    result.push(
+      ...(collapsed === original ? original.split(' ') : collapsed.split(' ')),
+    );
+  }
+
+  result.push(...others);
   return result.join(' ');
 }
 
