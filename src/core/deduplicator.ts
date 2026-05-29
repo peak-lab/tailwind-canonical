@@ -32,6 +32,8 @@ const POSITION_GROUP = new Set([
   'sticky',
 ]);
 
+// ─── Box families ────────────────────────────────────────────────────────────
+
 type Box = { t: string; b: string; l: string; r: string };
 
 interface BoxFamily {
@@ -51,30 +53,47 @@ const SIDE_MAP: Record<string, ReadonlyArray<keyof Box>> = {
   m: ['t', 'b', 'l', 'r'],
   border: ['t', 'b', 'l', 'r'],
   inset: ['t', 'b', 'l', 'r'],
+  gap: ['t', 'b', 'l', 'r'],
+  'scroll-p': ['t', 'b', 'l', 'r'],
+  'scroll-m': ['t', 'b', 'l', 'r'],
   px: ['l', 'r'],
   mx: ['l', 'r'],
   'border-x': ['l', 'r'],
   'inset-x': ['l', 'r'],
+  'gap-x': ['l', 'r'],
+  'scroll-px': ['l', 'r'],
+  'scroll-mx': ['l', 'r'],
   py: ['t', 'b'],
   my: ['t', 'b'],
   'border-y': ['t', 'b'],
   'inset-y': ['t', 'b'],
+  'gap-y': ['t', 'b'],
+  'scroll-py': ['t', 'b'],
+  'scroll-my': ['t', 'b'],
   pt: ['t'],
   mt: ['t'],
   'border-t': ['t'],
   top: ['t'],
+  'scroll-pt': ['t'],
+  'scroll-mt': ['t'],
   pb: ['b'],
   mb: ['b'],
   'border-b': ['b'],
   bottom: ['b'],
+  'scroll-pb': ['b'],
+  'scroll-mb': ['b'],
   pl: ['l'],
   ml: ['l'],
   'border-l': ['l'],
   left: ['l'],
+  'scroll-pl': ['l'],
+  'scroll-ml': ['l'],
   pr: ['r'],
   mr: ['r'],
   'border-r': ['r'],
   right: ['r'],
+  'scroll-pr': ['r'],
+  'scroll-mr': ['r'],
 };
 
 const FAMILIES: BoxFamily[] = [
@@ -123,6 +142,41 @@ const FAMILIES: BoxFamily[] = [
     r: 'right',
     regex: /^(inset-x|inset-y|inset|top|bottom|left|right)-(.+)$/,
   },
+  {
+    kind: 'gap',
+    full: 'gap',
+    x: 'gap-x',
+    y: 'gap-y',
+    t: 'gap-y',
+    b: 'gap-y',
+    l: 'gap-x',
+    r: 'gap-x',
+    regex: /^(gap-x|gap-y|gap)-(.+)$/,
+  },
+  {
+    kind: 'scroll-p',
+    full: 'scroll-p',
+    x: 'scroll-px',
+    y: 'scroll-py',
+    t: 'scroll-pt',
+    b: 'scroll-pb',
+    l: 'scroll-pl',
+    r: 'scroll-pr',
+    regex:
+      /^(scroll-p|scroll-px|scroll-py|scroll-pt|scroll-pb|scroll-pl|scroll-pr)-(.+)$/,
+  },
+  {
+    kind: 'scroll-m',
+    full: 'scroll-m',
+    x: 'scroll-mx',
+    y: 'scroll-my',
+    t: 'scroll-mt',
+    b: 'scroll-mb',
+    l: 'scroll-ml',
+    r: 'scroll-mr',
+    regex:
+      /^(scroll-m|scroll-mx|scroll-my|scroll-mt|scroll-mb|scroll-ml|scroll-mr)-(.+)$/,
+  },
 ];
 
 function parseBoxClass(
@@ -166,6 +220,105 @@ function collapseBox(box: Box, f: BoxFamily): string {
   return parts.join(' ');
 }
 
+// ─── Rounded corner families ──────────────────────────────────────────────────
+
+type Corners = {
+  tl: string | null;
+  tr: string | null;
+  bl: string | null;
+  br: string | null;
+};
+
+function parseRoundedCorner(
+  cls: string,
+): { corners: Partial<Record<keyof Corners, string>> } | null {
+  const sideM = cls.match(/^rounded-(tl|tr|bl|br|t|b|l|r)(?:-(.+))?$/);
+  if (sideM) {
+    const side = sideM[1];
+    const val = sideM[2] ?? '';
+    const c: Partial<Record<keyof Corners, string>> = {};
+    if (side === 't') {
+      c.tl = val;
+      c.tr = val;
+    } else if (side === 'b') {
+      c.bl = val;
+      c.br = val;
+    } else if (side === 'l') {
+      c.tl = val;
+      c.bl = val;
+    } else if (side === 'r') {
+      c.tr = val;
+      c.br = val;
+    } else {
+      c[side as keyof Corners] = val;
+    }
+    return { corners: c };
+  }
+
+  const allM = cls.match(/^rounded(?:-(.+))?$/);
+  if (allM) {
+    const val = allM[1] ?? '';
+    return { corners: { tl: val, tr: val, bl: val, br: val } };
+  }
+
+  return null;
+}
+
+function collapseCorners(c: Corners): string {
+  const { tl, tr, bl, br } = c;
+  const mk = (pfx: string, val: string) => (val === '' ? pfx : `${pfx}-${val}`);
+
+  if (tl !== null && tr !== null && bl !== null && br !== null) {
+    if (tl === tr && tr === bl && bl === br) return mk('rounded', tl);
+    if (tl === tr && bl === br)
+      return `${mk('rounded-t', tl)} ${mk('rounded-b', bl)}`;
+    if (tl === bl && tr === br)
+      return `${mk('rounded-l', tl)} ${mk('rounded-r', tr)}`;
+    const parts: string[] = [];
+    if (tl === tr) parts.push(mk('rounded-t', tl));
+    else {
+      parts.push(mk('rounded-tl', tl));
+      parts.push(mk('rounded-tr', tr));
+    }
+    if (bl === br) parts.push(mk('rounded-b', bl));
+    else {
+      parts.push(mk('rounded-bl', bl));
+      parts.push(mk('rounded-br', br));
+    }
+    return parts.join(' ');
+  }
+
+  const handled = { tl: false, tr: false, bl: false, br: false };
+  const parts: string[] = [];
+  if (tl !== null && bl !== null && tl === bl) {
+    parts.push(mk('rounded-l', tl));
+    handled.tl = true;
+    handled.bl = true;
+  }
+  if (tr !== null && br !== null && tr === br) {
+    parts.push(mk('rounded-r', tr));
+    handled.tr = true;
+    handled.br = true;
+  }
+  if (!handled.tl && !handled.tr && tl !== null && tr !== null && tl === tr) {
+    parts.push(mk('rounded-t', tl));
+    handled.tl = true;
+    handled.tr = true;
+  }
+  if (!handled.bl && !handled.br && bl !== null && br !== null && bl === br) {
+    parts.push(mk('rounded-b', bl));
+    handled.bl = true;
+    handled.br = true;
+  }
+  if (!handled.tl && tl !== null) parts.push(mk('rounded-tl', tl));
+  if (!handled.tr && tr !== null) parts.push(mk('rounded-tr', tr));
+  if (!handled.bl && bl !== null) parts.push(mk('rounded-bl', bl));
+  if (!handled.br && br !== null) parts.push(mk('rounded-br', br));
+  return parts.join(' ');
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
 export function deduplicateClasses(classStr: string): string {
   const classes = classStr.split(/\s+/).filter(Boolean);
   if (classes.length <= 1) return classStr;
@@ -178,6 +331,8 @@ export function deduplicateClasses(classStr: string): string {
     string,
     { family: BoxFamily; box: Box; classes: string[] }
   >();
+  const corners: Corners = { tl: null, tr: null, bl: null, br: null };
+  const cornersClasses: string[] = [];
 
   for (const cls of classes) {
     if (DISPLAY_GROUP.has(cls)) {
@@ -205,6 +360,17 @@ export function deduplicateClasses(classStr: string): string {
       continue;
     }
 
+    const roundedParsed = parseRoundedCorner(cls);
+    if (roundedParsed) {
+      cornersClasses.push(cls);
+      const { corners: c } = roundedParsed;
+      if (c.tl !== undefined) corners.tl = c.tl;
+      if (c.tr !== undefined) corners.tr = c.tr;
+      if (c.bl !== undefined) corners.bl = c.bl;
+      if (c.br !== undefined) corners.br = c.br;
+      continue;
+    }
+
     if (!seen.has(cls)) {
       seen.add(cls);
       others.push(cls);
@@ -220,6 +386,16 @@ export function deduplicateClasses(classStr: string): string {
     const collapsed = collapseBox(box, family);
     const original = groupClasses
       .filter((c, i) => groupClasses.indexOf(c) === i)
+      .join(' ');
+    result.push(
+      ...(collapsed === original ? original.split(' ') : collapsed.split(' ')),
+    );
+  }
+
+  if (cornersClasses.length > 0) {
+    const collapsed = collapseCorners(corners);
+    const original = cornersClasses
+      .filter((c, i) => cornersClasses.indexOf(c) === i)
       .join(' ');
     result.push(
       ...(collapsed === original ? original.split(' ') : collapsed.split(' ')),
