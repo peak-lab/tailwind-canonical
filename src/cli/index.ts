@@ -59,7 +59,7 @@ for (const file of files) {
   }
 
   if (dedup) {
-    const count = dedupeFile(file);
+    const count = dedupeFile(file, { functionNames: config.functionNames });
     if (count > 0) {
       console.log(
         `  deduped ${file} (${count} class string${count > 1 ? 's' : ''})`,
@@ -69,7 +69,9 @@ for (const file of files) {
   }
 
   if (merge) {
-    const count = await mergeFile(file);
+    const count = await mergeFile(file, {
+      functionNames: config.functionNames,
+    });
     if (count > 0) {
       console.log(
         `  merged ${file} (${count} conflict${count > 1 ? 's' : ''})`,
@@ -79,7 +81,7 @@ for (const file of files) {
   }
 
   if (sort) {
-    const count = sortFile(file);
+    const count = sortFile(file, { functionNames: config.functionNames });
     if (count > 0) {
       console.log(
         `  sorted ${file} (${count} class string${count > 1 ? 's' : ''})`,

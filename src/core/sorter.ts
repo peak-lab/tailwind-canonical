@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { type ClassStringOpts, replaceClassStrings } from './class-strings.js';
 
 const DISPLAY_CLASSES = new Set([
   'block',
@@ -154,21 +155,9 @@ export function sortClasses(classStr: string): string {
     .join(' ');
 }
 
-export function sortFile(filePath: string): number {
-  let content = readFileSync(filePath, 'utf8');
-  let count = 0;
-
-  const CLASS_ATTR_REGEX = /className\s*=\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`)/g;
-
-  content = content.replace(CLASS_ATTR_REGEX, (full, dq, sq, bt) => {
-    const raw = dq ?? sq ?? bt ?? '';
-    const quote = dq !== undefined ? '"' : sq !== undefined ? "'" : '`';
-    const sorted = sortClasses(raw);
-    if (sorted === raw) return full;
-    count++;
-    return `className=${quote}${sorted}${quote}`;
-  });
-
-  if (count > 0) writeFileSync(filePath, content, 'utf8');
+export function sortFile(filePath: string, opts: ClassStringOpts = {}): number {
+  const content = readFileSync(filePath, 'utf8');
+  const { result, count } = replaceClassStrings(content, sortClasses, opts);
+  if (count > 0) writeFileSync(filePath, result, 'utf8');
   return count;
 }

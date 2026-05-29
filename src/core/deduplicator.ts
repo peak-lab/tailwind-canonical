@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { type ClassStringOpts, replaceClassStrings } from './class-strings.js';
 
 const DISPLAY_GROUP = new Set([
   'block',
@@ -406,21 +407,16 @@ export function deduplicateClasses(classStr: string): string {
   return result.join(' ');
 }
 
-export function dedupeFile(filePath: string): number {
-  let content = readFileSync(filePath, 'utf8');
-  let count = 0;
-
-  const CLASS_ATTR_REGEX = /className\s*=\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`)/g;
-
-  content = content.replace(CLASS_ATTR_REGEX, (full, dq, sq, bt) => {
-    const raw = dq ?? sq ?? bt ?? '';
-    const quote = dq !== undefined ? '"' : sq !== undefined ? "'" : '`';
-    const deduped = deduplicateClasses(raw);
-    if (deduped === raw) return full;
-    count++;
-    return `className=${quote}${deduped}${quote}`;
-  });
-
-  if (count > 0) writeFileSync(filePath, content, 'utf8');
+export function dedupeFile(
+  filePath: string,
+  opts: ClassStringOpts = {},
+): number {
+  const content = readFileSync(filePath, 'utf8');
+  const { result, count } = replaceClassStrings(
+    content,
+    deduplicateClasses,
+    opts,
+  );
+  if (count > 0) writeFileSync(filePath, result, 'utf8');
   return count;
 }
