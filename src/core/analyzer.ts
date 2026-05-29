@@ -17,24 +17,11 @@ function extractClasses(
 ): Array<{ cls: string; index: number }> {
   const found: Array<{ cls: string; index: number }> = [];
 
-  CLASS_REGEX.lastIndex = 0;
-
-  for (
-    let match = CLASS_REGEX.exec(content);
-    match !== null;
-    match = CLASS_REGEX.exec(content)
-  ) {
+  for (const match of content.matchAll(CLASS_REGEX)) {
     const raw = match[1] ?? match[2] ?? match[3] ?? match[4] ?? '';
-    SINGLE_CLASS_REGEX.lastIndex = 0;
-    for (
-      let clsMatch = SINGLE_CLASS_REGEX.exec(raw);
-      clsMatch !== null;
-      clsMatch = SINGLE_CLASS_REGEX.exec(raw)
-    ) {
-      found.push({
-        cls: clsMatch[0],
-        index: match.index + match[0].indexOf(raw) + clsMatch.index,
-      });
+    const rawStart = (match.index ?? 0) + match[0].indexOf(raw);
+    for (const clsMatch of raw.matchAll(SINGLE_CLASS_REGEX)) {
+      found.push({ cls: clsMatch[0], index: rawStart + (clsMatch.index ?? 0) });
     }
   }
 

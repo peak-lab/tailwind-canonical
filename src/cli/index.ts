@@ -7,6 +7,13 @@ import type { Config } from '../core/rules.js';
 import { scanFiles } from '../core/scanner.js';
 import { sortFile } from '../core/sorter.js';
 
+function pluralize(n: number, word: string): string {
+  return `${n} ${word}${n !== 1 ? 's' : ''}`;
+}
+
+const SARIF_SCHEMA =
+  'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json';
+
 const args = process.argv.slice(2);
 const fix = args.includes('--fix');
 const merge = args.includes('--merge');
@@ -66,9 +73,7 @@ for (const file of files) {
       totalFixed += count;
       changedFiles.push(file);
       if (reporter === 'text') {
-        console.log(
-          `  fixed  ${file} (${count} replacement${count > 1 ? 's' : ''})`,
-        );
+        console.log(`  fixed  ${file} (${pluralize(count, 'replacement')})`);
       }
     }
   }
@@ -79,9 +84,7 @@ for (const file of files) {
       totalDeduped += count;
       if (!changedFiles.includes(file)) changedFiles.push(file);
       if (reporter === 'text') {
-        console.log(
-          `  deduped ${file} (${count} class string${count > 1 ? 's' : ''})`,
-        );
+        console.log(`  deduped ${file} (${pluralize(count, 'class string')})`);
       }
     }
   }
@@ -94,9 +97,7 @@ for (const file of files) {
       totalMerged += count;
       if (!changedFiles.includes(file)) changedFiles.push(file);
       if (reporter === 'text') {
-        console.log(
-          `  merged ${file} (${count} conflict${count > 1 ? 's' : ''})`,
-        );
+        console.log(`  merged ${file} (${pluralize(count, 'conflict')})`);
       }
     }
   }
@@ -107,9 +108,7 @@ for (const file of files) {
       totalSorted += count;
       if (!changedFiles.includes(file)) changedFiles.push(file);
       if (reporter === 'text') {
-        console.log(
-          `  sorted ${file} (${count} class string${count > 1 ? 's' : ''})`,
-        );
+        console.log(`  sorted ${file} (${pluralize(count, 'class string')})`);
       }
     }
   }
@@ -132,7 +131,7 @@ for (const file of files) {
 if (fix || dedup || merge || sort) {
   if (reporter === 'json') {
     process.stdout.write(
-      JSON.stringify(
+      `${JSON.stringify(
         {
           files: files.length,
           changedFiles,
@@ -143,18 +142,13 @@ if (fix || dedup || merge || sort) {
         },
         null,
         2,
-      ) + '\n',
+      )}\n`,
     );
   } else {
     const parts: string[] = [];
-    if (fix)
-      parts.push(`${totalFixed} replacement${totalFixed !== 1 ? 's' : ''}`);
-    if (dedup)
-      parts.push(`${totalDeduped} dedup${totalDeduped !== 1 ? 's' : ''}`);
-    if (merge)
-      parts.push(
-        `${totalMerged} conflict${totalMerged !== 1 ? 's' : ''} merged`,
-      );
+    if (fix) parts.push(pluralize(totalFixed, 'replacement'));
+    if (dedup) parts.push(pluralize(totalDeduped, 'dedup'));
+    if (merge) parts.push(`${pluralize(totalMerged, 'conflict')} merged`);
     if (sort) parts.push(`${totalSorted} sorted`);
     console.log(
       `\n✓ Fixed ${parts.join(', ')} across ${files.length} file${files.length !== 1 ? 's' : ''}`,
@@ -162,7 +156,7 @@ if (fix || dedup || merge || sort) {
   }
 } else if (reporter === 'json') {
   process.stdout.write(
-    JSON.stringify(
+    `${JSON.stringify(
       {
         files: files.length,
         total: totalFindings,
@@ -177,13 +171,12 @@ if (fix || dedup || merge || sort) {
       },
       null,
       2,
-    ) + '\n',
+    )}\n`,
   );
   if (totalFindings > 0) process.exit(1);
 } else if (reporter === 'sarif') {
   const sarifOutput = {
-    $schema:
-      'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
+    $schema: SARIF_SCHEMA,
     version: '2.1.0',
     runs: [
       {
@@ -219,7 +212,7 @@ if (fix || dedup || merge || sort) {
       },
     ],
   };
-  process.stdout.write(JSON.stringify(sarifOutput, null, 2) + '\n');
+  process.stdout.write(`${JSON.stringify(sarifOutput, null, 2)}\n`);
   if (totalFindings > 0) process.exit(1);
 } else if (totalFindings > 0) {
   console.log(

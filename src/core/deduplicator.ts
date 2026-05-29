@@ -320,6 +320,17 @@ function collapseCorners(c: Corners): string {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+function pushCollapsed(
+  result: string[],
+  collapsed: string,
+  classes: string[],
+): void {
+  const original = classes.filter((c, i) => classes.indexOf(c) === i).join(' ');
+  result.push(
+    ...(collapsed === original ? original.split(' ') : collapsed.split(' ')),
+  );
+}
+
 export function deduplicateClasses(classStr: string): string {
   const classes = classStr.split(/\s+/).filter(Boolean);
   if (classes.length <= 1) return classStr;
@@ -384,23 +395,11 @@ export function deduplicateClasses(classStr: string): string {
 
   for (const { family, box, classes: groupClasses } of boxGroups.values()) {
     if (groupClasses.length === 0) continue;
-    const collapsed = collapseBox(box, family);
-    const original = groupClasses
-      .filter((c, i) => groupClasses.indexOf(c) === i)
-      .join(' ');
-    result.push(
-      ...(collapsed === original ? original.split(' ') : collapsed.split(' ')),
-    );
+    pushCollapsed(result, collapseBox(box, family), groupClasses);
   }
 
   if (cornersClasses.length > 0) {
-    const collapsed = collapseCorners(corners);
-    const original = cornersClasses
-      .filter((c, i) => cornersClasses.indexOf(c) === i)
-      .join(' ');
-    result.push(
-      ...(collapsed === original ? original.split(' ') : collapsed.split(' ')),
-    );
+    pushCollapsed(result, collapseCorners(corners), cornersClasses);
   }
 
   result.push(...others);
