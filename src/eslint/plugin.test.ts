@@ -24,7 +24,7 @@ test('no-arbitrary-canonical rule', async (t) => {
   await t.test('reports text-[12px] with canonical text-xs', () => {
     const reports: unknown[] = [];
     const ctx = {
-      options: [{}] as [{}],
+      options: [{}] as [object],
       report: (d: unknown) => reports.push(d),
     };
     const rule = noArbitraryCanonical.create(ctx as never);
@@ -36,7 +36,7 @@ test('no-arbitrary-canonical rule', async (t) => {
   await t.test('reports nothing for plain text-xs', () => {
     const reports: unknown[] = [];
     const ctx = {
-      options: [{}] as [{}],
+      options: [{}] as [object],
       report: (d: unknown) => reports.push(d),
     };
     const rule = noArbitraryCanonical.create(ctx as never);
@@ -47,7 +47,7 @@ test('no-arbitrary-canonical rule', async (t) => {
   await t.test('reports nothing for non-string literal', () => {
     const reports: unknown[] = [];
     const ctx = {
-      options: [{}] as [{}],
+      options: [{}] as [object],
       report: (d: unknown) => reports.push(d),
     };
     const rule = noArbitraryCanonical.create(ctx as never);
@@ -62,7 +62,7 @@ test('no-arbitrary-canonical rule', async (t) => {
   await t.test('reports multiple classes in one literal', () => {
     const reports: unknown[] = [];
     const ctx = {
-      options: [{}] as [{}],
+      options: [{}] as [object],
       report: (d: unknown) => reports.push(d),
     };
     const rule = noArbitraryCanonical.create(ctx as never);
@@ -77,7 +77,7 @@ test('no-arbitrary-canonical rule', async (t) => {
       fix?: (f: { replaceText: (n: unknown, s: string) => string }) => string;
     }> = [];
     const ctx = {
-      options: [{}] as [{}],
+      options: [{}] as [object],
       report: (d: unknown) => reports.push(d as never),
     };
     const rule = noArbitraryCanonical.create(ctx as never);
@@ -91,7 +91,7 @@ test('no-arbitrary-canonical rule', async (t) => {
   await t.test('respects customTextTokens from config', () => {
     const reports: unknown[] = [];
     const ctx = {
-      options: [{ customTextTokens: { 11: 'tiny' } }] as [{}],
+      options: [{ customTextTokens: { 11: 'tiny' } }] as [object],
       report: (d: unknown) => reports.push(d),
     };
     const rule = noArbitraryCanonical.create(ctx as never);
