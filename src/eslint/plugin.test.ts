@@ -84,7 +84,7 @@ test('no-arbitrary-canonical rule', async (t) => {
     const node = literal('text-[12px]');
     (rule.Literal as (n: unknown) => void)(node);
     assert.ok(reports[0].fix);
-    const result = reports[0].fix!({ replaceText: (_n, s) => s });
+    const result = reports[0].fix?.({ replaceText: (_n, s) => s });
     assert.ok((result as string).includes('text-xs'));
   });
 
@@ -144,7 +144,7 @@ test('no-conflicting-classes rule', async (t) => {
     const node = literal('bg-red-500 bg-blue-500');
     (rule.Literal as (n: unknown) => void)(node);
     assert.ok(reports[0]?.fix);
-    const result = reports[0].fix!({ replaceText: (_n, s) => s });
+    const result = reports[0].fix?.({ replaceText: (_n, s) => s });
     assert.ok((result as string).includes('bg-blue-500'));
     assert.ok(!(result as string).includes('bg-red-500'));
   });

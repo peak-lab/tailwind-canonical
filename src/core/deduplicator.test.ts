@@ -128,6 +128,90 @@ test('deduplicateClasses - margin shorthand', async (t: TestContext) => {
   });
 });
 
+test('deduplicateClasses - border-width shorthand', async (t: TestContext) => {
+  await t.test('all 4 sides same → border-{n}', () => {
+    assert.strictEqual(
+      deduplicateClasses('border-t-2 border-b-2 border-l-2 border-r-2'),
+      'border-2',
+    );
+  });
+
+  await t.test('border-x-2 border-y-2 → border-2', () => {
+    assert.strictEqual(deduplicateClasses('border-x-2 border-y-2'), 'border-2');
+  });
+
+  await t.test('border-t-2 border-b-2 → border-y-2', () => {
+    assert.strictEqual(
+      deduplicateClasses('border-t-2 border-b-2'),
+      'border-y-2',
+    );
+  });
+
+  await t.test('border-l-4 border-r-4 → border-x-4', () => {
+    assert.strictEqual(
+      deduplicateClasses('border-l-4 border-r-4'),
+      'border-x-4',
+    );
+  });
+
+  await t.test('border-2 border-t-4 → border-x-2 border-t-4 border-b-2', () => {
+    assert.strictEqual(
+      deduplicateClasses('border-2 border-t-4'),
+      'border-x-2 border-t-4 border-b-2',
+    );
+  });
+
+  await t.test(
+    'border-t-2 border-b-4 (different values) no full collapse',
+    () => {
+      const result = deduplicateClasses('border-t-2 border-b-4');
+      assert.ok(result.includes('border-t-2'));
+      assert.ok(result.includes('border-b-4'));
+    },
+  );
+
+  await t.test('does not match border-gray-200 (color, not width)', () => {
+    const cls = 'border border-gray-200';
+    assert.strictEqual(deduplicateClasses(cls), cls);
+  });
+
+  await t.test('border-4 exact duplicate → border-4', () => {
+    assert.strictEqual(deduplicateClasses('border-4 border-4'), 'border-4');
+  });
+});
+
+test('deduplicateClasses - inset shorthand', async (t: TestContext) => {
+  await t.test('top right bottom left same → inset-{n}', () => {
+    assert.strictEqual(
+      deduplicateClasses('top-4 right-4 bottom-4 left-4'),
+      'inset-4',
+    );
+  });
+
+  await t.test('top-4 bottom-4 → inset-y-4', () => {
+    assert.strictEqual(deduplicateClasses('top-4 bottom-4'), 'inset-y-4');
+  });
+
+  await t.test('left-2 right-2 → inset-x-2', () => {
+    assert.strictEqual(deduplicateClasses('left-2 right-2'), 'inset-x-2');
+  });
+
+  await t.test('inset-4 top-0 → override top via last-wins', () => {
+    assert.strictEqual(
+      deduplicateClasses('inset-4 top-0'),
+      'inset-x-4 top-0 bottom-4',
+    );
+  });
+
+  await t.test('inset-x-4 inset-y-4 → inset-4', () => {
+    assert.strictEqual(deduplicateClasses('inset-x-4 inset-y-4'), 'inset-4');
+  });
+
+  await t.test('top-4 alone unchanged', () => {
+    assert.strictEqual(deduplicateClasses('top-4 flex'), 'flex top-4');
+  });
+});
+
 test('deduplicateClasses - no-op cases', async (t: TestContext) => {
   await t.test('non-conflicting classes unchanged', () => {
     const cls = 'rounded-lg border border-gray-200 shadow-sm';

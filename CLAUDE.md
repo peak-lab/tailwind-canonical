@@ -28,12 +28,15 @@ Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 | `rules.ts` | Pure function `suggestCanonical(cls, config)` — the single source of truth for all replacement logic. No I/O. |
 | `analyzer.ts` | Reads a file, extracts `className` attribute values via regex, maps each class through `suggestCanonical`, returns `Finding[]` with line/col. |
 | `fixer.ts` | Reads a file, applies all `suggestCanonical` replacements in-place, writes back. |
+| `deduplicator.ts` | `deduplicateClasses(str)` — pure expand-apply-collapse for p/m/border-width/inset box families. Display/position last-wins. `dedupeFile()` applies it. |
+| `sorter.ts` | `sortClasses(str)` — stable sort by category (layout→position→display→flex/grid→sizing→border→spacing→typography→colors→effects→…→variants). `sortFile()` applies it. |
+| `merger.ts` | `mergeFile()` — async; dynamically imports `tailwind-merge` (optional peer dep). |
 | `scanner.ts` | Recursive directory walker — returns matching file paths. Ignores `node_modules`, `dist`, etc. |
 
 **Consumers of core:**
 
-- `src/cli/index.ts` — CLI entry point. Loads optional `tailwind-canonical.config.js` from cwd via dynamic `import()`. Exits 1 on findings when not in `--fix` mode.
-- `src/eslint/plugin.ts` — ESLint flat-config plugin wrapping `suggestCanonical`. Handles `Literal` and `TemplateLiteral` AST nodes.
+- `src/cli/index.ts` — CLI entry point. Flags: `--fix`, `--dedup`, `--merge`, `--sort`. Pipeline order: fix → dedup → merge → sort. Loads optional `tailwind-canonical.config.js` from cwd via dynamic `import()`. Exits 1 on findings when in check mode.
+- `src/eslint/plugin.ts` — ESLint flat-config plugin. Rules: `no-arbitrary-canonical` (wraps `suggestCanonical`) and `no-conflicting-classes` (wraps `twMerge` via `createRequire`).
 
 ## Config
 
@@ -54,4 +57,7 @@ export default {
 - `suggestCanonical` returns `null` for non-divisible px values — they must be left untouched.
 - `isCustomToken: true` on a `Suggestion` means the canonical name comes from config/non-built-in mapping; the CLI appends `[custom token]` to the output.
 - The ESLint plugin does NOT use `analyzeFile`/`fixFile` — it calls `suggestCanonical` directly on AST node values.
+- `deduplicator.ts` uses a generic `BoxFamily` system — add new box families (e.g. `margin-block`) by adding an entry to `FAMILIES` and keys to `SIDE_MAP`.
+- `sorter.ts` uses category numbers (0–500) for stable sort. Unknown classes get 500 (go last). Adding a new category = pick a number and add a condition in `getCategory`.
+- `merger.ts` uses dynamic `import('tailwind-merge')` — it is async; the ESLint rule uses synchronous `createRequire(import.meta.url)` instead.
 - Tests use Node's built-in `node:test` runner with `tsx` for ESM TypeScript — no Jest, no Vitest.

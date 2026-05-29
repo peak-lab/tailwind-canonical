@@ -42,22 +42,24 @@ Goal: detect redundant class combinations.
 
 ---
 
-## v0.4 — Class merging (shorthand)
+## v0.4 — Class merging (shorthand) ✅
 
-Goal: collapse multiple directional utilities into shorthands.
+Goal: extend the expand-apply-collapse algorithm to all directional utility families.
 
-- `pt-2 pb-2` → `py-2`
-- `pl-4 pr-4` → `px-4`
-- `mx-4 my-4` → `m-4`
-- `border-t-2 border-b-2 border-l-2 border-r-2` → `border-2`
+- [x] `border-t-2 border-b-2 border-l-2 border-r-2` → `border-2`
+- [x] `border-t-2 border-b-2` → `border-y-2`
+- [x] `border-l-4 border-r-4` → `border-x-4`
+- [x] `top-4 right-4 bottom-4 left-4` → `inset-4`
+- [x] `top-4 bottom-4` → `inset-y-4`
+- [x] `left-2 right-2` → `inset-x-2`
 
 ---
 
-## v0.5 — Class sorting
+## v0.5 — Class sorting ✅
 
 Goal: enforce canonical class order without Prettier.
 
-Order: layout → position → display → sizing → spacing → typography → colors → effects → variants
+Order: layout → position → display → flex/grid → sizing → border → spacing → typography → colors → effects → transitions → transforms → interactivity → a11y → variants
 
 ```
 // before
@@ -67,9 +69,9 @@ className="text-sm bg-red-500 flex h-10 w-full p-4 rounded"
 className="flex h-10 w-full rounded p-4 text-sm bg-red-500"
 ```
 
-- Works with Tailwind v4 (no config file needed)
-- `--fix` rewrites class order in-place
-- ESLint rule with autofix
+- [x] `--sort` flag rewrites class order in-place
+- [x] Stable sort (preserves relative order within same category)
+- [x] Variants (hover:, sm:) sorted after base classes, responsive before state
 
 ---
 

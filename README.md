@@ -1,6 +1,6 @@
 # tailwind-canonical
 
-Lint and auto-fix Tailwind CSS arbitrary values that have canonical equivalents.
+Lint and auto-fix Tailwind CSS classes: arbitrary values → canonical, deduplication, shorthand collapsing, and class sorting.
 
 ## Install
 
@@ -13,23 +13,97 @@ yarn add -D tailwind-canonical
 ## CLI
 
 ```bash
-# Check
+# Check for non-canonical arbitrary values
 npx tailwind-canonical ./src
 
-# Auto-fix
+# Auto-fix: arbitrary → canonical
 npx tailwind-canonical --fix ./src
+
+# Deduplicate and collapse shorthands
+npx tailwind-canonical --dedup ./src
+
+# Sort classes into canonical order
+npx tailwind-canonical --sort ./src
+
+# Resolve conflicts with tailwind-merge (requires: pnpm add -D tailwind-merge)
+npx tailwind-canonical --merge ./src
+
+# Combine: fix → dedup → merge → sort
+npx tailwind-canonical --fix --dedup --merge --sort ./src
 ```
 
-## Output
+## What each flag does
+
+| Flag | What it fixes | Example |
+|---|---|---|
+| `--fix` | Arbitrary values → canonical tokens | `text-[12px]` → `text-xs` |
+| `--dedup` | Redundant or conflicting classes | `flex block` → `block`, `px-4 py-4` → `p-4` |
+| `--dedup` | Directional shorthand collapse | `border-t-2 border-b-2` → `border-y-2`, `top-4 bottom-4` → `inset-y-4` |
+| `--sort` | Canonical class order | `text-sm flex p-4` → `flex p-4 text-sm` |
+| `--merge` | tailwind-merge conflict resolution | `bg-red-500 bg-blue-500` → `bg-blue-500` |
+
+## Canonical class order (`--sort`)
+
+`layout → position → display → flex/grid → sizing → border → spacing → typography → colors → effects → transitions → transforms → interactivity → a11y → variants`
 
 ```
-  src/components/badge.tsx:12:18  text-[11px] → text-2xs [custom token]
-  src/components/card.tsx:34:5   h-[64px] → h-16
-  src/components/card.tsx:41:5   text-[12px] → text-xs
+// before
+className="text-sm bg-red-500 flex h-10 w-full p-4 rounded"
 
-✖ Found 3 non-canonical classes
-  Run with --fix to auto-replace
+// after
+className="flex h-10 w-full rounded p-4 text-sm bg-red-500"
 ```
+
+Variants (`hover:`, `sm:`, `focus:`) are sorted after base classes, with responsive breakpoints before state variants.
+
+## Deduplication (`--dedup`)
+
+### Exact duplicates and conflicts
+
+```
+flex flex flex         → flex
+flex block             → block  (last wins)
+relative absolute      → absolute
+```
+
+### Padding / margin shorthand collapse
+
+```
+px-4 py-4  → p-4
+p-4 px-2   → py-4 px-2
+pt-2 pb-2  → py-2
+pl-4 pr-4  → px-4
+mx-4 my-4  → m-4
+```
+
+### Border shorthand collapse
+
+```
+border-t-2 border-b-2 border-l-2 border-r-2  → border-2
+border-t-2 border-b-2                          → border-y-2
+border-l-4 border-r-4                          → border-x-4
+```
+
+### Inset shorthand collapse
+
+```
+top-4 right-4 bottom-4 left-4  → inset-4
+top-4 bottom-4                  → inset-y-4
+left-2 right-2                  → inset-x-2
+```
+
+## Arbitrary value detection (`--fix`)
+
+| Arbitrary | Canonical | Notes |
+|---|---|---|
+| `text-[12px]` | `text-xs` | Built-in |
+| `text-[0.75rem]` | `text-xs` | rem values |
+| `h-[64px]` | `h-16` | Spacing scale ÷4 |
+| `w-[50%]` | `w-1/2` | Percentage fractions |
+| `opacity-[0.5]` | `opacity-50` | Opacity scale |
+| `text-[11px]` | `text-2xs` | Custom token |
+
+Non-divisible values (`h-[22px]`, `px-[7px]`) are left untouched.
 
 ## Config
 
@@ -42,8 +116,13 @@ export default {
     11: '2xs',
     13: 'xxs',
   },
+  customSpacingTokens: {
+    14: '3.5',
+  },
 }
 ```
+
+`customTextTokens` merges with the built-in text size map. `customSpacingTokens` supplements the default ÷4 spacing logic.
 
 ## ESLint plugin
 
@@ -56,28 +135,42 @@ export default [
     plugins: { 'tailwind-canonical': tailwindCanonical },
     rules: {
       'tailwind-canonical/no-arbitrary-canonical': 'warn',
+      // Optional: flag tailwind-merge conflicts (requires tailwind-merge peer dep)
+      'tailwind-canonical/no-conflicting-classes': 'warn',
     },
   },
 ]
 ```
 
-## Pre-commit hook (Husky)
+## Pre-commit hook (Husky / Lefthook)
 
 ```bash
-# .husky/pre-commit
-npx tailwind-canonical ./src ./app
+# Lefthook: lefthook.yml
+pre-commit:
+  commands:
+    tailwind:
+      glob: "src/**/*.{tsx,jsx}"
+      run: npx tailwind-canonical --fix --dedup --sort {staged_files}
+      stage_fixed: true
 ```
 
-## What gets flagged
+```bash
+# Husky: .husky/pre-commit
+npx tailwind-canonical --fix --dedup --sort ./src ./app
+```
 
-| Arbitrary | Canonical | Notes |
-|---|---|---|
-| `text-[12px]` | `text-xs` | Built-in |
-| `text-[14px]` | `text-sm` | Built-in |
-| `text-[11px]` | `text-2xs` | Custom token |
-| `h-[64px]` | `h-16` | Spacing scale ÷4 |
-| `w-[32px]` | `w-8` | Spacing scale ÷4 |
-| `min-h-[56px]` | `min-h-14` | Spacing scale ÷4 |
-| `max-w-[280px]` | `max-w-70` | Spacing scale ÷4 |
+## Programmatic API
 
-Non-divisible values (`h-[22px]`, `px-[7px]`) are left untouched.
+```ts
+import {
+  suggestCanonical,   // pure: class string → suggestion or null
+  analyzeFile,        // find non-canonical classes in a file
+  fixFile,            // apply --fix in-place
+  deduplicateClasses, // pure: deduplicate a class string
+  dedupeFile,         // apply --dedup in-place
+  sortClasses,        // pure: sort a class string
+  sortFile,           // apply --sort in-place
+  mergeFile,          // apply --merge in-place (requires tailwind-merge)
+  scanFiles,          // recursive file scanner
+} from 'tailwind-canonical'
+```
