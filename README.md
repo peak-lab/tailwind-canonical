@@ -36,6 +36,9 @@ npx tailwind-canonical --merge ./src
 # Combine: fix → dedup → merge → sort
 npx tailwind-canonical --fix --dedup --merge --sort ./src
 
+# Watch mode: re-run on every file save
+npx tailwind-canonical --watch --fix --sort ./src
+
 # Structured output for CI (check mode only)
 npx tailwind-canonical --reporter json ./src
 npx tailwind-canonical --reporter sarif ./src
@@ -49,6 +52,7 @@ npx tailwind-canonical --reporter sarif ./src
 | `--dedup` | Redundant classes, conflicts, shorthand collapse | `flex block` → `block`, `px-4 py-4` → `p-4`, `border-t-2 border-b-2` → `border-y-2` |
 | `--sort` | Canonical class order | `text-sm flex p-4` → `flex p-4 text-sm` |
 | `--merge` | tailwind-merge conflict resolution | `bg-red-500 bg-blue-500` → `bg-blue-500` |
+| `--watch` | Re-run on every file save (debounced 50ms) | `[12:34:01] src/Button.tsx — 2 changes applied` |
 | `--reporter json` | JSON output (check mode) or fix summary | machine-readable for CI pipelines |
 | `--reporter sarif` | SARIF 2.1.0 output (check mode) | GitHub Code Scanning / VS Code |
 
