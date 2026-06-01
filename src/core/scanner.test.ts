@@ -85,6 +85,25 @@ test('resolveTargets - glob patterns', async (t) => {
     assert.ok(names.includes('src/utils/format.ts'));
   });
 
+  await t.test('relative negation pattern works', async () => {
+    const files = await resolveTargets([
+      `${root}/src/**/*.ts`,
+      '!**/generated/**',
+    ]);
+    const names = files.map(rel);
+    assert.ok(names.includes('src/index.ts'));
+    assert.ok(!names.includes('src/generated/schema.ts'));
+  });
+
+  await t.test('glob mode filters by extensions', async () => {
+    writeFileSync(join(root, 'src/data.json'), '{}');
+    const files = await resolveTargets([`${root}/src/**/*`]);
+    const names = files.map(rel);
+    assert.ok(names.includes('src/App.tsx'));
+    assert.ok(!names.includes('src/utils/README.md'));
+    assert.ok(!names.includes('src/data.json'));
+  });
+
   await t.test('multiple positive patterns are combined', async () => {
     const files = await resolveTargets([
       `${root}/src/components/*.tsx`,

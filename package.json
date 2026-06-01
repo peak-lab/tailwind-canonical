@@ -34,7 +34,7 @@
   "homepage": "https://github.com/peak-lab/tailwind-canonical#readme",
   "author": "Fahari Hamada Sidi",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

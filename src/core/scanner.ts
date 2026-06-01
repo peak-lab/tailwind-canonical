@@ -23,7 +23,8 @@ function isGlob(target: string): boolean {
 
 function globToRegex(pattern: string): RegExp {
   let i = 0;
-  let re = '^';
+  const anchored = pattern.startsWith('/') || /^[A-Za-z]:/.test(pattern);
+  let re = anchored ? '^' : '(?:^|/)';
   while (i < pattern.length) {
     const c = pattern[i];
     if (c === '*' && pattern[i + 1] === '*') {
@@ -95,6 +96,7 @@ export async function resolveTargets(
   options: ScanOptions = {},
 ): Promise<string[]> {
   const ignore = options.ignore ?? DEFAULT_IGNORE;
+  const extensions = options.extensions ?? DEFAULT_EXTENSIONS;
 
   const positive: string[] = [];
   const negativeRegexes: RegExp[] = [];
@@ -118,7 +120,9 @@ export async function resolveTargets(
             .split('/')
             .some((s) => ignore.includes(s)),
       })) {
-        files.add(f);
+        if (extensions.some((ext) => f.endsWith(ext))) {
+          files.add(f);
+        }
       }
     } else {
       for (const f of scanFiles(pattern, options)) {
@@ -129,7 +133,8 @@ export async function resolveTargets(
 
   if (negativeRegexes.length > 0) {
     for (const f of [...files]) {
-      if (negativeRegexes.some((re) => re.test(f.replace(/\\/g, '/')))) {
+      const normalized = f.replace(/\\/g, '/');
+      if (negativeRegexes.some((re) => re.test(normalized))) {
         files.delete(f);
       }
     }
