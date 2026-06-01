@@ -1,6 +1,6 @@
 {
   "name": "tailwind-canonical",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Lint and auto-fix Tailwind CSS arbitrary values that have canonical equivalents",
   "type": "module",
   "packageManager": "pnpm@11.4.0",
