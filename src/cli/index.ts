@@ -67,6 +67,7 @@ try {
     new URL(`file://${process.cwd()}/tailwind-canonical.config.js`).href
   );
   config = userConfig;
+  // biome-ignore lint/suspicious/noEmptyBlockStatements: config file is optional
 } catch {}
 
 async function processFile(file: string): Promise<number> {
@@ -135,7 +136,7 @@ for (const file of files) {
     }
   }
 
-  if (!fix && !dedup && !merge && !sort) {
+  if (!(fix || dedup || merge || sort)) {
     const findings = analyzeFile(file, config);
     allFindings.push(...findings);
     totalFindings += findings.length;
@@ -176,6 +177,7 @@ if (watch) {
                     `${timestamp()} ${full} — ${pluralize(count, 'change')} applied`,
                   );
               })
+              // biome-ignore lint/suspicious/noEmptyBlockStatements: watcher errors are silent by design
               .catch(() => {});
           } else {
             const findings = analyzeFile(full, config);

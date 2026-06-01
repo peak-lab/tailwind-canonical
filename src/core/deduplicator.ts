@@ -301,12 +301,12 @@ function collapseCorners(c: Corners): string {
     handled.tr = true;
     handled.br = true;
   }
-  if (!handled.tl && !handled.tr && tl !== null && tr !== null && tl === tr) {
+  if (!(handled.tl || handled.tr) && tl !== null && tr !== null && tl === tr) {
     parts.push(mk('rounded-t', tl));
     handled.tl = true;
     handled.tr = true;
   }
-  if (!handled.bl && !handled.br && bl !== null && br !== null && bl === br) {
+  if (!(handled.bl || handled.br) && bl !== null && br !== null && bl === br) {
     parts.push(mk('rounded-b', bl));
     handled.bl = true;
     handled.br = true;
