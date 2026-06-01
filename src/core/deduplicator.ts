@@ -318,6 +318,69 @@ function collapseCorners(c: Corners): string {
   return parts.join(' ');
 }
 
+// ─── Responsive cascade collapse ─────────────────────────────────────────────
+
+const RESPONSIVE_BREAKPOINTS = ['sm', 'md', 'lg', 'xl', '2xl'] as const;
+const BP_ORDER: Array<(typeof RESPONSIVE_BREAKPOINTS)[number] | ''> = [
+  '',
+  ...RESPONSIVE_BREAKPOINTS,
+];
+
+function collapseResponsiveCascade(classes: string[]): string[] {
+  interface Entry {
+    bp: (typeof RESPONSIVE_BREAKPOINTS)[number] | '';
+    base: string;
+    key: string;
+    idx: number;
+  }
+
+  const entries: Entry[] = classes.map((cls, idx) => {
+    for (const bp of RESPONSIVE_BREAKPOINTS) {
+      const prefix = `${bp}:`;
+      if (cls.startsWith(prefix) && !cls.slice(prefix.length).includes(':')) {
+        const base = cls.slice(prefix.length);
+        const dash = base.lastIndexOf('-');
+        return { bp, base, key: dash === -1 ? base : base.slice(0, dash), idx };
+      }
+    }
+    const dash = cls.lastIndexOf('-');
+    return {
+      bp: '',
+      base: cls,
+      key: dash === -1 ? cls : cls.slice(0, dash),
+      idx,
+    };
+  });
+
+  const groups = new Map<string, Entry[]>();
+  for (const e of entries) {
+    const arr = groups.get(e.key);
+    if (arr) arr.push(e);
+    else groups.set(e.key, [e]);
+  }
+
+  const toRemove = new Set<number>();
+
+  for (const group of groups.values()) {
+    if (group.length < 2 || !group.some((e) => e.bp !== '')) continue;
+
+    const sorted = [...group].sort(
+      (a, b) => BP_ORDER.indexOf(a.bp) - BP_ORDER.indexOf(b.bp),
+    );
+
+    let prev: string | null = null;
+    for (const entry of sorted) {
+      if (entry.base === prev) {
+        toRemove.add(entry.idx);
+      } else {
+        prev = entry.base;
+      }
+    }
+  }
+
+  return classes.filter((_, i) => !toRemove.has(i));
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 function pushCollapsed(
@@ -332,8 +395,10 @@ function pushCollapsed(
 }
 
 export function deduplicateClasses(classStr: string): string {
-  const classes = classStr.split(/\s+/).filter(Boolean);
+  let classes = classStr.split(/\s+/).filter(Boolean);
   if (classes.length <= 1) return classStr;
+
+  classes = collapseResponsiveCascade(classes);
 
   let displayWinner: string | null = null;
   let positionWinner: string | null = null;

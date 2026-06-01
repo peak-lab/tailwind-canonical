@@ -355,6 +355,66 @@ test('deduplicateClasses - no-op cases', async (t: TestContext) => {
   });
 });
 
+test('deduplicateClasses - responsive cascade collapse', async (t: TestContext) => {
+  await t.test('base redundant when sm matches', () => {
+    assert.strictEqual(deduplicateClasses('p-4 sm:p-4'), 'p-4');
+  });
+
+  await t.test('md redundant when matches sm', () => {
+    assert.strictEqual(deduplicateClasses('sm:p-6 md:p-6'), 'sm:p-6');
+  });
+
+  await t.test('md removed, lg kept when value changes', () => {
+    assert.strictEqual(
+      deduplicateClasses('sm:p-6 md:p-6 lg:p-8'),
+      'sm:p-6 lg:p-8',
+    );
+  });
+
+  await t.test('all same responsive breakpoints → keep smallest', () => {
+    assert.strictEqual(deduplicateClasses('sm:p-4 md:p-4 lg:p-4'), 'sm:p-4');
+  });
+
+  await t.test('non-redundant responsive classes unchanged', () => {
+    const cls = 'sm:p-4 md:p-6';
+    assert.strictEqual(deduplicateClasses(cls), cls);
+  });
+
+  await t.test('works with text utility', () => {
+    assert.strictEqual(
+      deduplicateClasses('sm:text-sm md:text-sm'),
+      'sm:text-sm',
+    );
+    assert.strictEqual(
+      deduplicateClasses('sm:text-sm md:text-lg'),
+      'sm:text-sm md:text-lg',
+    );
+  });
+
+  await t.test('works with width utility', () => {
+    assert.strictEqual(deduplicateClasses('sm:w-full md:w-full'), 'sm:w-full');
+  });
+
+  await t.test('nested state variants not collapsed', () => {
+    const cls = 'sm:hover:p-4 md:hover:p-4';
+    assert.strictEqual(deduplicateClasses(cls), cls);
+  });
+
+  await t.test('xl and 2xl cascade correctly', () => {
+    assert.strictEqual(
+      deduplicateClasses('lg:gap-4 xl:gap-4 2xl:gap-4'),
+      'lg:gap-4',
+    );
+  });
+
+  await t.test('non-responsive classes unaffected', () => {
+    assert.strictEqual(
+      deduplicateClasses('flex p-4 sm:text-lg md:text-lg'),
+      'flex p-4 sm:text-lg',
+    );
+  });
+});
+
 test('dedupeFile', async (t: TestContext) => {
   await t.test('deduplicates exact duplicates in file', async () => {
     const file = join(tmpdir(), `dedup-test-${Date.now()}.tsx`);
