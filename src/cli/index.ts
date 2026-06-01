@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { watch as fsWatch } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
 import { dedupeFile } from '../core/deduplicator.js';
 import { fixFile } from '../core/fixer.js';
@@ -11,6 +13,11 @@ function pluralize(n: number, word: string): string {
   return `${n} ${word}${n !== 1 ? 's' : ''}`;
 }
 
+function timestamp(): string {
+  const d = new Date();
+  return `[${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}]`;
+}
+
 const SARIF_SCHEMA =
   'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json';
 
@@ -19,6 +26,7 @@ const fix = args.includes('--fix');
 const merge = args.includes('--merge');
 const dedup = args.includes('--dedup');
 const sort = args.includes('--sort');
+const watch = args.includes('--watch');
 
 const reporterIdx = args.indexOf('--reporter');
 const reporter: 'text' | 'json' | 'sarif' =
@@ -28,12 +36,16 @@ const reporter: 'text' | 'json' | 'sarif' =
     : 'text';
 
 const targets = args.filter(
-  (a, i) => !a.startsWith('--') && args[i - 1] !== '--reporter',
+  (a, i) =>
+    !a.startsWith('--') &&
+    args[i - 1] !== '--reporter' &&
+    a !== 'json' &&
+    a !== 'sarif',
 );
 
 if (targets.length === 0) {
   console.error(
-    'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--reporter json|sarif] <dir|file> [dir|file...]',
+    'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]',
   );
   process.exit(1);
 }
@@ -56,6 +68,16 @@ try {
   );
   config = userConfig;
 } catch {}
+
+async function processFile(file: string): Promise<number> {
+  let count = 0;
+  if (fix) count += fixFile(file, config);
+  if (dedup) count += dedupeFile(file, { functionNames: config.functionNames });
+  if (merge)
+    count += await mergeFile(file, { functionNames: config.functionNames });
+  if (sort) count += sortFile(file, { functionNames: config.functionNames });
+  return count;
+}
 
 const files = await resolveTargets(targets);
 let totalFindings = 0;
@@ -117,7 +139,7 @@ for (const file of files) {
     const findings = analyzeFile(file, config);
     allFindings.push(...findings);
     totalFindings += findings.length;
-    if (reporter === 'text') {
+    if (reporter === 'text' && !watch) {
       for (const f of findings) {
         const tag = f.suggestion.isCustomToken ? ' [custom token]' : '';
         console.log(
@@ -128,7 +150,57 @@ for (const file of files) {
   }
 }
 
-if (fix || dedup || merge || sort) {
+if (watch) {
+  const fileSet = new Set(files);
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const dirs = new Set<string>(files.map((f) => dirname(f)));
+
+  console.log(
+    `Watching ${pluralize(files.length, 'file')}... (Ctrl+C to stop)`,
+  );
+
+  for (const dir of dirs) {
+    fsWatch(dir, { recursive: true }, (_, filename) => {
+      if (!filename) return;
+      const full = resolve(dir, filename);
+      if (!fileSet.has(full)) return;
+      clearTimeout(timers.get(full));
+      timers.set(
+        full,
+        setTimeout(() => {
+          if (fix || dedup || merge || sort) {
+            processFile(full)
+              .then((count) => {
+                if (count > 0)
+                  console.log(
+                    `${timestamp()} ${full} — ${pluralize(count, 'change')} applied`,
+                  );
+              })
+              .catch(() => {});
+          } else {
+            const findings = analyzeFile(full, config);
+            if (findings.length > 0) {
+              console.log(
+                `${timestamp()} ${full} — ${pluralize(findings.length, 'finding')}`,
+              );
+              for (const f of findings) {
+                const tag = f.suggestion.isCustomToken ? ' [custom token]' : '';
+                console.log(
+                  `  ${f.line}:${f.col}  ${f.suggestion.original} → ${f.suggestion.canonical}${tag}`,
+                );
+              }
+            }
+          }
+        }, 50),
+      );
+    });
+  }
+
+  process.on('SIGINT', () => {
+    console.log('\nWatcher stopped.');
+    process.exit(0);
+  });
+} else if (fix || dedup || merge || sort) {
   if (reporter === 'json') {
     process.stdout.write(
       `${JSON.stringify(
