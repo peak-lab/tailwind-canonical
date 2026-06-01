@@ -25,10 +25,17 @@
 			"style": {
 				"useTemplate": "error",
 				"useNodejsImportProtocol": "error",
-				"noNonNullAssertion": "error"
+				"noNonNullAssertion": "error",
+				"noParameterAssign": "error"
 			},
 			"suspicious": {
-				"noExplicitAny": "error"
+				"noExplicitAny": "error",
+				"noDoubleEquals": "error",
+				"noSelfCompare": "error",
+				"noEmptyBlockStatements": "error"
+			},
+			"complexity": {
+				"useSimplifiedLogicExpression": "error"
 			}
 		}
 	},
