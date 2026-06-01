@@ -1,9 +1,20 @@
 export type ClassStringOpts = {
   functionNames?: string[];
+  attributeNames?: string[];
 };
+
+const DEFAULT_ATTR_NAMES = ['className'];
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildAttrRegex(names: string[]): RegExp {
+  const alts = names.map(escapeRegex).join('|');
+  return new RegExp(
+    `(${alts})\\s*=\\s*(?:"([^"]+)"|'([^']+)'|\`([^\`]+)\`)`,
+    'g',
+  );
 }
 
 function transformCallContent(
@@ -52,17 +63,20 @@ export function replaceClassStrings(
   transform: (s: string) => string,
   opts: ClassStringOpts = {},
 ): { result: string; count: number } {
+  const attrNames = opts.attributeNames?.length
+    ? opts.attributeNames
+    : DEFAULT_ATTR_NAMES;
   let result = content;
   let count = 0;
 
   result = result.replace(
-    /className\s*=\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`)/g,
-    (_full, dq, sq, bt) => {
+    buildAttrRegex(attrNames),
+    (_full, attr, dq, sq, bt) => {
       const raw = dq ?? sq ?? bt ?? '';
       const q = dq !== undefined ? '"' : sq !== undefined ? "'" : '`';
       const out = transform(raw);
       if (out !== raw) count++;
-      return `className=${q}${out}${q}`;
+      return `${attr}=${q}${out}${q}`;
     },
   );
 
@@ -99,12 +113,13 @@ export function extractClassStrings(
   content: string,
   opts: ClassStringOpts = {},
 ): Array<{ value: string; start: number; end: number }> {
+  const attrNames = opts.attributeNames?.length
+    ? opts.attributeNames
+    : DEFAULT_ATTR_NAMES;
   const results: Array<{ value: string; start: number; end: number }> = [];
 
-  for (const m of content.matchAll(
-    /className\s*=\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`)/g,
-  )) {
-    const raw = m[1] ?? m[2] ?? m[3] ?? '';
+  for (const m of content.matchAll(buildAttrRegex(attrNames))) {
+    const raw = m[2] ?? m[3] ?? m[4] ?? '';
     const start = (m.index ?? 0) + m[0].length - raw.length - 1;
     results.push({ value: raw, start, end: start + raw.length });
   }

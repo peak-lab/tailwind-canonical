@@ -162,10 +162,18 @@ export default {
   customSpacingTokens: {
     14: '3.5',
   },
+  // Support non-React attribute patterns (default: ['className'])
+  attributeNames: ['className', 'class', ':class', 'tw'],
+  // Support utility function wrappers
+  functionNames: ['cn', 'clsx', 'cva'],
 }
 ```
 
 `customTextTokens` merges with the built-in text size map. `customSpacingTokens` supplements the default ÷4 spacing logic.
+
+`attributeNames` controls which HTML/JSX attributes are scanned (default: `['className']`). Use `['class']` for plain HTML/PHP/Jinja templates, `[':class']` for Vue, `['tw']` for styled-components.
+
+`functionNames` enables scanning inside utility function calls like `cn(...)` and `clsx(...)`.
 
 ## ESLint plugin
 

@@ -18,6 +18,7 @@ export function fixFile(filePath: string, config: Config = {}): number {
 
   const { result } = replaceClassStrings(content, transform, {
     functionNames: config.functionNames,
+    attributeNames: config.attributeNames,
   });
 
   if (count > 0) writeFileSync(filePath, result, 'utf8');

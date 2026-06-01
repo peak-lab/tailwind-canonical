@@ -175,3 +175,68 @@ test('sortFile with functionNames', async (t: TestContext) => {
     }
   });
 });
+
+test('replaceClassStrings - attributeNames config', async (t: TestContext) => {
+  await t.test('transforms class= attribute in HTML', () => {
+    const { result, count } = replaceClassStrings(
+      '<div class="text-[12px] flex">',
+      (s) => s.replace('text-[12px]', 'text-xs'),
+      { attributeNames: ['class'] },
+    );
+    assert.strictEqual(count, 1);
+    assert.ok(result.includes('class="text-xs flex"'));
+  });
+
+  await t.test('transforms :class= attribute (Vue)', () => {
+    const { result, count } = replaceClassStrings(
+      ':class="text-[14px] p-4"',
+      (s) => s.replace('text-[14px]', 'text-sm'),
+      { attributeNames: [':class'] },
+    );
+    assert.strictEqual(count, 1);
+    assert.ok(result.includes(':class="text-sm p-4"'));
+  });
+
+  await t.test('transforms multiple attribute names', () => {
+    const { result, count } = replaceClassStrings(
+      '<div class="text-[12px]" className="text-[14px]">',
+      (s) =>
+        s.replace('text-[12px]', 'text-xs').replace('text-[14px]', 'text-sm'),
+      { attributeNames: ['class', 'className'] },
+    );
+    assert.strictEqual(count, 2);
+    assert.ok(result.includes('class="text-xs"'));
+    assert.ok(result.includes('className="text-sm"'));
+  });
+
+  await t.test('default only matches className, not class', () => {
+    const input = '<div class="text-[12px]">';
+    const { count } = replaceClassStrings(input, (s) =>
+      s.replace('text-[12px]', 'text-xs'),
+    );
+    assert.strictEqual(count, 0);
+  });
+
+  await t.test('preserves attribute name in output', () => {
+    const { result } = replaceClassStrings('class="flex"', (s) => s, {
+      attributeNames: ['class'],
+    });
+    assert.ok(result.includes('class="flex"'));
+    assert.ok(!result.includes('className='));
+  });
+});
+
+test('fixFile with attributeNames', async (t: TestContext) => {
+  await t.test('fixes class= in HTML file', async () => {
+    const file = join(tmpdir(), `attr-fix-${Date.now()}.html`);
+    writeFileSync(file, '<div class="text-[12px] p-4">', 'utf8');
+    try {
+      const count = fixFile(file, { attributeNames: ['class'] });
+      assert.strictEqual(count, 1);
+      const result = readFileSync(file, 'utf8');
+      assert.ok(result.includes('class="text-xs p-4"'));
+    } finally {
+      unlinkSync(file);
+    }
+  });
+});
