@@ -16,6 +16,10 @@ yarn add -D tailwind-canonical
 # Check for non-canonical arbitrary values
 npx tailwind-canonical ./src
 
+# Glob patterns (quote to prevent shell expansion)
+npx tailwind-canonical 'src/**/*.tsx'
+npx tailwind-canonical 'src/**/*.{tsx,ts}'
+
 # Auto-fix: arbitrary → canonical
 npx tailwind-canonical --fix ./src
 

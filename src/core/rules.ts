@@ -23,19 +23,7 @@ const TEXT_SIZE_MAP: Record<number, string> = {
   72: '7xl',
 };
 
-const BUILT_IN_TEXT: Record<number, string> = {
-  12: 'xs',
-  14: 'sm',
-  16: 'base',
-  18: 'lg',
-  20: 'xl',
-  24: '2xl',
-  30: '3xl',
-  36: '4xl',
-  48: '5xl',
-  60: '6xl',
-  72: '7xl',
-};
+const BUILT_IN_TEXT_PX = new Set([12, 14, 16, 18, 20, 24, 30, 36, 48, 60, 72]);
 
 const ROUNDED_MAP: Record<number, string> = {
   2: 'sm',
@@ -85,6 +73,50 @@ const FRACTION_PREFIXES = [
   'translate-y',
 ];
 
+const SPACING_PREFIXES = [
+  'h',
+  'w',
+  'p',
+  'px',
+  'py',
+  'pt',
+  'pb',
+  'pl',
+  'pr',
+  'm',
+  'mx',
+  'my',
+  'mt',
+  'mb',
+  'ml',
+  'mr',
+  'gap',
+  'gap-x',
+  'gap-y',
+  'top',
+  'left',
+  'right',
+  'bottom',
+  'inset',
+  'size',
+  'min-h',
+  'max-h',
+  'min-w',
+  'max-w',
+  'translate-x',
+  'translate-y',
+  'space-x',
+  'space-y',
+];
+
+const SPACING_PX_RE = new RegExp(
+  `^(${SPACING_PREFIXES.join('|')})-\\[(\\d+)px\\]$`,
+);
+
+const SPACING_REM_RE = new RegExp(
+  `^(${SPACING_PREFIXES.join('|')})-\\[(\\d+(?:\\.\\d+)?)rem\\]$`,
+);
+
 const OPACITY_SCALE = new Set([
   0, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95, 100,
 ]);
@@ -116,7 +148,7 @@ export function suggestCanonical(
     return {
       original: cls,
       canonical: `text-${token}`,
-      isCustomToken: !BUILT_IN_TEXT[px],
+      isCustomToken: !BUILT_IN_TEXT_PX.has(px),
     };
   }
 
@@ -129,52 +161,12 @@ export function suggestCanonical(
     return {
       original: cls,
       canonical: `text-${token}`,
-      isCustomToken: !BUILT_IN_TEXT[px],
+      isCustomToken: !BUILT_IN_TEXT_PX.has(px),
     };
   }
 
-  const spacingPrefixes = [
-    'h',
-    'w',
-    'p',
-    'px',
-    'py',
-    'pt',
-    'pb',
-    'pl',
-    'pr',
-    'm',
-    'mx',
-    'my',
-    'mt',
-    'mb',
-    'ml',
-    'mr',
-    'gap',
-    'gap-x',
-    'gap-y',
-    'top',
-    'left',
-    'right',
-    'bottom',
-    'inset',
-    'size',
-    'min-h',
-    'max-h',
-    'min-w',
-    'max-w',
-    'translate-x',
-    'translate-y',
-    'space-x',
-    'space-y',
-  ];
-
-  const spacingPxRegex = new RegExp(
-    `^(${spacingPrefixes.join('|')})-\\[(\\d+)px\\]$`,
-  );
-
   // spacing-[Npx]
-  const spacingPxMatch = cls.match(spacingPxRegex);
+  const spacingPxMatch = cls.match(SPACING_PX_RE);
   if (spacingPxMatch) {
     const prefix = spacingPxMatch[1];
     const px = parseInt(spacingPxMatch[2], 10);
@@ -196,10 +188,7 @@ export function suggestCanonical(
   }
 
   // spacing-[N.Nrem]
-  const spacingRemRegex = new RegExp(
-    `^(${spacingPrefixes.join('|')})-\\[(\\d+(?:\\.\\d+)?)rem\\]$`,
-  );
-  const spacingRemMatch = cls.match(spacingRemRegex);
+  const spacingRemMatch = cls.match(SPACING_REM_RE);
   if (spacingRemMatch) {
     const prefix = spacingRemMatch[1];
     const px = remToPx(parseFloat(spacingRemMatch[2]));
@@ -259,7 +248,7 @@ export function suggestCanonical(
     if (!token) return null;
     return {
       original: cls,
-      canonical: `${prefix.replace(/-$/, '')}-${token}`,
+      canonical: `${prefix}-${token}`,
       isCustomToken: false,
     };
   }
