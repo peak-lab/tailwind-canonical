@@ -19,6 +19,7 @@ npx tailwind-canonical ./src
 # Glob patterns (quote to prevent shell expansion)
 npx tailwind-canonical 'src/**/*.tsx'
 npx tailwind-canonical 'src/**/*.{tsx,ts}'
+npx tailwind-canonical 'src/**/*.tsx' '!src/generated/**'
 
 # Auto-fix: arbitrary → canonical
 npx tailwind-canonical --fix ./src
@@ -45,8 +46,7 @@ npx tailwind-canonical --reporter sarif ./src
 | Flag | What it fixes | Example |
 |---|---|---|
 | `--fix` | Arbitrary values → canonical tokens | `text-[12px]` → `text-xs` |
-| `--dedup` | Redundant or conflicting classes | `flex block` → `block`, `px-4 py-4` → `p-4` |
-| `--dedup` | Directional shorthand collapse | `border-t-2 border-b-2` → `border-y-2`, `top-4 bottom-4` → `inset-y-4` |
+| `--dedup` | Redundant classes, conflicts, shorthand collapse | `flex block` → `block`, `px-4 py-4` → `p-4`, `border-t-2 border-b-2` → `border-y-2` |
 | `--sort` | Canonical class order | `text-sm flex p-4` → `flex p-4 text-sm` |
 | `--merge` | tailwind-merge conflict resolution | `bg-red-500 bg-blue-500` → `bg-blue-500` |
 | `--reporter json` | JSON output (check mode) or fix summary | machine-readable for CI pipelines |
@@ -183,13 +183,18 @@ export default [
 
 ## Pre-commit hook (Husky / Lefthook)
 
-```bash
+```yaml
 # Lefthook: lefthook.yml
 pre-commit:
+  parallel: true
   commands:
     tailwind:
       glob: "src/**/*.{tsx,jsx}"
       run: npx tailwind-canonical --fix --dedup --sort {staged_files}
+      stage_fixed: true
+    lint:
+      glob: "src/**/*.{ts,tsx,js,jsx,json}"
+      run: npx biome check --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
 ```
 
@@ -197,6 +202,14 @@ pre-commit:
 # Husky: .husky/pre-commit
 npx tailwind-canonical --fix --dedup --sort ./src ./app
 ```
+
+## Dead code detection (knip)
+
+```bash
+pnpm knip
+```
+
+Detects unused exports, files, and dependencies. Config in `knip.json`.
 
 ## Programmatic API
 
@@ -210,6 +223,7 @@ import {
   sortClasses,        // pure: sort a class string
   sortFile,           // apply --sort in-place
   mergeFile,          // apply --merge in-place (requires tailwind-merge)
-  scanFiles,          // recursive file scanner
+  scanFiles,          // recursive file scanner (sync, dir/file targets)
+  resolveTargets,     // async glob resolver with negation + brace expansion
 } from 'tailwind-canonical'
 ```

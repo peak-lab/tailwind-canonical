@@ -4,7 +4,7 @@ import { dedupeFile } from '../core/deduplicator.js';
 import { fixFile } from '../core/fixer.js';
 import { mergeFile } from '../core/merger.js';
 import type { Config } from '../core/rules.js';
-import { scanFiles } from '../core/scanner.js';
+import { resolveTargets } from '../core/scanner.js';
 import { sortFile } from '../core/sorter.js';
 
 function pluralize(n: number, word: string): string {
@@ -57,7 +57,7 @@ try {
   config = userConfig;
 } catch {}
 
-const files = targets.flatMap((t) => scanFiles(t));
+const files = await resolveTargets(targets);
 let totalFindings = 0;
 let totalFixed = 0;
 let totalMerged = 0;
