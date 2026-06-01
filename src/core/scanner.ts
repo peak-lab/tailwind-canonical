@@ -1,4 +1,5 @@
 import { type Dirent, readdirSync, statSync } from 'node:fs';
+import { glob } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const DEFAULT_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.svelte'];
@@ -17,7 +18,7 @@ export type ScanOptions = {
 };
 
 function isGlob(target: string): boolean {
-  return target.includes('*') || target.includes('?');
+  return target.includes('*') || target.includes('?') || target.includes('{');
 }
 
 function globToRegex(pattern: string): RegExp {
@@ -35,6 +36,19 @@ function globToRegex(pattern: string): RegExp {
     } else if (c === '?') {
       re += '[^/]';
       i++;
+    } else if (c === '{') {
+      const close = pattern.indexOf('}', i);
+      if (close === -1) {
+        re += '\\{';
+        i++;
+      } else {
+        const alts = pattern
+          .slice(i + 1, close)
+          .split(',')
+          .map((a) => a.replace(/[.+^${}()|[\]\\]/g, '\\$&'));
+        re += `(?:${alts.join('|')})`;
+        i = close + 1;
+      }
     } else if (/[.+^${}()|[\]\\]/.test(c)) {
       re += `\\${c}`;
       i++;
@@ -46,50 +60,18 @@ function globToRegex(pattern: string): RegExp {
   return new RegExp(`${re}$`);
 }
 
-function globBase(pattern: string): string {
-  const firstGlob = pattern.search(/[*?]/);
-  if (firstGlob === -1) return pattern;
-  const before = pattern.slice(0, firstGlob);
-  const lastSlash = before.lastIndexOf('/');
-  return lastSlash === -1 ? '.' : before.slice(0, lastSlash) || '.';
-}
-
 export function scanFiles(target: string, options: ScanOptions = {}): string[] {
   const ignore = options.ignore ?? DEFAULT_IGNORE;
-
-  if (isGlob(target)) {
-    const regex = globToRegex(target);
-    const base = globBase(target);
-    const files: string[] = [];
-
-    function walkGlob(current: string, rel: string) {
-      let entries: Dirent[];
-      try {
-        entries = readdirSync(current, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const entry of entries) {
-        if (ignore.includes(entry.name)) continue;
-        const full = join(current, entry.name);
-        const relEntry = rel ? `${rel}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-          walkGlob(full, relEntry);
-        } else if (regex.test(relEntry)) {
-          files.push(full);
-        }
-      }
-    }
-
-    walkGlob(base, base === '.' ? '' : base);
-    return files;
-  }
-
   const extensions = options.extensions ?? DEFAULT_EXTENSIONS;
   const files: string[] = [];
 
   function walk(current: string) {
-    const entries = readdirSync(current, { withFileTypes: true });
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       if (ignore.includes(entry.name)) continue;
       const full = join(current, entry.name);
@@ -106,4 +88,52 @@ export function scanFiles(target: string, options: ScanOptions = {}): string[] {
     return extensions.some((ext) => target.endsWith(ext)) ? [target] : [];
   walk(target);
   return files;
+}
+
+export async function resolveTargets(
+  patterns: string[],
+  options: ScanOptions = {},
+): Promise<string[]> {
+  const ignore = options.ignore ?? DEFAULT_IGNORE;
+
+  const positive: string[] = [];
+  const negativeRegexes: RegExp[] = [];
+
+  for (const p of patterns) {
+    if (p.startsWith('!')) {
+      negativeRegexes.push(globToRegex(p.slice(1)));
+    } else {
+      positive.push(p);
+    }
+  }
+
+  const files = new Set<string>();
+
+  for (const pattern of positive) {
+    if (isGlob(pattern)) {
+      for await (const f of glob(pattern, {
+        exclude: (f) =>
+          f
+            .replace(/\\/g, '/')
+            .split('/')
+            .some((s) => ignore.includes(s)),
+      })) {
+        files.add(f);
+      }
+    } else {
+      for (const f of scanFiles(pattern, options)) {
+        files.add(f);
+      }
+    }
+  }
+
+  if (negativeRegexes.length > 0) {
+    for (const f of [...files]) {
+      if (negativeRegexes.some((re) => re.test(f.replace(/\\/g, '/')))) {
+        files.delete(f);
+      }
+    }
+  }
+
+  return [...files].sort();
 }
