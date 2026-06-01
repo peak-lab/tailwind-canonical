@@ -126,6 +126,7 @@ export type Config = {
   customSpacingTokens?: Record<number, string>;
   ignorePatterns?: RegExp[];
   functionNames?: string[];
+  attributeNames?: string[];
 };
 
 function remToPx(rem: number): number {

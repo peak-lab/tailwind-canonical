@@ -73,10 +73,21 @@ try {
 async function processFile(file: string): Promise<number> {
   let count = 0;
   if (fix) count += fixFile(file, config);
-  if (dedup) count += dedupeFile(file, { functionNames: config.functionNames });
+  if (dedup)
+    count += dedupeFile(file, {
+      functionNames: config.functionNames,
+      attributeNames: config.attributeNames,
+    });
   if (merge)
-    count += await mergeFile(file, { functionNames: config.functionNames });
-  if (sort) count += sortFile(file, { functionNames: config.functionNames });
+    count += await mergeFile(file, {
+      functionNames: config.functionNames,
+      attributeNames: config.attributeNames,
+    });
+  if (sort)
+    count += sortFile(file, {
+      functionNames: config.functionNames,
+      attributeNames: config.attributeNames,
+    });
   return count;
 }
 
@@ -102,7 +113,10 @@ for (const file of files) {
   }
 
   if (dedup) {
-    const count = dedupeFile(file, { functionNames: config.functionNames });
+    const count = dedupeFile(file, {
+      functionNames: config.functionNames,
+      attributeNames: config.attributeNames,
+    });
     if (count > 0) {
       totalDeduped += count;
       if (!changedFiles.includes(file)) changedFiles.push(file);
@@ -115,6 +129,7 @@ for (const file of files) {
   if (merge) {
     const count = await mergeFile(file, {
       functionNames: config.functionNames,
+      attributeNames: config.attributeNames,
     });
     if (count > 0) {
       totalMerged += count;
@@ -126,7 +141,10 @@ for (const file of files) {
   }
 
   if (sort) {
-    const count = sortFile(file, { functionNames: config.functionNames });
+    const count = sortFile(file, {
+      functionNames: config.functionNames,
+      attributeNames: config.attributeNames,
+    });
     if (count > 0) {
       totalSorted += count;
       if (!changedFiles.includes(file)) changedFiles.push(file);
