@@ -64,20 +64,55 @@ const RE_INTERACTIVITY =
   /^(cursor|pointer-events|select|appearance|resize|scroll|snap|touch)[-]/;
 const RE_BREAKPOINTS = /^(sm|md|lg|xl|2xl)$/;
 
-function getCategory(cls: string): number {
+export type SortCategory =
+  | 'layout'
+  | 'position'
+  | 'inset'
+  | 'display'
+  | 'flex-grid'
+  | 'sizing'
+  | 'border'
+  | 'spacing'
+  | 'typography'
+  | 'colors'
+  | 'effects'
+  | 'transitions'
+  | 'transforms'
+  | 'interactivity'
+  | 'accessibility';
+
+export const DEFAULT_SORT_ORDER: SortCategory[] = [
+  'layout',
+  'position',
+  'inset',
+  'display',
+  'flex-grid',
+  'sizing',
+  'border',
+  'spacing',
+  'typography',
+  'colors',
+  'effects',
+  'transitions',
+  'transforms',
+  'interactivity',
+  'accessibility',
+];
+
+function getCategory(cls: string): SortCategory | null {
   const base = cls.includes(':') ? cls.slice(cls.lastIndexOf(':') + 1) : cls;
 
-  if (base === 'container' || RE_LAYOUT.test(base)) return 0;
+  if (base === 'container' || RE_LAYOUT.test(base)) return 'layout';
 
-  if (POSITION_CLASSES.has(base)) return 10;
-  if (RE_INSET.test(base)) return 15;
+  if (POSITION_CLASSES.has(base)) return 'position';
+  if (RE_INSET.test(base)) return 'inset';
 
-  if (DISPLAY_CLASSES.has(base)) return 20;
+  if (DISPLAY_CLASSES.has(base)) return 'display';
 
   if (base === 'grow' || base === 'shrink' || RE_FLEX_GRID.test(base))
-    return 25;
+    return 'flex-grid';
 
-  if (RE_SIZING.test(base)) return 30;
+  if (RE_SIZING.test(base)) return 'sizing';
 
   if (
     base === 'rounded' ||
@@ -86,18 +121,18 @@ function getCategory(cls: string): number {
     base === 'outline' ||
     RE_BORDER.test(base)
   )
-    return 40;
+    return 'border';
 
-  if (RE_SPACING.test(base)) return 50;
+  if (RE_SPACING.test(base)) return 'spacing';
 
   if (
     TEXT_SIZES.test(base) ||
     RE_TYPOGRAPHY.test(base) ||
     TYPOGRAPHY_KEYWORDS.has(base)
   )
-    return 60;
+    return 'typography';
 
-  if (RE_COLORS.test(base)) return 70;
+  if (RE_COLORS.test(base)) return 'colors';
 
   if (
     base === 'shadow' ||
@@ -105,17 +140,31 @@ function getCategory(cls: string): number {
     ['grayscale', 'invert', 'sepia'].includes(base) ||
     RE_EFFECTS.test(base)
   )
-    return 80;
+    return 'effects';
 
-  if (base === 'transition' || RE_TRANSITIONS.test(base)) return 90;
+  if (base === 'transition' || RE_TRANSITIONS.test(base)) return 'transitions';
 
-  if (RE_TRANSFORMS.test(base)) return 100;
+  if (RE_TRANSFORMS.test(base)) return 'transforms';
 
-  if (RE_INTERACTIVITY.test(base)) return 110;
+  if (RE_INTERACTIVITY.test(base)) return 'interactivity';
 
-  if (base === 'sr-only' || base === 'not-sr-only') return 120;
+  if (base === 'sr-only' || base === 'not-sr-only') return 'accessibility';
 
-  return 500;
+  return null;
+}
+
+function buildRank(
+  order: SortCategory[],
+): (category: SortCategory | null) => number {
+  const ranks = new Map<string, number>();
+  order.forEach((name, i) => {
+    if (!ranks.has(name)) ranks.set(name, i);
+  });
+  const end = order.length;
+  return (category) =>
+    category !== null && ranks.has(category)
+      ? (ranks.get(category) as number)
+      : end;
 }
 
 function getVariantOrder(cls: string): number {
@@ -126,14 +175,19 @@ function getVariantOrder(cls: string): number {
   return 3;
 }
 
-export function sortClasses(classStr: string): string {
+export function sortClasses(
+  classStr: string,
+  sortOrder?: SortCategory[],
+): string {
   const classes = classStr.split(/\s+/).filter(Boolean);
   if (classes.length <= 1) return classStr;
+
+  const rank = buildRank(sortOrder?.length ? sortOrder : DEFAULT_SORT_ORDER);
 
   return classes
     .map((cls, i) => ({
       cls,
-      cat: getCategory(cls),
+      cat: rank(getCategory(cls)),
       variant: getVariantOrder(cls),
       i,
     }))
@@ -148,9 +202,17 @@ export function sortClasses(classStr: string): string {
     .join(' ');
 }
 
-export function sortFile(filePath: string, opts: ClassStringOpts = {}): number {
+export function sortFile(
+  filePath: string,
+  opts: ClassStringOpts = {},
+  sortOrder?: SortCategory[],
+): number {
   const content = readFileSync(filePath, 'utf8');
-  const { result, count } = replaceClassStrings(content, sortClasses, opts);
+  const { result, count } = replaceClassStrings(
+    content,
+    (s) => sortClasses(s, sortOrder),
+    opts,
+  );
   if (count > 0) writeFileSync(filePath, result, 'utf8');
   return count;
 }

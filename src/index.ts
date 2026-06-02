@@ -26,4 +26,5 @@ export { mergeFile } from './core/merger.js';
 export type { Config, Suggestion } from './core/rules.js';
 export { suggestCanonical } from './core/rules.js';
 export { resolveTargets, scanFiles } from './core/scanner.js';
-export { sortClasses, sortFile } from './core/sorter.js';
+export type { SortCategory } from './core/sorter.js';
+export { DEFAULT_SORT_ORDER, sortClasses, sortFile } from './core/sorter.js';

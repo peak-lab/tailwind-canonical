@@ -1,3 +1,5 @@
+import type { SortCategory } from './sorter.js';
+
 export type Suggestion = {
   original: string;
   canonical: string;
@@ -127,6 +129,7 @@ export type Config = {
   ignorePatterns?: RegExp[];
   functionNames?: string[];
   attributeNames?: string[];
+  sortOrder?: SortCategory[];
 };
 
 function remToPx(rem: number): number {
