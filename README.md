@@ -36,6 +36,9 @@ npx tailwind-canonical --merge ./src
 # Combine: fix → dedup → merge → sort
 npx tailwind-canonical --fix --dedup --merge --sort ./src
 
+# Cross-file consistency analysis
+npx tailwind-canonical --analyze ./src
+
 # Watch mode: re-run on every file save
 npx tailwind-canonical --watch --fix --sort ./src
 
@@ -52,6 +55,7 @@ npx tailwind-canonical --reporter sarif ./src
 | `--dedup` | Redundant classes, conflicts, shorthand collapse | `flex block` → `block`, `px-4 py-4` → `p-4`, `border-t-2 border-b-2` → `border-y-2` |
 | `--sort` | Canonical class order | `text-sm flex p-4` → `flex p-4 text-sm` |
 | `--merge` | tailwind-merge conflict resolution | `bg-red-500 bg-blue-500` → `bg-blue-500` |
+| `--analyze` | Cross-file consistency (color variants, scale drift, repeated patterns) | `Warning: 3 red color variants used for text: text-red-500, text-rose-500, text-red-600` |
 | `--watch` | Re-run on every file save (debounced 50ms) | `[12:34:01] src/Button.tsx — 2 changes applied` |
 | `--reporter json` | JSON output (check mode) or fix summary | machine-readable for CI pipelines |
 | `--reporter sarif` | SARIF 2.1.0 output (check mode) | GitHub Code Scanning / VS Code |
@@ -83,6 +87,51 @@ npx tailwind-canonical --fix --reporter json ./src
 ```bash
 # SARIF — compatible with GitHub Code Scanning and VS Code Problem Matcher
 npx tailwind-canonical --reporter sarif ./src > results.sarif
+```
+
+## Cross-file consistency (`--analyze`)
+
+Detects semantic inconsistencies visible only at project scale — it never modifies files.
+
+```bash
+npx tailwind-canonical --analyze ./src
+# Warning: 3 red color variants used for text: text-red-500 (4), text-rose-500 (1), text-red-600 (2)
+# Warning: px inconsistency: px-4 (8 files) vs px-3 (2 files)
+# Warning: z inconsistency: z-[100] (3 files) vs z-[200] (1 file) vs z-[50] (2 files)
+```
+
+Three detectors:
+
+| Detector | What it flags |
+|---|---|
+| Color variants | Multiple shades/colors of the same hue family used for one property (`text`, `bg`, `border`, …) |
+| Scale inconsistency | Competing values for the same spacing / `gap` / `z` property across files |
+| Repeated patterns | Identical class combinations recurring across 3+ files |
+
+Pairs with `--reporter json` for machine-readable output. Exits `1` when any inconsistency is found.
+
+```bash
+npx tailwind-canonical --analyze --reporter json ./src
+```
+```json
+{
+  "filesAnalyzed": 42,
+  "colorVariants": [
+    { "property": "text", "family": "red",
+      "variants": [
+        { "token": "red-500", "count": 4, "files": ["src/Alert.tsx"] },
+        { "token": "rose-500", "count": 1, "files": ["src/Toast.tsx"] }
+      ] }
+  ],
+  "scaleInconsistencies": [
+    { "property": "px",
+      "values": [
+        { "value": "4", "count": 8, "files": ["src/Button.tsx"] },
+        { "value": "3", "count": 2, "files": ["src/IconButton.tsx"] }
+      ] }
+  ],
+  "combinations": []
+}
 ```
 
 ## Canonical class order (`--sort`)
