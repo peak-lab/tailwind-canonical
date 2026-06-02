@@ -12,7 +12,6 @@ const TEXT_SIZE_MAP: Record<number, string> = {
   10: '3xs',
   11: '2xs',
   12: 'xs',
-  13: 'xxs',
   14: 'sm',
   16: 'base',
   18: 'lg',

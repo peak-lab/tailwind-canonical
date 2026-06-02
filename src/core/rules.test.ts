@@ -55,6 +55,21 @@ test('suggestCanonical - text sizes', async (t: TestContext) => {
     });
   });
 
+  await t.test('text-[13px] returns null (no canonical token)', () => {
+    assert.strictEqual(suggestCanonical('text-[13px]'), null);
+  });
+
+  await t.test('text-[13px] honors a custom text token', () => {
+    const result = suggestCanonical('text-[13px]', {
+      customTextTokens: { 13: 'sm-plus' },
+    });
+    assert.deepEqual(result, {
+      original: 'text-[13px]',
+      canonical: 'text-sm-plus',
+      isCustomToken: true,
+    });
+  });
+
   await t.test('text-[9px] maps to text-3xs (custom)', () => {
     const result = suggestCanonical('text-[9px]');
     assert.deepEqual(result, {
