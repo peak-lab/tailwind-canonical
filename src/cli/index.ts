@@ -2,6 +2,7 @@
 import { watch as fsWatch } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
+import { loadConfig } from '../core/config.js';
 import { analyzeConsistencyFiles } from '../core/consistency.js';
 import { dedupeFile } from '../core/deduplicator.js';
 import { fixFile } from '../core/fixer.js';
@@ -65,12 +66,13 @@ if (merge) {
 
 let config: Config = {};
 try {
-  const { default: userConfig } = await import(
-    new URL(`file://${process.cwd()}/tailwind-canonical.config.js`).href
+  config = await loadConfig(process.cwd());
+} catch (err) {
+  console.error(
+    `tailwind-canonical: ${err instanceof Error ? err.message : String(err)}`,
   );
-  config = userConfig;
-  // biome-ignore lint/suspicious/noEmptyBlockStatements: config file is optional
-} catch {}
+  process.exit(1);
+}
 
 async function processFile(file: string): Promise<number> {
   let count = 0;
