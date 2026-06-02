@@ -51,6 +51,10 @@ type FileCounts = {
   sorted: number;
 };
 
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 function pluralize(n: number, word: string): string {
   return `${n} ${word}${n !== 1 ? 's' : ''}`;
 }
@@ -121,7 +125,11 @@ function runAnalyze(
   reporter: Reporter,
   sink: Sink,
 ): RunResult {
-  const report = analyzeConsistencyFiles(files, config);
+  let hadError = false;
+  const report = analyzeConsistencyFiles(files, config, {}, (file, err) => {
+    hadError = true;
+    sink.error(`${file}: ${errMsg(err)}`);
+  });
   const issueCount =
     report.colorVariants.length +
     report.scaleInconsistencies.length +
@@ -129,7 +137,7 @@ function runAnalyze(
 
   if (reporter === 'json') {
     sink.write(`${JSON.stringify(report, null, 2)}\n`);
-    return { exitCode: issueCount > 0 ? 1 : 0 };
+    return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
   }
 
   for (const group of report.colorVariants) {
@@ -161,7 +169,7 @@ function runAnalyze(
       `\n✖ Found ${pluralize(issueCount, 'consistency issue')} across ${pluralize(report.filesAnalyzed, 'file')}`,
     );
   }
-  return { exitCode: issueCount > 0 ? 1 : 0 };
+  return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
 }
 
 function startWatch(
@@ -270,45 +278,51 @@ export async function run(
   const totals: FileCounts = { fixed: 0, deduped: 0, merged: 0, sorted: 0 };
   const allFindings: Finding[] = [];
   const changedFiles: string[] = [];
+  let hadError = false;
 
   if (!flags.watch) {
     for (const file of files) {
-      if (transforming) {
-        const counts = await processFile(file, flags, config);
-        totals.fixed += counts.fixed;
-        totals.deduped += counts.deduped;
-        totals.merged += counts.merged;
-        totals.sorted += counts.sorted;
-        if (totalOf(counts) > 0) changedFiles.push(file);
-        if (flags.reporter === 'text') {
-          if (counts.fixed > 0)
-            sink.log(
-              `  fixed  ${file} (${pluralize(counts.fixed, 'replacement')})`,
-            );
-          if (counts.deduped > 0)
-            sink.log(
-              `  deduped ${file} (${pluralize(counts.deduped, 'class string')})`,
-            );
-          if (counts.merged > 0)
-            sink.log(
-              `  merged ${file} (${pluralize(counts.merged, 'conflict')})`,
-            );
-          if (counts.sorted > 0)
-            sink.log(
-              `  sorted ${file} (${pluralize(counts.sorted, 'class string')})`,
-            );
-        }
-      } else {
-        const findings = analyzeFile(file, config);
-        allFindings.push(...findings);
-        if (flags.reporter === 'text') {
-          for (const f of findings) {
-            const tag = f.suggestion.isCustomToken ? ' [custom token]' : '';
-            sink.log(
-              `  ${f.file}:${f.line}:${f.col}  ${f.suggestion.original} → ${f.suggestion.canonical}${tag}`,
-            );
+      try {
+        if (transforming) {
+          const counts = await processFile(file, flags, config);
+          totals.fixed += counts.fixed;
+          totals.deduped += counts.deduped;
+          totals.merged += counts.merged;
+          totals.sorted += counts.sorted;
+          if (totalOf(counts) > 0) changedFiles.push(file);
+          if (flags.reporter === 'text') {
+            if (counts.fixed > 0)
+              sink.log(
+                `  fixed  ${file} (${pluralize(counts.fixed, 'replacement')})`,
+              );
+            if (counts.deduped > 0)
+              sink.log(
+                `  deduped ${file} (${pluralize(counts.deduped, 'class string')})`,
+              );
+            if (counts.merged > 0)
+              sink.log(
+                `  merged ${file} (${pluralize(counts.merged, 'conflict')})`,
+              );
+            if (counts.sorted > 0)
+              sink.log(
+                `  sorted ${file} (${pluralize(counts.sorted, 'class string')})`,
+              );
+          }
+        } else {
+          const findings = analyzeFile(file, config);
+          allFindings.push(...findings);
+          if (flags.reporter === 'text') {
+            for (const f of findings) {
+              const tag = f.suggestion.isCustomToken ? ' [custom token]' : '';
+              sink.log(
+                `  ${f.file}:${f.line}:${f.col}  ${f.suggestion.original} → ${f.suggestion.canonical}${tag}`,
+              );
+            }
           }
         }
+      } catch (err) {
+        hadError = true;
+        sink.error(`${file}: ${errMsg(err)}`);
       }
     }
   }
@@ -331,7 +345,7 @@ export async function run(
           2,
         )}\n`,
       );
-      return { exitCode: 0 };
+      return { exitCode: hadError ? 1 : 0 };
     }
     const parts: string[] = [];
     if (flags.fix) parts.push(pluralize(totals.fixed, 'replacement'));
@@ -342,7 +356,7 @@ export async function run(
     sink.log(
       `\n✓ Fixed ${parts.join(', ')} across ${pluralize(files.length, 'file')}`,
     );
-    return { exitCode: 0 };
+    return { exitCode: hadError ? 1 : 0 };
   }
 
   const totalFindings = allFindings.length;
@@ -366,7 +380,7 @@ export async function run(
         2,
       )}\n`,
     );
-    return { exitCode: totalFindings > 0 ? 1 : 0 };
+    return { exitCode: totalFindings > 0 || hadError ? 1 : 0 };
   }
 
   if (flags.reporter === 'sarif') {
@@ -408,7 +422,7 @@ export async function run(
       ],
     };
     sink.write(`${JSON.stringify(sarifOutput, null, 2)}\n`);
-    return { exitCode: totalFindings > 0 ? 1 : 0 };
+    return { exitCode: totalFindings > 0 || hadError ? 1 : 0 };
   }
 
   if (totalFindings > 0) {
@@ -420,5 +434,5 @@ export async function run(
   }
 
   sink.log('✓ No non-canonical classes found');
-  return { exitCode: 0 };
+  return { exitCode: hadError ? 1 : 0 };
 }

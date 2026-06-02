@@ -1,5 +1,11 @@
 import assert from 'node:assert';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type TestContext, test } from 'node:test';
@@ -129,6 +135,30 @@ test('run - analyze mode reports cross-file inconsistencies', async (_t: TestCon
     const parsed = JSON.parse(raw.join(''));
     assert.strictEqual(parsed.colorVariants.length, 1);
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - one unreadable file does not abort the batch', async (t: TestContext) => {
+  if (typeof process.getuid === 'function' && process.getuid() === 0) {
+    t.skip('chmod is bypassed when running as root');
+    return;
+  }
+  const dir = freshDir();
+  const good = join(dir, 'good.tsx');
+  const bad = join(dir, 'bad.tsx');
+  writeFileSync(good, '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(bad, '<div className="text-[14px]" />', 'utf8');
+  chmodSync(bad, 0o000);
+  const { sink, out, err } = captureSink();
+  try {
+    const result = await run(['--fix', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(readFileSync(good, 'utf8').includes('text-xs'));
+    assert.ok(err.some((l) => l.includes('bad.tsx')));
+    assert.ok(out.some((l) => l.includes('good.tsx')));
+  } finally {
+    chmodSync(bad, 0o644);
     rmSync(dir, { recursive: true, force: true });
   }
 });
