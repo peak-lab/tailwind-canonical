@@ -3,7 +3,12 @@ import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type TestContext, test } from 'node:test';
-import { sortClasses, sortFile } from './sorter.js';
+import {
+  DEFAULT_SORT_ORDER,
+  type SortCategory,
+  sortClasses,
+  sortFile,
+} from './sorter.js';
 
 test('sortClasses - roadmap example', (_t: TestContext) => {
   assert.strictEqual(
@@ -162,4 +167,60 @@ test('sortFile', async (t: TestContext) => {
       unlinkSync(file);
     }
   });
+});
+
+test('sortClasses - configurable sortOrder', async (t: TestContext) => {
+  await t.test('explicit order overrides default', () => {
+    const order: SortCategory[] = ['colors', 'spacing', 'display'];
+    assert.strictEqual(
+      sortClasses('flex p-4 bg-red-500', order),
+      'bg-red-500 p-4 flex',
+    );
+  });
+
+  await t.test('categories omitted from order go to end', () => {
+    const order: SortCategory[] = ['spacing'];
+    const result = sortClasses('flex p-4 text-sm', order);
+    assert.ok(result.startsWith('p-4'), `got: ${result}`);
+  });
+
+  await t.test('unknown classes still go to end', () => {
+    const order: SortCategory[] = ['display', 'spacing'];
+    const result = sortClasses('custom-thing flex p-4', order);
+    assert.strictEqual(result, 'flex p-4 custom-thing');
+  });
+
+  await t.test('empty sortOrder falls back to default', () => {
+    assert.strictEqual(
+      sortClasses('text-sm flex p-4', []),
+      sortClasses('text-sm flex p-4'),
+    );
+  });
+
+  await t.test('variants still sort after base classes', () => {
+    const order: SortCategory[] = ['spacing', 'display'];
+    const result = sortClasses('md:flex p-4 flex', order);
+    assert.ok(
+      result.indexOf('md:flex') > result.indexOf('flex'),
+      `responsive variant should trail base — got: ${result}`,
+    );
+  });
+
+  await t.test('DEFAULT_SORT_ORDER reproduces default behavior', () => {
+    const cls = 'text-sm bg-red-500 flex h-10 w-full p-4 rounded';
+    assert.strictEqual(sortClasses(cls, DEFAULT_SORT_ORDER), sortClasses(cls));
+  });
+});
+
+test('sortFile - respects sortOrder argument', async (_t: TestContext) => {
+  const file = join(tmpdir(), `sort-order-${Date.now()}.tsx`);
+  writeFileSync(file, '<div className="flex p-4 bg-red-500">x</div>', 'utf8');
+  try {
+    const order: SortCategory[] = ['colors', 'spacing', 'display'];
+    const count = sortFile(file, {}, order);
+    assert.strictEqual(count, 1);
+    assert.ok(readFileSync(file, 'utf8').includes('bg-red-500 p-4 flex'));
+  } finally {
+    unlinkSync(file);
+  }
 });

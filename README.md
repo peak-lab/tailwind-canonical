@@ -148,6 +148,28 @@ className="flex h-10 w-full rounded p-4 text-sm bg-red-500"
 
 Variants (`hover:`, `sm:`, `focus:`) are sorted after base classes, with responsive breakpoints before state variants.
 
+### Custom order (`sortOrder`)
+
+Override the category order via config. Categories you omit (and unknown classes) sort to the end, preserving their original relative order. Variants are always sorted after base classes regardless of order.
+
+```js
+// tailwind-canonical.config.js
+export default {
+  sortOrder: [
+    'display',
+    'position',
+    'sizing',
+    'spacing',
+    'border',
+    'typography',
+    'colors',
+    'effects',
+  ],
+}
+```
+
+Valid category names: `layout`, `position`, `inset`, `display`, `flex-grid`, `sizing`, `border`, `spacing`, `typography`, `colors`, `effects`, `transitions`, `transforms`, `interactivity`, `accessibility`. Omit `sortOrder` to use the default order above.
+
 ## Deduplication (`--dedup`)
 
 ### Exact duplicates and conflicts

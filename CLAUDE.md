@@ -48,10 +48,11 @@ export default {
   customTextTokens: { 11: '2xs' },   // px → token name additions/overrides
   customSpacingTokens: { 14: '3.5' }, // px → spacing scale additions
   ignorePatterns: [],
+  sortOrder: ['display', 'spacing', 'colors'], // custom --sort category order
 }
 ```
 
-`customTextTokens` merges with the built-in `TEXT_SIZE_MAP` in `rules.ts`. `customSpacingTokens` supplements the default ÷4 spacing logic.
+`customTextTokens` merges with the built-in `TEXT_SIZE_MAP` in `rules.ts`. `customSpacingTokens` supplements the default ÷4 spacing logic. `sortOrder` is a `SortCategory[]`; omitted categories and unknown classes sort last.
 
 ## Key invariants
 
@@ -59,6 +60,6 @@ export default {
 - `isCustomToken: true` on a `Suggestion` means the canonical name comes from config/non-built-in mapping; the CLI appends `[custom token]` to the output.
 - The ESLint plugin does NOT use `analyzeFile`/`fixFile` — it calls `suggestCanonical` directly on AST node values.
 - `deduplicator.ts` uses a generic `BoxFamily` system — add new box families (e.g. `margin-block`) by adding an entry to `FAMILIES` and keys to `SIDE_MAP`.
-- `sorter.ts` uses category numbers (0–500) for stable sort. Unknown classes get 500 (go last). Adding a new category = pick a number and add a condition in `getCategory`.
+- `sorter.ts` uses named `SortCategory` values; `getCategory` returns a name (or `null` for unknown). Rank derives from index in the active order (`config.sortOrder` or `DEFAULT_SORT_ORDER`); omitted/unknown categories rank last. Adding a new category = add the name to the `SortCategory` union + `DEFAULT_SORT_ORDER` and a condition in `getCategory`.
 - `merger.ts` uses dynamic `import('tailwind-merge')` — it is async; the ESLint rule uses synchronous `createRequire(import.meta.url)` instead.
 - Tests use Node's built-in `node:test` runner with `tsx` for ESM TypeScript — no Jest, no Vitest.

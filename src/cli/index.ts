@@ -86,10 +86,14 @@ async function processFile(file: string): Promise<number> {
       attributeNames: config.attributeNames,
     });
   if (sort)
-    count += sortFile(file, {
-      functionNames: config.functionNames,
-      attributeNames: config.attributeNames,
-    });
+    count += sortFile(
+      file,
+      {
+        functionNames: config.functionNames,
+        attributeNames: config.attributeNames,
+      },
+      config.sortOrder,
+    );
   return count;
 }
 
@@ -189,10 +193,14 @@ for (const file of files) {
   }
 
   if (sort) {
-    const count = sortFile(file, {
-      functionNames: config.functionNames,
-      attributeNames: config.attributeNames,
-    });
+    const count = sortFile(
+      file,
+      {
+        functionNames: config.functionNames,
+        attributeNames: config.attributeNames,
+      },
+      config.sortOrder,
+    );
     if (count > 0) {
       totalSorted += count;
       if (!changedFiles.includes(file)) changedFiles.push(file);
