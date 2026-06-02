@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { type ClassStringOpts, extractClassStrings } from './class-strings.js';
+import {
+  type ClassStringOpts,
+  extractClassStrings,
+  SINGLE_CLASS_REGEX,
+} from './class-strings.js';
 import type { Config } from './rules.js';
 
 export type FileClasses = { file: string; classes: string[] };
@@ -316,8 +320,6 @@ export function analyzeConsistency(
     ),
   };
 }
-
-const SINGLE_CLASS_REGEX = /[^\s"'`{}]+/g;
 
 export function collectClasses(
   content: string,
