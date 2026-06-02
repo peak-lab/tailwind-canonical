@@ -32,10 +32,11 @@ Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 | `sorter.ts` | `sortClasses(str)` — stable sort by category (layout→position→display→flex/grid→sizing→border→spacing→typography→colors→effects→…→variants). `sortFile()` applies it. |
 | `merger.ts` | `mergeFile()` — async; dynamically imports `tailwind-merge` (optional peer dep). |
 | `scanner.ts` | Recursive directory walker — returns matching file paths. Ignores `node_modules`, `dist`, etc. |
+| `consistency.ts` | `analyzeConsistency(fileClasses[])` — pure cross-file detectors: color-variant grouping (by property + hue family), scale inconsistency (spacing/gap/z), repeated class combinations. `analyzeConsistencyFiles()` reads files; `collectClasses()` extracts every class from content. No mutation. |
 
 **Consumers of core:**
 
-- `src/cli/index.ts` — CLI entry point. Flags: `--fix`, `--dedup`, `--merge`, `--sort`. Pipeline order: fix → dedup → merge → sort. Loads optional `tailwind-canonical.config.js` from cwd via dynamic `import()`. Exits 1 on findings when in check mode.
+- `src/cli/index.ts` — CLI entry point. Flags: `--fix`, `--dedup`, `--merge`, `--sort`, `--analyze`. Pipeline order: fix → dedup → merge → sort. `--analyze` is a standalone cross-file mode (short-circuits the per-file pipeline; supports `--reporter json`). Loads optional `tailwind-canonical.config.js` from cwd via dynamic `import()`. Exits 1 on findings when in check mode.
 - `src/eslint/plugin.ts` — ESLint flat-config plugin. Rules: `no-arbitrary-canonical` (wraps `suggestCanonical`) and `no-conflicting-classes` (wraps `twMerge` via `createRequire`).
 
 ## Config

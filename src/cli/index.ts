@@ -2,6 +2,7 @@
 import { watch as fsWatch } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
+import { analyzeConsistencyFiles } from '../core/consistency.js';
 import { dedupeFile } from '../core/deduplicator.js';
 import { fixFile } from '../core/fixer.js';
 import { mergeFile } from '../core/merger.js';
@@ -27,6 +28,7 @@ const merge = args.includes('--merge');
 const dedup = args.includes('--dedup');
 const sort = args.includes('--sort');
 const watch = args.includes('--watch');
+const analyze = args.includes('--analyze');
 
 const reporterIdx = args.indexOf('--reporter');
 const reporter: 'text' | 'json' | 'sarif' =
@@ -45,7 +47,7 @@ const targets = args.filter(
 
 if (targets.length === 0) {
   console.error(
-    'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]',
+    'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--analyze] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]',
   );
   process.exit(1);
 }
@@ -92,6 +94,52 @@ async function processFile(file: string): Promise<number> {
 }
 
 const files = await resolveTargets(targets);
+
+if (analyze) {
+  const report = analyzeConsistencyFiles(files, config);
+  const issueCount =
+    report.colorVariants.length +
+    report.scaleInconsistencies.length +
+    report.combinations.length;
+
+  if (reporter === 'json') {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    for (const group of report.colorVariants) {
+      const tokens = group.variants
+        .map((v) => `${group.property}-${v.token} (${v.count})`)
+        .join(', ');
+      console.log(
+        `  Warning: ${group.variants.length} ${group.family} color variants used for ${group.property}: ${tokens}`,
+      );
+    }
+    for (const scale of report.scaleInconsistencies) {
+      const values = scale.values
+        .map(
+          (v) =>
+            `${scale.property}-${v.value} (${pluralize(v.files.length, 'file')})`,
+        )
+        .join(' vs ');
+      console.log(`  Warning: ${scale.property} inconsistency: ${values}`);
+    }
+    for (const combo of report.combinations) {
+      console.log(
+        `  Pattern: "${combo.classes.join(' ')}" repeated in ${pluralize(combo.files.length, 'file')}`,
+      );
+    }
+    if (issueCount === 0) {
+      console.log('✓ No cross-file inconsistencies found');
+    } else {
+      console.log(
+        `\n✖ Found ${pluralize(issueCount, 'consistency issue')} across ${pluralize(report.filesAnalyzed, 'file')}`,
+      );
+    }
+  }
+
+  if (issueCount > 0) process.exit(1);
+  process.exit(0);
+}
+
 let totalFindings = 0;
 let totalFixed = 0;
 let totalMerged = 0;

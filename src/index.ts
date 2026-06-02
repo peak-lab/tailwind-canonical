@@ -5,6 +5,21 @@ export {
   extractClassStrings,
   replaceClassStrings,
 } from './core/class-strings.js';
+export type {
+  ClassCombination,
+  ColorVariant,
+  ColorVariantGroup,
+  ConsistencyOptions,
+  ConsistencyReport,
+  FileClasses,
+  ScaleInconsistency,
+  ScaleValue,
+} from './core/consistency.js';
+export {
+  analyzeConsistency,
+  analyzeConsistencyFiles,
+  collectClasses,
+} from './core/consistency.js';
 export { dedupeFile, deduplicateClasses } from './core/deduplicator.js';
 export { fixFile } from './core/fixer.js';
 export { mergeFile } from './core/merger.js';
