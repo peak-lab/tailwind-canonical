@@ -5,6 +5,7 @@ export {
   extractClassStrings,
   replaceClassStrings,
 } from './core/class-strings.js';
+export { loadConfig, validateConfig } from './core/config.js';
 export type {
   ClassCombination,
   ColorVariant,
