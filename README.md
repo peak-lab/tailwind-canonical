@@ -228,7 +228,6 @@ export default {
   customTextTokens: {
     10: '3xs',
     11: '2xs',
-    13: 'xxs',
   },
   customSpacingTokens: {
     14: '3.5',
@@ -237,10 +236,12 @@ export default {
   attributeNames: ['className', 'class', ':class', 'tw'],
   // Support utility function wrappers
   functionNames: ['cn', 'clsx', 'cva'],
+  // Never suggest replacements for classes matching these patterns
+  ignorePatterns: [/^font-/, /-\[var\(/],
 }
 ```
 
-`customTextTokens` merges with the built-in text size map. `customSpacingTokens` supplements the default ÷4 spacing logic.
+`customTextTokens` merges with the built-in text size map. `customSpacingTokens` supplements the default ÷4 spacing logic. `ignorePatterns` makes `suggestCanonical` skip matching classes everywhere — CLI, analyzer, and the ESLint plugin.
 
 `attributeNames` controls which HTML/JSX attributes are scanned (default: `['className']`). Use `['class']` for plain HTML/PHP/Jinja templates, `[':class']` for Vue, `['tw']` for styled-components.
 

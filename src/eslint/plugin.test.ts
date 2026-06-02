@@ -133,6 +133,48 @@ test('no-arbitrary-canonical rule', async (t) => {
     assert.strictEqual(reports.length, 1);
     assert.ok(JSON.stringify(reports[0]).includes('tiny'));
   });
+
+  await t.test('honors ignorePatterns from config', () => {
+    const reports: unknown[] = [];
+    const ctx = {
+      options: [{ ignorePatterns: [/^text-/] }] as [object],
+      report: (d: unknown) => reports.push(d),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    (rule.Literal as (n: unknown) => void)(literal('text-[12px] h-[64px]'));
+    assert.strictEqual(reports.length, 1);
+    assert.ok(JSON.stringify(reports[0]).includes('h-16'));
+  });
+
+  await t.test('accepts a shared Config without schema errors', () => {
+    const props = (
+      noArbitraryCanonical.meta.schema[0] as {
+        properties: Record<string, unknown>;
+      }
+    ).properties;
+    for (const key of [
+      'customTextTokens',
+      'customSpacingTokens',
+      'ignorePatterns',
+      'functionNames',
+      'attributeNames',
+      'sortOrder',
+    ]) {
+      assert.ok(key in props, `schema should declare ${key}`);
+    }
+    const ctx = {
+      options: [
+        {
+          functionNames: ['cn'],
+          attributeNames: ['class'],
+          sortOrder: ['display'],
+          ignorePatterns: [/^z-/],
+        },
+      ] as [object],
+      report: () => undefined,
+    };
+    assert.doesNotThrow(() => noArbitraryCanonical.create(ctx as never));
+  });
 });
 
 test('no-conflicting-classes rule', async (t) => {

@@ -47,12 +47,12 @@ Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 export default {
   customTextTokens: { 11: '2xs' },   // px → token name additions/overrides
   customSpacingTokens: { 14: '3.5' }, // px → spacing scale additions
-  ignorePatterns: [],
+  ignorePatterns: [/^text-/], // classes matching any pattern are never suggested
   sortOrder: ['display', 'spacing', 'colors'], // custom --sort category order
 }
 ```
 
-`customTextTokens` merges with the built-in `TEXT_SIZE_MAP` in `rules.ts`. `customSpacingTokens` supplements the default ÷4 spacing logic. `sortOrder` is a `SortCategory[]`; omitted categories and unknown classes sort last.
+`customTextTokens` merges with the built-in `TEXT_SIZE_MAP` in `rules.ts`. `customSpacingTokens` supplements the default ÷4 spacing logic. `sortOrder` is a `SortCategory[]`; omitted categories and unknown classes sort last. `ignorePatterns` is honored inside `suggestCanonical` (so CLI, analyzer, and the ESLint plugin all skip matching classes); lastIndex is reset so `/g` patterns stay deterministic.
 
 ## Key invariants
 
