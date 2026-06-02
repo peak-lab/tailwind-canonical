@@ -112,6 +112,37 @@ test('replaceClassStrings - function call support', async (t: TestContext) => {
     assert.strictEqual(result, 'cn("FLEX", cn("P-4"))');
     assert.strictEqual(count, 2);
   });
+
+  await t.test('transforms template literal args', () => {
+    const { result, count } = replaceClassStrings(
+      'cn(`flex p-4`)',
+      (s) => s.toUpperCase(),
+      FN_OPTS,
+    );
+    assert.strictEqual(result, 'cn(`FLEX P-4`)');
+    assert.strictEqual(count, 1);
+  });
+
+  await t.test('preserves interpolation in template literal', () => {
+    const D = '$';
+    const { result } = replaceClassStrings(
+      `cn(\`flex ${D}{x} p-4\`)`,
+      (s) => s.toUpperCase(),
+      FN_OPTS,
+    );
+    assert.strictEqual(result, `cn(\`FLEX ${D}{X} P-4\`)`);
+  });
+
+  await t.test('does not miscount parens inside interpolation', () => {
+    const D = '$';
+    const { result, count } = replaceClassStrings(
+      `cn(\`p-4 ${D}{a ? "x" : "y"}\`, "flex")`,
+      (s) => s.toUpperCase(),
+      FN_OPTS,
+    );
+    assert.strictEqual(result, `cn(\`P-4 ${D}{A ? "X" : "Y"}\`, "FLEX")`);
+    assert.strictEqual(count, 2);
+  });
 });
 
 test('fixFile with functionNames', async (t: TestContext) => {
