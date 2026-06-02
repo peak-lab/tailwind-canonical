@@ -5,7 +5,9 @@ export type ClassStringOpts = {
 
 const DEFAULT_ATTR_NAMES = ['className'];
 
-function escapeRegex(s: string): string {
+export const SINGLE_CLASS_REGEX = /[^\s"'`{}]+/g;
+
+export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
