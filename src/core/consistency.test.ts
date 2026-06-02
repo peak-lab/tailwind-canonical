@@ -1,7 +1,11 @@
 import assert from 'node:assert';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { type TestContext, test } from 'node:test';
 import {
   analyzeConsistency,
+  analyzeConsistencyFiles,
   type ColorVariantGroup,
   collectClasses,
   type FileClasses,
@@ -193,4 +197,23 @@ test('collectClasses - respects functionNames option', (_t: TestContext) => {
   const content = 'const x = cn("flex gap-2", cond && "px-4")';
   const classes = collectClasses(content, { functionNames: ['cn'] });
   assert.deepEqual(classes.sort(), ['flex', 'gap-2', 'px-4']);
+});
+
+test('analyzeConsistencyFiles - skips unreadable file and reports via onError', (_t: TestContext) => {
+  const dir = join(tmpdir(), `twc-cons-${process.pid}-${Date.now()}`);
+  mkdirSync(dir, { recursive: true });
+  const good = join(dir, 'a.tsx');
+  const missing = join(dir, 'does-not-exist.tsx');
+  writeFileSync(good, '<div className="text-red-500 text-rose-600" />', 'utf8');
+  const errors: string[] = [];
+  try {
+    const report = analyzeConsistencyFiles([good, missing], {}, {}, (file) =>
+      errors.push(file),
+    );
+    assert.strictEqual(report.filesAnalyzed, 1);
+    assert.deepEqual(errors, [missing]);
+    assert.strictEqual(report.colorVariants.length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

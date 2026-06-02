@@ -338,14 +338,22 @@ export function analyzeConsistencyFiles(
   filePaths: string[],
   config: Config = {},
   options: ConsistencyOptions = {},
+  onError?: (file: string, err: unknown) => void,
 ): ConsistencyReport {
   const opts: ClassStringOpts = {
     functionNames: config.functionNames,
     attributeNames: config.attributeNames,
   };
-  const input: FileClasses[] = filePaths.map((file) => ({
-    file,
-    classes: collectClasses(readFileSync(file, 'utf8'), opts),
-  }));
+  const input: FileClasses[] = [];
+  for (const file of filePaths) {
+    try {
+      input.push({
+        file,
+        classes: collectClasses(readFileSync(file, 'utf8'), opts),
+      });
+    } catch (err) {
+      if (onError) onError(file, err);
+    }
+  }
   return analyzeConsistency(input, options);
 }
