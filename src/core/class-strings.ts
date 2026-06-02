@@ -39,7 +39,7 @@ function transformCallContent(
       depth--;
       parts.push(ch);
       i++;
-    } else if (ch === '"' || ch === "'") {
+    } else if (ch === '"' || ch === "'" || ch === '`') {
       const q = ch;
       let j = i + 1;
       while (j < content.length && content[j] !== q) {
@@ -145,7 +145,7 @@ export function extractClassStrings(
       } else if (ch === ')' || ch === ']' || ch === '}') {
         depth--;
         i++;
-      } else if (ch === '"' || ch === "'") {
+      } else if (ch === '"' || ch === "'" || ch === '`') {
         const q = ch;
         let j = i + 1;
         while (j < content.length && content[j] !== q) {
