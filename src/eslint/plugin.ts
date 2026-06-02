@@ -42,18 +42,20 @@ const noArbitraryCanonical = {
       type: string;
     }) {
       if (typeof node.value !== 'string') return;
-      const classes = node.value.split(/\s+/);
-      for (const cls of classes) {
+      const value = node.value;
+      const corrected = value.replace(
+        /\S+/g,
+        (token) => suggestCanonical(token, config)?.canonical ?? token,
+      );
+      for (const cls of value.split(/\s+/)) {
         const suggestion = suggestCanonical(cls, config);
         if (!suggestion) continue;
         context.report({
           node,
           message: `Use canonical class '${suggestion.canonical}' instead of '${suggestion.original}'`,
           fix(fixer) {
-            const fixed = node.value as string;
-            const newVal = fixed.replace(cls, suggestion.canonical);
             const quote = node.raw?.startsWith('"') ? '"' : "'";
-            return fixer.replaceText(node, `${quote}${newVal}${quote}`);
+            return fixer.replaceText(node, `${quote}${corrected}${quote}`);
           },
         });
       }

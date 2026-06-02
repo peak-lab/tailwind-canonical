@@ -88,6 +88,40 @@ test('no-arbitrary-canonical rule', async (t) => {
     assert.ok((result as string).includes('text-xs'));
   });
 
+  await t.test('fix does not corrupt classes via substring collision', () => {
+    const reports: Array<{
+      fix?: (f: { replaceText: (n: unknown, s: string) => string }) => string;
+    }> = [];
+    const ctx = {
+      options: [{}] as [object],
+      report: (d: unknown) => reports.push(d as never),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    (rule.Literal as (n: unknown) => void)(literal('max-w-[50%] w-[50%]'));
+    assert.strictEqual(reports.length, 2);
+    for (const r of reports) {
+      const result = r.fix?.({ replaceText: (_n, s) => s });
+      assert.strictEqual(result, '"max-w-1/2 w-1/2"');
+    }
+  });
+
+  await t.test('fix corrects every arbitrary token in one replacement', () => {
+    const reports: Array<{
+      fix?: (f: { replaceText: (n: unknown, s: string) => string }) => string;
+    }> = [];
+    const ctx = {
+      options: [{}] as [object],
+      report: (d: unknown) => reports.push(d as never),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    (rule.Literal as (n: unknown) => void)(
+      literal('text-[12px] flex h-[64px]'),
+    );
+    assert.strictEqual(reports.length, 2);
+    const result = reports[0].fix?.({ replaceText: (_n, s) => s });
+    assert.strictEqual(result, '"text-xs flex h-16"');
+  });
+
   await t.test('respects customTextTokens from config', () => {
     const reports: unknown[] = [];
     const ctx = {
