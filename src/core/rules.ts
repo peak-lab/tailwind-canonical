@@ -135,10 +135,20 @@ function remToPx(rem: number): number {
   return Math.round(rem * 16);
 }
 
+function isIgnored(cls: string, patterns?: RegExp[]): boolean {
+  if (!patterns) return false;
+  return patterns.some((re) => {
+    re.lastIndex = 0;
+    return re.test(cls);
+  });
+}
+
 export function suggestCanonical(
   cls: string,
   config: Config = {},
 ): Suggestion | null {
+  if (isIgnored(cls, config.ignorePatterns)) return null;
+
   const textTokens = { ...TEXT_SIZE_MAP, ...config.customTextTokens };
   const spacingTokens = config.customSpacingTokens ?? {};
 

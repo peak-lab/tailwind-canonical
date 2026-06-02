@@ -24,6 +24,10 @@ const noArbitraryCanonical = {
         properties: {
           customTextTokens: { type: 'object' },
           customSpacingTokens: { type: 'object' },
+          ignorePatterns: { type: 'array' },
+          functionNames: { type: 'array', items: { type: 'string' } },
+          attributeNames: { type: 'array', items: { type: 'string' } },
+          sortOrder: { type: 'array', items: { type: 'string' } },
         },
         additionalProperties: false,
       },

@@ -2,6 +2,24 @@ import assert from 'node:assert';
 import { type TestContext, test } from 'node:test';
 import { type Config, suggestCanonical } from './rules.js';
 
+test('suggestCanonical - ignorePatterns', async (t: TestContext) => {
+  await t.test('returns null for a class matching an ignore pattern', () => {
+    const config: Config = { ignorePatterns: [/^text-/] };
+    assert.strictEqual(suggestCanonical('text-[12px]', config), null);
+  });
+
+  await t.test('still suggests for non-matching classes', () => {
+    const config: Config = { ignorePatterns: [/^text-/] };
+    assert.strictEqual(suggestCanonical('h-[64px]', config)?.canonical, 'h-16');
+  });
+
+  await t.test('global-flag patterns are deterministic across calls', () => {
+    const config: Config = { ignorePatterns: [/text/g] };
+    assert.strictEqual(suggestCanonical('text-[12px]', config), null);
+    assert.strictEqual(suggestCanonical('text-[12px]', config), null);
+  });
+});
+
 test('suggestCanonical - text sizes', async (t: TestContext) => {
   await t.test('text-[12px] maps to text-xs', () => {
     const result = suggestCanonical('text-[12px]');
