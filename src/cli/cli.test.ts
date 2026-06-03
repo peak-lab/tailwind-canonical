@@ -139,6 +139,71 @@ test('run - analyze mode reports cross-file inconsistencies', async (_t: TestCon
   }
 });
 
+test('run - sarif reporter emits results and exits 1', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="text-[12px]" />', 'utf8');
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(['--reporter', 'sarif', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    const sarif = JSON.parse(raw.join(''));
+    assert.strictEqual(sarif.version, '2.1.0');
+    assert.strictEqual(sarif.runs[0].results.length, 1);
+    assert.match(
+      sarif.runs[0].results[0].message.text,
+      /text-\[12px\] → text-xs/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --sort rewrites file and reports summary', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="text-sm flex p-4" />', 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--sort', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(readFileSync(file, 'utf8').includes('flex p-4 text-sm'));
+    assert.ok(out.some((l) => l.includes('✓ Fixed')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - check json on clean files exits 0', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="flex text-xs" />', 'utf8');
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(['--reporter', 'json', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(JSON.parse(raw.join('')).total, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - honors attributeNames from config file', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div class="text-[12px]" />', 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.js'),
+    'export default { attributeNames: ["class"] }',
+    'utf8',
+  );
+  const { sink, out } = captureSink();
+  try {
+    const result = await run([dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('text-[12px] → text-xs')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - one unreadable file does not abort the batch', async (t: TestContext) => {
   if (typeof process.getuid === 'function' && process.getuid() === 0) {
     t.skip('chmod is bypassed when running as root');
