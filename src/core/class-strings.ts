@@ -1,6 +1,9 @@
+import { lineAt } from './suppressions.js';
+
 export type ClassStringOpts = {
   functionNames?: string[];
   attributeNames?: string[];
+  isSuppressed?: (line: number) => boolean;
 };
 
 const DEFAULT_ATTR_NAMES = ['className'];
@@ -23,6 +26,7 @@ function transformCallContent(
   content: string,
   start: number,
   transform: (s: string) => string,
+  isSuppressed?: (line: number) => boolean,
 ): { processed: string; consumed: number; count: number } {
   const parts: string[] = [];
   let i = start;
@@ -47,7 +51,7 @@ function transformCallContent(
         j++;
       }
       const raw = content.slice(i + 1, j);
-      const out = transform(raw);
+      const out = isSuppressed?.(lineAt(content, i)) ? raw : transform(raw);
       if (out !== raw) count++;
       parts.push(`${q}${out}${q}`);
       i = j + 1;
@@ -71,12 +75,16 @@ export function replaceClassStrings(
   let result = content;
   let count = 0;
 
+  const isSuppressed = opts.isSuppressed;
+
   result = result.replace(
     buildAttrRegex(attrNames),
-    (_full, attr, dq, sq, bt) => {
+    (_full, attr, dq, sq, bt, offset: number) => {
       const raw = dq ?? sq ?? bt ?? '';
       const q = dq !== undefined ? '"' : sq !== undefined ? "'" : '`';
-      const out = transform(raw);
+      const out = isSuppressed?.(lineAt(content, offset))
+        ? raw
+        : transform(raw);
       if (out !== raw) count++;
       return `${attr}=${q}${out}${q}`;
     },
@@ -100,7 +108,7 @@ export function replaceClassStrings(
       processed,
       consumed,
       count: c,
-    } = transformCallContent(result, callStart, transform);
+    } = transformCallContent(result, callStart, transform, isSuppressed);
     buf.push(processed);
     pos = callStart + consumed;
     count += c;

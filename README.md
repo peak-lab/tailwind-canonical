@@ -89,6 +89,22 @@ npx tailwind-canonical --fix --reporter json ./src
 npx tailwind-canonical --reporter sarif ./src > results.sarif
 ```
 
+## Suppression comments
+
+Skip specific lines or blocks from check and all transforms (`--fix`, `--dedup`, `--merge`, `--sort`):
+
+```jsx
+{/* tailwind-canonical-disable-next-line */}
+<div className="text-[13px]" />        {/* left untouched */}
+
+{/* tailwind-canonical-disable */}
+<div className="text-[13px] p-[7px]" /> {/* whole block untouched */}
+<div className="m-[9px]" />
+{/* tailwind-canonical-enable */}
+```
+
+The pragmas are matched as substrings, so any comment style works (`//`, `/* */`, `{/* */}`).
+
 ## Cross-file consistency (`--analyze`)
 
 Detects semantic inconsistencies visible only at project scale — it never modifies files.

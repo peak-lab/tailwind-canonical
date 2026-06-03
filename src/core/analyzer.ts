@@ -5,6 +5,7 @@ import {
   SINGLE_CLASS_REGEX,
 } from './class-strings.js';
 import { type Config, type Suggestion, suggestCanonical } from './rules.js';
+import { getSuppressedLines } from './suppressions.js';
 
 export type Finding = {
   file: string;
@@ -26,6 +27,7 @@ function indexToLineCol(
 export function analyzeFile(filePath: string, config: Config = {}): Finding[] {
   const content = readFileSync(filePath, 'utf8');
   const findings: Finding[] = [];
+  const suppressed = getSuppressedLines(content);
   const opts: ClassStringOpts = {
     functionNames: config.functionNames,
     attributeNames: config.attributeNames,
@@ -37,6 +39,7 @@ export function analyzeFile(filePath: string, config: Config = {}): Finding[] {
       if (!suggestion) continue;
       const index = start + (clsMatch.index ?? 0);
       const { line, col } = indexToLineCol(content, index);
+      if (suppressed.has(line)) continue;
       findings.push({ file: filePath, line, col, suggestion });
     }
   }

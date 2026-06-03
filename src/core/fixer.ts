@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { replaceClassStrings } from './class-strings.js';
 import { type Config, suggestCanonical } from './rules.js';
+import { makeLineSuppressor } from './suppressions.js';
 
 export function fixFile(filePath: string, config: Config = {}): number {
   const content = readFileSync(filePath, 'utf8');
@@ -19,6 +20,7 @@ export function fixFile(filePath: string, config: Config = {}): number {
   const { result } = replaceClassStrings(content, transform, {
     functionNames: config.functionNames,
     attributeNames: config.attributeNames,
+    isSuppressed: makeLineSuppressor(content),
   });
 
   if (count > 0) writeFileSync(filePath, result, 'utf8');

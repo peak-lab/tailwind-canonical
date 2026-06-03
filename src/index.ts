@@ -29,3 +29,4 @@ export { suggestCanonical } from './core/rules.js';
 export { resolveTargets, scanFiles } from './core/scanner.js';
 export type { SortCategory } from './core/sorter.js';
 export { DEFAULT_SORT_ORDER, sortClasses, sortFile } from './core/sorter.js';
+export { getSuppressedLines, makeLineSuppressor } from './core/suppressions.js';
