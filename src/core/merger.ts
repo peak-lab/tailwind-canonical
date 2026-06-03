@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { type ClassStringOpts, replaceClassStrings } from './class-strings.js';
+import { makeLineSuppressor } from './suppressions.js';
 
 export async function mergeFile(
   filePath: string,
@@ -7,7 +8,10 @@ export async function mergeFile(
 ): Promise<number> {
   const { twMerge } = await import('tailwind-merge');
   const content = readFileSync(filePath, 'utf8');
-  const { result, count } = replaceClassStrings(content, twMerge, opts);
+  const { result, count } = replaceClassStrings(content, twMerge, {
+    ...opts,
+    isSuppressed: makeLineSuppressor(content),
+  });
   if (count > 0) writeFileSync(filePath, result, 'utf8');
   return count;
 }

@@ -33,6 +33,7 @@ Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 | `merger.ts` | `mergeFile()` — async; dynamically imports `tailwind-merge` (optional peer dep). |
 | `scanner.ts` | Recursive directory walker — returns matching file paths. Ignores `node_modules`, `dist`, etc. |
 | `consistency.ts` | `analyzeConsistency(fileClasses[])` — pure cross-file detectors: color-variant grouping (by property + hue family), scale inconsistency (spacing/gap/z), repeated class combinations. `analyzeConsistencyFiles()` reads files; `collectClasses()` extracts every class from content. No mutation. |
+| `suppressions.ts` | `getSuppressedLines(content)` — 1-based line set from `tailwind-canonical-disable-next-line` / `disable`…`enable` pragma comments (substring match). `makeLineSuppressor()` + `lineAt()` feed the `isSuppressed` predicate. |
 
 **Consumers of core:**
 
@@ -62,4 +63,5 @@ export default {
 - `deduplicator.ts` uses a generic `BoxFamily` system — add new box families (e.g. `margin-block`) by adding an entry to `FAMILIES` and keys to `SIDE_MAP`.
 - `sorter.ts` uses named `SortCategory` values; `getCategory` returns a name (or `null` for unknown). Rank derives from index in the active order (`config.sortOrder` or `DEFAULT_SORT_ORDER`); omitted/unknown categories rank last. Adding a new category = add the name to the `SortCategory` union + `DEFAULT_SORT_ORDER` and a condition in `getCategory`.
 - `merger.ts` uses dynamic `import('tailwind-merge')` — it is async; the ESLint rule uses synchronous `createRequire(import.meta.url)` instead.
+- Suppression is line-based (offset-shift-safe since replacements never change newline count). `replaceClassStrings` takes an `isSuppressed(line)` predicate; all four `*File` transformers pass `makeLineSuppressor(content)`, and `analyzeFile` filters findings by suppressed line. Pragmas are matched as substrings, checking `disable-next-line` before `disable`.
 - Tests use Node's built-in `node:test` runner with `tsx` for ESM TypeScript — no Jest, no Vitest.

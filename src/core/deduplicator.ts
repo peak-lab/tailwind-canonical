@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { type ClassStringOpts, replaceClassStrings } from './class-strings.js';
+import { makeLineSuppressor } from './suppressions.js';
 
 const DISPLAY_GROUP = new Set([
   'block',
@@ -476,11 +477,10 @@ export function dedupeFile(
   opts: ClassStringOpts = {},
 ): number {
   const content = readFileSync(filePath, 'utf8');
-  const { result, count } = replaceClassStrings(
-    content,
-    deduplicateClasses,
-    opts,
-  );
+  const { result, count } = replaceClassStrings(content, deduplicateClasses, {
+    ...opts,
+    isSuppressed: makeLineSuppressor(content),
+  });
   if (count > 0) writeFileSync(filePath, result, 'utf8');
   return count;
 }
