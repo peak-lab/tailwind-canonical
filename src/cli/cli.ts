@@ -10,12 +10,13 @@ import { mergeFile } from '../core/merger.js';
 import type { Config } from '../core/rules.js';
 import { resolveTargets } from '../core/scanner.js';
 import { sortFile } from '../core/sorter.js';
+import { analyzeTyposFile, type TypoFinding } from '../core/typos.js';
 
 const SARIF_SCHEMA =
   'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json';
 
 const USAGE =
-  'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--analyze] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]';
+  'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--analyze] [--typos] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]';
 
 export type Sink = {
   log: (s: string) => void;
@@ -40,6 +41,7 @@ type Flags = {
   sort: boolean;
   watch: boolean;
   analyze: boolean;
+  typos: boolean;
   reporter: Reporter;
   targets: string[];
 };
@@ -89,9 +91,47 @@ export function parseArgs(argv: string[]): Flags {
     sort: argv.includes('--sort'),
     watch: argv.includes('--watch'),
     analyze: argv.includes('--analyze'),
+    typos: argv.includes('--typos'),
     reporter,
     targets,
   };
+}
+
+function runTypos(
+  files: string[],
+  config: Config,
+  reporter: Reporter,
+  sink: Sink,
+): RunResult {
+  let hadError = false;
+  const findings: TypoFinding[] = [];
+  for (const file of files) {
+    try {
+      findings.push(...analyzeTyposFile(file, config));
+    } catch (err) {
+      hadError = true;
+      sink.error(`${file}: ${errMsg(err)}`);
+    }
+  }
+
+  if (reporter === 'json') {
+    sink.write(
+      `${JSON.stringify({ total: findings.length, typos: findings }, null, 2)}\n`,
+    );
+    return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
+  }
+
+  for (const f of findings) {
+    sink.log(
+      `  ${f.file}:${f.line}:${f.col}  ${f.original} → ${f.suggestion} [typo]`,
+    );
+  }
+  if (findings.length === 0) {
+    sink.log('✓ No likely typos found');
+  } else {
+    sink.log(`\n✖ Found ${pluralize(findings.length, 'likely typo')}`);
+  }
+  return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
 }
 
 function toClassStringOpts(config: Config): ClassStringOpts {
@@ -273,6 +313,8 @@ export async function run(
   const files = await resolveTargets(flags.targets);
 
   if (flags.analyze) return runAnalyze(files, config, flags.reporter, sink);
+
+  if (flags.typos) return runTypos(files, config, flags.reporter, sink);
 
   const transforming = flags.fix || flags.dedup || flags.merge || flags.sort;
   const totals: FileCounts = { fixed: 0, deduped: 0, merged: 0, sorted: 0 };

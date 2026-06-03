@@ -89,6 +89,18 @@ npx tailwind-canonical --fix --reporter json ./src
 npx tailwind-canonical --reporter sarif ./src > results.sarif
 ```
 
+## Typo detection (`--typos`)
+
+Flags likely misspelled Tailwind color names (Levenshtein distance 1, low false-positive bias). Read-only.
+
+```bash
+npx tailwind-canonical --typos ./src
+#   src/Card.tsx:3:17  text-gry-500 → text-gray-500 [typo]
+#   src/Nav.tsx:8:12   bg-slte-100 → bg-slate-100 [typo]
+```
+
+Only color-property classes (`text-`, `bg-`, `border-`, …) are checked. Valid colors, non-color utilities (`text-center`), custom colors (`bg-brand-500`), and arbitrary values are never flagged. Pairs with `--reporter json`; exits `1` on findings.
+
 ## Suppression comments
 
 Skip specific lines or blocks from check and all transforms (`--fix`, `--dedup`, `--merge`, `--sort`):
