@@ -30,3 +30,5 @@ export { resolveTargets, scanFiles } from './core/scanner.js';
 export type { SortCategory } from './core/sorter.js';
 export { DEFAULT_SORT_ORDER, sortClasses, sortFile } from './core/sorter.js';
 export { getSuppressedLines, makeLineSuppressor } from './core/suppressions.js';
+export type { TypoFinding } from './core/typos.js';
+export { analyzeTyposFile, detectTypo } from './core/typos.js';

@@ -204,6 +204,36 @@ test('run - honors attributeNames from config file', async (_t: TestContext) => 
   }
 });
 
+test('run - --typos flags near-miss colors and exits 1', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="text-gry-500" />', 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--typos', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('text-gry-500 → text-gray-500')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --typos json reporter and clean exit', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'a.tsx'),
+    '<div className="text-gray-500" />',
+    'utf8',
+  );
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(['--typos', '--reporter', 'json', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(JSON.parse(raw.join('')).total, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - one unreadable file does not abort the batch', async (t: TestContext) => {
   if (typeof process.getuid === 'function' && process.getuid() === 0) {
     t.skip('chmod is bypassed when running as root');

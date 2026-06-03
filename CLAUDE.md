@@ -34,10 +34,12 @@ Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 | `scanner.ts` | Recursive directory walker — returns matching file paths. Ignores `node_modules`, `dist`, etc. |
 | `consistency.ts` | `analyzeConsistency(fileClasses[])` — pure cross-file detectors: color-variant grouping (by property + hue family), scale inconsistency (spacing/gap/z), repeated class combinations. `analyzeConsistencyFiles()` reads files; `collectClasses()` extracts every class from content. No mutation. |
 | `suppressions.ts` | `getSuppressedLines(content)` — 1-based line set from `tailwind-canonical-disable-next-line` / `disable`…`enable` pragma comments (substring match). `makeLineSuppressor()` + `lineAt()` feed the `isSuppressed` predicate. |
+| `lexicon.ts` | Shared Tailwind vocab: `TAILWIND_COLORS`, `COLOR_PROPERTIES`, `COLOR_SHADES`. (consistency.ts still has its own copies — unify in #46.) |
+| `typos.ts` | `detectTypo(cls)` — flags color-name typos via Levenshtein-1 against `TAILWIND_COLORS` (candidate len ≥3, low false-positive). `analyzeTyposFile()` adds line/col + suppression. CLI `--typos`. |
 
 **Consumers of core:**
 
-- `src/cli/index.ts` — CLI entry point. Flags: `--fix`, `--dedup`, `--merge`, `--sort`, `--analyze`. Pipeline order: fix → dedup → merge → sort. `--analyze` is a standalone cross-file mode (short-circuits the per-file pipeline; supports `--reporter json`). Loads optional `tailwind-canonical.config.js` from cwd via dynamic `import()`. Exits 1 on findings when in check mode.
+- `src/cli/cli.ts` — `run(argv, cwd, sink?)`, the testable CLI core (no `process.exit`; injectable `sink`). Flags: `--fix`, `--dedup`, `--merge`, `--sort`, `--analyze`, `--typos`, `--watch`, `--reporter`. Pipeline order: fix → dedup → merge → sort. `--analyze` and `--typos` are standalone modes that short-circuit the per-file pipeline. `src/cli/index.ts` is a thin bin wrapper that calls `run` and `process.exit`s. Config loaded via `loadConfig` (validated). Exits 1 on findings in check mode.
 - `src/eslint/plugin.ts` — ESLint flat-config plugin. Rules: `no-arbitrary-canonical` (wraps `suggestCanonical`) and `no-conflicting-classes` (wraps `twMerge` via `createRequire`).
 
 ## Config
