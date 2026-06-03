@@ -32,7 +32,41 @@ test('analyzeFile - multi-line col tracking', (_t: TestContext) => {
     const findings = analyzeFile(path);
     assert.strictEqual(findings.length, 1);
     assert.strictEqual(findings[0].line, 2);
+    assert.strictEqual(findings[0].col, 14);
     assert.strictEqual(findings[0].suggestion.canonical, 'h-16');
+  });
+});
+
+test('analyzeFile - exact col for finding on a later line', (_t: TestContext) => {
+  // line 1 is 11 chars + newline; class value starts at col 17 on line 3
+  withFile('line one\n\n<div className="text-[12px]" />', (path) => {
+    const findings = analyzeFile(path);
+    assert.strictEqual(findings.length, 1);
+    assert.strictEqual(findings[0].line, 3);
+    assert.strictEqual(findings[0].col, 17);
+  });
+});
+
+test('analyzeFile - multiple findings on one line have distinct cols', (_t: TestContext) => {
+  withFile('<div className="text-[12px] h-[64px]" />', (path) => {
+    const findings = analyzeFile(path);
+    assert.strictEqual(findings.length, 2);
+    assert.deepEqual(
+      findings.map((f) => f.suggestion.canonical),
+      ['text-xs', 'h-16'],
+    );
+    assert.strictEqual(findings[0].col, 17);
+    assert.strictEqual(findings[1].col, 29);
+    assert.ok(findings[1].col > findings[0].col);
+  });
+});
+
+test('analyzeFile - custom attributeNames with line/col', (_t: TestContext) => {
+  withFile('<div class="text-[12px]" />', (path) => {
+    const findings = analyzeFile(path, { attributeNames: ['class'] });
+    assert.strictEqual(findings.length, 1);
+    assert.strictEqual(findings[0].col, 13);
+    assert.strictEqual(findings[0].suggestion.canonical, 'text-xs');
   });
 });
 
