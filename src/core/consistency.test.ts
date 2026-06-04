@@ -130,6 +130,38 @@ test('scale inconsistency - below threshold not reported', (_t: TestContext) => 
   assert.strictEqual(scaleOf(report, 'gap'), undefined);
 });
 
+test('color variants - custom colors ignored without config', (_t: TestContext) => {
+  const input: FileClasses[] = [
+    { file: 'a.tsx', classes: ['text-brand-100'] },
+    { file: 'b.tsx', classes: ['text-brand-200'] },
+  ];
+  assert.strictEqual(analyzeConsistency(input).colorVariants.length, 0);
+});
+
+test('color variants - extraColorFamilies groups custom colors', (_t: TestContext) => {
+  const input: FileClasses[] = [
+    { file: 'a.tsx', classes: ['text-brand-100'] },
+    { file: 'b.tsx', classes: ['text-brand-200'] },
+  ];
+  const report = analyzeConsistency(input, {
+    extraColorFamilies: { brand: 'brand' },
+  });
+  const group = colorGroup(report, 'text', 'brand');
+  assert.ok(group);
+  assert.strictEqual(group.variants.length, 2);
+});
+
+test('scale inconsistency - extraScaleProperties extends detection', (_t: TestContext) => {
+  const input: FileClasses[] = [
+    { file: 'a.tsx', classes: ['w-4'] },
+    { file: 'b.tsx', classes: ['w-8'] },
+    { file: 'c.tsx', classes: ['w-4'] },
+  ];
+  assert.strictEqual(scaleOf(analyzeConsistency(input), 'w'), undefined);
+  const report = analyzeConsistency(input, { extraScaleProperties: ['w'] });
+  assert.ok(scaleOf(report, 'w'));
+});
+
 test('scale inconsistency - variants stripped from prefix', (_t: TestContext) => {
   const input: FileClasses[] = [
     { file: 'a.tsx', classes: ['hover:px-4'] },

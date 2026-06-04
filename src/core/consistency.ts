@@ -4,6 +4,12 @@ import {
   extractClassStrings,
   SINGLE_CLASS_REGEX,
 } from './class-strings.js';
+import {
+  COLOR_FAMILIES,
+  COLOR_PROPERTIES,
+  SCALE_PROPERTIES,
+  TAILWIND_COLORS,
+} from './lexicon.js';
 import type { Config } from './rules.js';
 
 export type FileClasses = { file: string; classes: string[] };
@@ -41,78 +47,11 @@ export type ConsistencyOptions = {
   minCombinationFiles?: number;
   maxCombinations?: number;
   minScaleOccurrences?: number;
+  /** Extra color → family mappings merged onto the built-in palette. */
+  extraColorFamilies?: Record<string, string>;
+  /** Extra scale property prefixes (e.g. 'scroll-p') added to the defaults. */
+  extraScaleProperties?: string[];
 };
-
-const COLOR_PROPERTIES = new Set([
-  'text',
-  'bg',
-  'border',
-  'ring',
-  'divide',
-  'outline',
-  'fill',
-  'stroke',
-  'from',
-  'via',
-  'to',
-  'decoration',
-  'accent',
-  'caret',
-  'shadow',
-  'placeholder',
-]);
-
-const COLOR_FAMILIES: Record<string, string> = {
-  red: 'red',
-  rose: 'red',
-  pink: 'red',
-  orange: 'orange',
-  amber: 'orange',
-  yellow: 'yellow',
-  lime: 'yellow',
-  green: 'green',
-  emerald: 'green',
-  teal: 'green',
-  blue: 'blue',
-  sky: 'blue',
-  cyan: 'blue',
-  indigo: 'blue',
-  purple: 'purple',
-  violet: 'purple',
-  fuchsia: 'purple',
-  gray: 'gray',
-  slate: 'gray',
-  zinc: 'gray',
-  neutral: 'gray',
-  stone: 'gray',
-};
-
-const SCALE_PROPERTIES = new Set([
-  'p',
-  'px',
-  'py',
-  'pt',
-  'pr',
-  'pb',
-  'pl',
-  'ps',
-  'pe',
-  'm',
-  'mx',
-  'my',
-  'mt',
-  'mr',
-  'mb',
-  'ml',
-  'ms',
-  'me',
-  'gap',
-  'gap-x',
-  'gap-y',
-  'space-x',
-  'space-y',
-  'z',
-]);
 
 function stripVariants(cls: string): string {
   const idx = cls.lastIndexOf(':');
@@ -121,6 +60,8 @@ function stripVariants(cls: string): string {
 
 function parseColor(
   cls: string,
+  families: Record<string, string>,
+  knownColors: Set<string>,
 ): { property: string; family: string; token: string } | null {
   const base = stripVariants(cls);
   const dash = base.indexOf('-');
@@ -132,19 +73,25 @@ function parseColor(
   if (restDash === -1) return null;
   const color = rest.slice(0, restDash);
   const shade = rest.slice(restDash + 1);
-  const family = COLOR_FAMILIES[color];
-  if (!(family && /^\d+$/.test(shade))) return null;
+  if (!/^\d+$/.test(shade)) return null;
+  // A known color without an explicit family forms its own family, so colors
+  // newly added to the palette are grouped rather than silently dropped.
+  const family = families[color] ?? (knownColors.has(color) ? color : null);
+  if (!family) return null;
   return { property, family, token: `${color}-${shade}` };
 }
 
-function parseScale(cls: string): { property: string; value: string } | null {
+function parseScale(
+  cls: string,
+  scaleProperties: Set<string>,
+): { property: string; value: string } | null {
   const base = stripVariants(cls);
   const negative = base.startsWith('-');
   const body = negative ? base.slice(1) : base;
   const dash = body.lastIndexOf('-');
   if (dash === -1) return null;
   const property = body.slice(0, dash);
-  if (!SCALE_PROPERTIES.has(property)) return null;
+  if (!scaleProperties.has(property)) return null;
   const value = body.slice(dash + 1);
   if (!value) return null;
   return { property, value: negative ? `-${value}` : value };
@@ -164,7 +111,11 @@ function addUsage(
   entry.files.add(file);
 }
 
-function detectColorVariants(input: FileClasses[]): ColorVariantGroup[] {
+function detectColorVariants(
+  input: FileClasses[],
+  families: Record<string, string>,
+  knownColors: Set<string>,
+): ColorVariantGroup[] {
   const groups = new Map<
     string,
     {
@@ -176,7 +127,7 @@ function detectColorVariants(input: FileClasses[]): ColorVariantGroup[] {
 
   for (const { file, classes } of input) {
     for (const cls of classes) {
-      const parsed = parseColor(cls);
+      const parsed = parseColor(cls, families, knownColors);
       if (!parsed) continue;
       const groupKey = `${parsed.property}|${parsed.family}`;
       let group = groups.get(groupKey);
@@ -218,6 +169,7 @@ function detectColorVariants(input: FileClasses[]): ColorVariantGroup[] {
 function detectScaleInconsistencies(
   input: FileClasses[],
   minOccurrences: number,
+  scaleProperties: Set<string>,
 ): ScaleInconsistency[] {
   const props = new Map<
     string,
@@ -226,7 +178,7 @@ function detectScaleInconsistencies(
 
   for (const { file, classes } of input) {
     for (const cls of classes) {
-      const parsed = parseScale(cls);
+      const parsed = parseScale(cls, scaleProperties);
       if (!parsed) continue;
       let values = props.get(parsed.property);
       if (!values) {
@@ -255,6 +207,10 @@ function detectScaleInconsistencies(
   return result.sort((a, b) => a.property.localeCompare(b.property));
 }
 
+// NOTE: combinations are keyed on the whole de-duplicated, sorted class set of
+// each element. Two elements that share most classes but differ by one are
+// treated as distinct combinations — this finds repeated whole patterns, not
+// frequent sub-patterns (no k-subset itemset mining).
 function detectCombinations(
   input: FileClasses[],
   minSize: number,
@@ -305,12 +261,20 @@ export function analyzeConsistency(
   const maxCombinations = options.maxCombinations ?? 20;
   const minScaleOccurrences = options.minScaleOccurrences ?? 3;
 
+  const families = { ...COLOR_FAMILIES, ...options.extraColorFamilies };
+  const knownColors = new Set([...TAILWIND_COLORS, ...Object.keys(families)]);
+  const scaleProperties = new Set([
+    ...SCALE_PROPERTIES,
+    ...(options.extraScaleProperties ?? []),
+  ]);
+
   return {
     filesAnalyzed: input.length,
-    colorVariants: detectColorVariants(input),
+    colorVariants: detectColorVariants(input, families, knownColors),
     scaleInconsistencies: detectScaleInconsistencies(
       input,
       minScaleOccurrences,
+      scaleProperties,
     ),
     combinations: detectCombinations(
       input,
