@@ -2,6 +2,8 @@
 
 Lint and auto-fix Tailwind CSS classes: arbitrary values → canonical, deduplication, shorthand collapsing, and class sorting.
 
+> Compatible with Tailwind CSS v3.3+ and v4 — zero `tailwindcss` dependency (conventions are built in). Custom theme tokens are supported via config.
+
 ## Install
 
 ```bash
