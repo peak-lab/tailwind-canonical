@@ -161,6 +161,25 @@ test('fixFile with functionNames', async (t: TestContext) => {
     }
   });
 
+  await t.test(
+    'preserves interpolation when fixing (tokenization parity)',
+    async () => {
+      const D = '$';
+      const file = join(tmpdir(), `fn-fix-interp-${Date.now()}.tsx`);
+      writeFileSync(file, `cn(\`text-[12px] ${D}{y} p-[16px]\`)`, 'utf8');
+      try {
+        const count = fixFile(file, { functionNames: ['cn'] });
+        assert.strictEqual(count, 2);
+        assert.strictEqual(
+          readFileSync(file, 'utf8'),
+          `cn(\`text-xs ${D}{y} p-4\`)`,
+        );
+      } finally {
+        unlinkSync(file);
+      }
+    },
+  );
+
   await t.test('no-op without functionNames config', async () => {
     const file = join(tmpdir(), `fn-fix-${Date.now()}.tsx`);
     const content = 'cn("flex text-[12px]")';
