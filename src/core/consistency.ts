@@ -81,6 +81,11 @@ function parseColor(
   return { property, family, token: `${color}-${shade}` };
 }
 
+// A scale value is a number, a fraction, or an arbitrary [..] value. Keyword
+// values (auto, px, full, screen, …) are not grid values, so they are excluded
+// to avoid false "inconsistency" reports like mt-4 vs mt-auto.
+const SCALE_VALUE_RE = /^(\d+(?:\.\d+)?|\d+\/\d+|\[.+\])$/;
+
 function parseScale(
   cls: string,
   scaleProperties: Set<string>,
@@ -93,7 +98,7 @@ function parseScale(
   const property = body.slice(0, dash);
   if (!scaleProperties.has(property)) return null;
   const value = body.slice(dash + 1);
-  if (!value) return null;
+  if (!SCALE_VALUE_RE.test(value)) return null;
   return { property, value: negative ? `-${value}` : value };
 }
 
