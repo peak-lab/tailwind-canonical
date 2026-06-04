@@ -391,6 +391,20 @@ test('deduplicateClasses - responsive cascade collapse', async (t: TestContext) 
     assert.strictEqual(deduplicateClasses(cls), cls);
   });
 
+  await t.test('display restored at a later breakpoint is preserved', () => {
+    const cls = 'flex md:block lg:flex';
+    assert.strictEqual(deduplicateClasses(cls), cls);
+  });
+
+  await t.test('position restored at a later breakpoint is preserved', () => {
+    const cls = 'relative md:absolute lg:relative';
+    assert.strictEqual(deduplicateClasses(cls), cls);
+  });
+
+  await t.test('redundant display breakpoint still collapses', () => {
+    assert.strictEqual(deduplicateClasses('flex md:flex'), 'flex');
+  });
+
   await t.test('works with text utility', () => {
     assert.strictEqual(
       deduplicateClasses('sm:text-sm md:text-sm'),
