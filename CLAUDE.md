@@ -32,9 +32,9 @@ Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 | `sorter.ts` | `sortClasses(str)` — stable sort by category (layout→position→display→flex/grid→sizing→border→spacing→typography→colors→effects→…→variants). `sortFile()` applies it. |
 | `merger.ts` | `mergeFile()` — async; dynamically imports `tailwind-merge` (optional peer dep). |
 | `scanner.ts` | Recursive directory walker — returns matching file paths. Ignores `node_modules`, `dist`, etc. |
-| `consistency.ts` | `analyzeConsistency(fileClasses[])` — pure cross-file detectors: color-variant grouping (by property + hue family), scale inconsistency (spacing/gap/z), repeated class combinations. `analyzeConsistencyFiles()` reads files; `collectClasses()` extracts every class from content. No mutation. |
+| `consistency.ts` | `analyzeConsistency(fileClasses[], options?)` — pure cross-file detectors: color-variant grouping (by property + hue family), scale inconsistency (spacing/gap/z), repeated class combinations. Lexicons come from `lexicon.ts`; a known color without an explicit family forms its own family (new palette colors aren't dropped). `options.extraColorFamilies`/`extraScaleProperties` extend detection. Combinations key on the whole class set (no k-subset mining). |
 | `suppressions.ts` | `getSuppressedLines(content)` — 1-based line set from `tailwind-canonical-disable-next-line` / `disable`…`enable` pragma comments (substring match). `makeLineSuppressor()` + `lineAt()` feed the `isSuppressed` predicate. |
-| `lexicon.ts` | Shared Tailwind vocab: `TAILWIND_COLORS`, `COLOR_PROPERTIES`, `COLOR_SHADES`. (consistency.ts still has its own copies — unify in #46.) |
+| `lexicon.ts` | Shared Tailwind vocab: `TAILWIND_COLORS`, `COLOR_PROPERTIES`, `COLOR_SHADES`, `COLOR_FAMILIES`, `SCALE_PROPERTIES`. Consumed by both `typos.ts` and `consistency.ts`. |
 | `typos.ts` | `detectTypo(cls)` — flags color-name typos via Levenshtein-1 against `TAILWIND_COLORS` (candidate len ≥3, low false-positive). `analyzeTyposFile()` adds line/col + suppression. CLI `--typos`. |
 
 **Consumers of core:**
