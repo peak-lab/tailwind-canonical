@@ -53,6 +53,27 @@ test('parseArgs - reporter value is not treated as a target', (_t: TestContext) 
   assert.strictEqual(f.reporter, 'sarif');
 });
 
+test('parseArgs - equals form reporter', (_t: TestContext) => {
+  const f = parseArgs(['--reporter=json', 'src']);
+  assert.strictEqual(f.reporter, 'json');
+  assert.deepEqual(f.targets, ['src']);
+  assert.strictEqual(f.error, undefined);
+});
+
+test('parseArgs - dir named json/sarif stays a target', (_t: TestContext) => {
+  const f = parseArgs(['--reporter', 'text', 'json', 'sarif']);
+  assert.strictEqual(f.reporter, 'text');
+  assert.deepEqual(f.targets, ['json', 'sarif']);
+});
+
+test('parseArgs - unknown reporter sets error', (_t: TestContext) => {
+  const space = parseArgs(['--reporter', 'xml', 'src']);
+  assert.ok(space.error);
+  assert.strictEqual(space.reporter, 'text');
+  const equals = parseArgs(['--reporter=xml', 'src']);
+  assert.ok(equals.error);
+});
+
 test('run - no targets prints usage and exits 1', async (_t: TestContext) => {
   const { sink, err } = captureSink();
   const result = await run([], freshDir(), sink);
@@ -111,6 +132,48 @@ test('run - json reporter writes structured findings', async (_t: TestContext) =
     const parsed = JSON.parse(raw.join(''));
     assert.strictEqual(parsed.total, 1);
     assert.strictEqual(parsed.findings[0].canonical, 'text-xs');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --reporter=json (equals form) writes JSON', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="text-[12px]" />', 'utf8');
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(['--reporter=json', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    const parsed = JSON.parse(raw.join(''));
+    assert.strictEqual(parsed.total, 1);
+    assert.strictEqual(parsed.findings[0].canonical, 'text-xs');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - dir literally named json is lintable', async (_t: TestContext) => {
+  const dir = freshDir();
+  const jsonDir = join(dir, 'json');
+  mkdirSync(jsonDir, { recursive: true });
+  writeFileSync(join(jsonDir, 'a.tsx'), '<div className="flex" />', 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run([jsonDir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(out.some((l) => l.includes('No non-canonical classes found')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - unknown reporter errors and exits 1', async (_t: TestContext) => {
+  const dir = freshDir();
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['--reporter', 'xml', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.match(err[0], /Unknown reporter: xml/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
