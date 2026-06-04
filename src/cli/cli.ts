@@ -3,7 +3,10 @@ import { dirname, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
 import type { ClassStringOpts } from '../core/class-strings.js';
 import { loadConfig } from '../core/config.js';
-import { analyzeConsistencyFiles } from '../core/consistency.js';
+import {
+  analyzeConsistencyFiles,
+  toConsistencyOptions,
+} from '../core/consistency.js';
 import { dedupeFile } from '../core/deduplicator.js';
 import { fixFile } from '../core/fixer.js';
 import { mergeFile } from '../core/merger.js';
@@ -187,10 +190,16 @@ function runAnalyze(
   sink: Sink,
 ): RunResult {
   let hadError = false;
-  const report = analyzeConsistencyFiles(files, config, {}, (file, err) => {
-    hadError = true;
-    sink.error(`${file}: ${errMsg(err)}`);
-  });
+  const options = toConsistencyOptions(config);
+  const report = analyzeConsistencyFiles(
+    files,
+    config,
+    options,
+    (file, err) => {
+      hadError = true;
+      sink.error(`${file}: ${errMsg(err)}`);
+    },
+  );
   const issueCount =
     report.colorVariants.length +
     report.scaleInconsistencies.length +

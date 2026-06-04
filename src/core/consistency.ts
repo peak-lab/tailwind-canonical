@@ -303,6 +303,13 @@ export function collectClasses(
   return classes;
 }
 
+export function toConsistencyOptions(config: Config = {}): ConsistencyOptions {
+  return {
+    extraColorFamilies: config.extraColorFamilies,
+    extraScaleProperties: config.extraScaleProperties,
+  };
+}
+
 export function analyzeConsistencyFiles(
   filePaths: string[],
   config: Config = {},

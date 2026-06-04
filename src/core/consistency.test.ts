@@ -10,6 +10,7 @@ import {
   collectClasses,
   type FileClasses,
   type ScaleInconsistency,
+  toConsistencyOptions,
 } from './consistency.js';
 
 function colorGroup(
@@ -167,6 +168,45 @@ test('color variants - extraColorFamilies groups custom colors', (_t: TestContex
   const group = colorGroup(report, 'text', 'brand');
   assert.ok(group);
   assert.strictEqual(group.variants.length, 2);
+});
+
+test('toConsistencyOptions - maps config consistency fields', (_t: TestContext) => {
+  assert.deepEqual(toConsistencyOptions(), {
+    extraColorFamilies: undefined,
+    extraScaleProperties: undefined,
+  });
+  assert.deepEqual(
+    toConsistencyOptions({
+      extraColorFamilies: { brand: 'brand' },
+      extraScaleProperties: ['scroll-p'],
+    }),
+    {
+      extraColorFamilies: { brand: 'brand' },
+      extraScaleProperties: ['scroll-p'],
+    },
+  );
+});
+
+test('analyzeConsistencyFiles - config-derived options reach detectors', (_t: TestContext) => {
+  const dir = join(tmpdir(), `twc-cons-${process.pid}-${Date.now()}`);
+  mkdirSync(dir, { recursive: true });
+  const a = join(dir, 'a.tsx');
+  const b = join(dir, 'b.tsx');
+  writeFileSync(a, '<div className="text-brand-100" />', 'utf8');
+  writeFileSync(b, '<div className="text-brand-200" />', 'utf8');
+  try {
+    const config = { extraColorFamilies: { brand: 'brand' } };
+    const report = analyzeConsistencyFiles(
+      [a, b],
+      config,
+      toConsistencyOptions(config),
+    );
+    const group = colorGroup(report, 'text', 'brand');
+    assert.ok(group);
+    assert.strictEqual(group.variants.length, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('scale inconsistency - extraScaleProperties extends detection', (_t: TestContext) => {
