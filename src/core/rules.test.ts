@@ -563,4 +563,12 @@ test('suggestCanonical - opacity values', async (t: TestContext) => {
       isCustomToken: false,
     });
   });
+
+  await t.test('opacity-[50] returns null (>1 is not a fraction)', () => {
+    assert.strictEqual(suggestCanonical('opacity-[50]'), null);
+  });
+
+  await t.test('opacity-[100] returns null (>1 clamps, not 100%)', () => {
+    assert.strictEqual(suggestCanonical('opacity-[100]'), null);
+  });
 });
