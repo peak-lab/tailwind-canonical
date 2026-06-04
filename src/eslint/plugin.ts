@@ -18,6 +18,12 @@ const noArbitraryCanonical = {
   meta: {
     type: 'suggestion' as const,
     fixable: 'code' as const,
+    // Schema accepts the full tailwind-canonical Config so a single shared
+    // config object can be passed as rule options without schema errors (#42).
+    // Honored by this rule (via suggestCanonical): customTextTokens,
+    // customSpacingTokens, ignorePatterns.
+    // Accepted but ignored here (CLI-only): functionNames, attributeNames,
+    // sortOrder.
     schema: [
       {
         type: 'object',
