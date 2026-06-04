@@ -145,6 +145,10 @@ const FAMILIES: BoxFamily[] = [
     regex: /^(inset-x|inset-y|inset|top|bottom|left|right)-(.+)$/,
   },
   {
+    // gap has no per-side utilities (no gap-t/gap-l). It reuses the generic
+    // BoxFamily machinery purely to collapse the two axes gap-x + gap-y → gap.
+    // The t/b/l/r slots map onto the axes (t/b → gap-y, l/r → gap-x) only so
+    // the shared SIDE_MAP/collapse logic resolves; they are never emitted.
     kind: 'gap',
     full: 'gap',
     x: 'gap-x',
@@ -389,7 +393,7 @@ function pushCollapsed(
   collapsed: string,
   classes: string[],
 ): void {
-  const original = classes.filter((c, i) => classes.indexOf(c) === i).join(' ');
+  const original = [...new Set(classes)].join(' ');
   result.push(
     ...(collapsed === original ? original.split(' ') : collapsed.split(' ')),
   );

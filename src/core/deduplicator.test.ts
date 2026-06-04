@@ -231,6 +231,17 @@ test('deduplicateClasses - gap shorthand', async (t: TestContext) => {
   await t.test('gap-4 gap-4 → gap-4 (exact dup)', () => {
     assert.strictEqual(deduplicateClasses('gap-4 gap-4'), 'gap-4');
   });
+
+  await t.test('different axes stay split (gap-x-4 gap-y-8)', () => {
+    assert.strictEqual(
+      deduplicateClasses('gap-x-4 gap-y-8'),
+      'gap-y-8 gap-x-4',
+    );
+  });
+
+  await t.test('collapses duplicates with no box family (Set dedupe)', () => {
+    assert.strictEqual(deduplicateClasses('flex flex p-4 p-4'), 'flex p-4');
+  });
 });
 
 test('deduplicateClasses - scroll-p shorthand', async (t: TestContext) => {
