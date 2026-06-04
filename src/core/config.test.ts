@@ -39,8 +39,38 @@ test('validateConfig - accepts a full valid config', (_t: TestContext) => {
     functionNames: ['cn', 'clsx'],
     attributeNames: ['className', 'class'],
     sortOrder: ['display', 'spacing', 'colors'],
+    extraColorFamilies: { brand: 'brand' },
+    extraScaleProperties: ['scroll-p'],
   };
   assert.deepEqual(validateConfig(cfg), cfg);
+});
+
+test('validateConfig - extraColorFamilies must be a string record', (_t: TestContext) => {
+  assert.throws(
+    () => validateConfig({ extraColorFamilies: [] }),
+    /must be an object/,
+  );
+  assert.throws(
+    () => validateConfig({ extraColorFamilies: { brand: 5 } }),
+    /must be a string/,
+  );
+  assert.deepEqual(validateConfig({ extraColorFamilies: { brand: 'brand' } }), {
+    extraColorFamilies: { brand: 'brand' },
+  });
+});
+
+test('validateConfig - extraScaleProperties must be a string[]', (_t: TestContext) => {
+  assert.throws(
+    () => validateConfig({ extraScaleProperties: [1] }),
+    /must be an array of strings/,
+  );
+  assert.throws(
+    () => validateConfig({ extraScaleProperties: 'scroll-p' }),
+    /must be an array of strings/,
+  );
+  assert.deepEqual(validateConfig({ extraScaleProperties: ['scroll-p'] }), {
+    extraScaleProperties: ['scroll-p'],
+  });
 });
 
 test('validateConfig - customTextTokens shape', (_t: TestContext) => {

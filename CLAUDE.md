@@ -52,10 +52,12 @@ export default {
   customSpacingTokens: { 14: '3.5' }, // px → spacing scale additions
   ignorePatterns: [/^text-/], // classes matching any pattern are never suggested
   sortOrder: ['display', 'spacing', 'colors'], // custom --sort category order
+  extraColorFamilies: { brand: 'brand' }, // color → hue family for --analyze grouping
+  extraScaleProperties: ['scroll-p'],     // extra scale prefixes for --analyze
 }
 ```
 
-`customTextTokens` merges with the built-in `TEXT_SIZE_MAP` in `rules.ts`. `customSpacingTokens` supplements the default ÷4 spacing logic. `sortOrder` is a `SortCategory[]`; omitted categories and unknown classes sort last. `ignorePatterns` is honored inside `suggestCanonical` (so CLI, analyzer, and the ESLint plugin all skip matching classes); lastIndex is reset so `/g` patterns stay deterministic.
+`customTextTokens` merges with the built-in `TEXT_SIZE_MAP` in `rules.ts`. `customSpacingTokens` supplements the default ÷4 spacing logic. `sortOrder` is a `SortCategory[]`; omitted categories and unknown classes sort last. `ignorePatterns` is honored inside `suggestCanonical` (so CLI, analyzer, and the ESLint plugin all skip matching classes); lastIndex is reset so `/g` patterns stay deterministic. `extraColorFamilies`/`extraScaleProperties` feed `--analyze` via `toConsistencyOptions(config)` — they extend the built-in `consistency.ts` detection lexicons.
 
 ## Key invariants
 

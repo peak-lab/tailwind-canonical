@@ -129,6 +129,8 @@ export type Config = {
   functionNames?: string[];
   attributeNames?: string[];
   sortOrder?: SortCategory[];
+  extraColorFamilies?: Record<string, string>;
+  extraScaleProperties?: string[];
 };
 
 function remToPx(rem: number): number {

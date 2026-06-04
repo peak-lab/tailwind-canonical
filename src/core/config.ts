@@ -13,6 +13,8 @@ const KNOWN_KEYS = [
   'functionNames',
   'attributeNames',
   'sortOrder',
+  'extraColorFamilies',
+  'extraScaleProperties',
 ] as const;
 
 const KNOWN_KEY_SET = new Set<string>(KNOWN_KEYS);
@@ -41,6 +43,15 @@ function assertStringArray(value: unknown, key: string): void {
 function assertRegExpArray(value: unknown, key: string): void {
   if (!Array.isArray(value) || value.some((v) => !(v instanceof RegExp))) {
     fail(`${key} must be an array of RegExp`);
+  }
+}
+
+function assertStringRecord(value: unknown, key: string): void {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    fail(`${key} must be an object mapping strings to strings`);
+  }
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v !== 'string') fail(`${key}[${k}] must be a string`);
   }
 }
 
@@ -80,6 +91,10 @@ export function validateConfig(input: unknown): Config {
   if ('attributeNames' in cfg)
     assertStringArray(cfg.attributeNames, 'attributeNames');
   if ('sortOrder' in cfg) assertSortOrder(cfg.sortOrder);
+  if ('extraColorFamilies' in cfg)
+    assertStringRecord(cfg.extraColorFamilies, 'extraColorFamilies');
+  if ('extraScaleProperties' in cfg)
+    assertStringArray(cfg.extraScaleProperties, 'extraScaleProperties');
 
   return cfg as Config;
 }
