@@ -121,6 +121,24 @@ test('scale inconsistency - arbitrary z-index values', (_t: TestContext) => {
   assert.strictEqual(z.values.length, 3);
 });
 
+test('scale inconsistency - keyword values are not scale drift', (_t: TestContext) => {
+  const input: FileClasses[] = [
+    { file: 'a.tsx', classes: ['mt-4'] },
+    { file: 'b.tsx', classes: ['mt-auto'] },
+  ];
+  const report = analyzeConsistency(input, { minScaleOccurrences: 2 });
+  assert.strictEqual(scaleOf(report, 'mt'), undefined);
+});
+
+test('scale inconsistency - arbitrary values still compared', (_t: TestContext) => {
+  const input: FileClasses[] = [
+    { file: 'a.tsx', classes: ['z-[100]'] },
+    { file: 'b.tsx', classes: ['z-[50]'] },
+  ];
+  const report = analyzeConsistency(input, { minScaleOccurrences: 2 });
+  assert.ok(scaleOf(report, 'z'));
+});
+
 test('scale inconsistency - below threshold not reported', (_t: TestContext) => {
   const input: FileClasses[] = [
     { file: 'a.tsx', classes: ['gap-2'] },
