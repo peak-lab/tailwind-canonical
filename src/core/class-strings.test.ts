@@ -162,7 +162,7 @@ test('fixFile with functionNames', async (t: TestContext) => {
   });
 
   await t.test(
-    'preserves ${} interpolation when fixing (tokenization parity)',
+    'preserves interpolation when fixing (tokenization parity)',
     async () => {
       const D = '$';
       const file = join(tmpdir(), `fn-fix-interp-${Date.now()}.tsx`);
