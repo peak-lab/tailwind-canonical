@@ -175,6 +175,29 @@ test('no-arbitrary-canonical rule', async (t) => {
     };
     assert.doesNotThrow(() => noArbitraryCanonical.create(ctx as never));
   });
+
+  await t.test(
+    'honors ignorePatterns and no-ops CLI-only keys from a shared config',
+    () => {
+      const reports: unknown[] = [];
+      const ctx = {
+        options: [
+          {
+            functionNames: ['cn'],
+            attributeNames: ['class'],
+            sortOrder: ['display'],
+            ignorePatterns: [/^text-/],
+          },
+        ] as [object],
+        report: (d: unknown) => reports.push(d),
+      };
+      const rule = noArbitraryCanonical.create(ctx as never);
+      (rule.Literal as (n: unknown) => void)(literal('text-[12px] h-[64px]'));
+      assert.strictEqual(reports.length, 1);
+      assert.ok(JSON.stringify(reports[0]).includes('h-16'));
+      assert.ok(!JSON.stringify(reports[0]).includes('text-xs'));
+    },
+  );
 });
 
 test('no-conflicting-classes rule', async (t) => {

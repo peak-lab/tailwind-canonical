@@ -295,6 +295,26 @@ export default [
 ]
 ```
 
+### Rule options
+
+`no-arbitrary-canonical` accepts the full tailwind-canonical `Config` object as
+its rule options, so the same shared config can be reused for both the CLI and
+ESLint without schema errors:
+
+```js
+'tailwind-canonical/no-arbitrary-canonical': [
+  'warn',
+  { customTextTokens: { 11: '2xs' }, ignorePatterns: [/^font-/] },
+],
+```
+
+The rule **honors**: `customTextTokens`, `customSpacingTokens`, `ignorePatterns`
+(all applied via `suggestCanonical`).
+
+It **accepts but ignores**: `functionNames`, `attributeNames`, `sortOrder`.
+These are CLI-only options, allowed in the schema purely so a single shared
+config object can be passed without errors.
+
 ## Pre-commit hook (Husky / Lefthook)
 
 ```yaml
