@@ -243,7 +243,10 @@ export function suggestCanonical(
   const opacityMatch = cls.match(/^opacity-\[(\d+(?:\.\d+)?)\]$/);
   if (opacityMatch) {
     const raw = parseFloat(opacityMatch[1]);
-    const value = raw <= 1 ? Math.round(raw * 100) : Math.round(raw);
+    // CSS opacity is a 0..1 fraction; a bare value > 1 clamps to 1 and is not
+    // equivalent to opacity-<N> (a percentage), so leave it untouched.
+    if (raw > 1) return null;
+    const value = Math.round(raw * 100);
     if (!OPACITY_SCALE.has(value)) return null;
     return {
       original: cls,
