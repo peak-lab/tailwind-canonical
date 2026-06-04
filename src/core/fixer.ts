@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { replaceClassStrings } from './class-strings.js';
+import { replaceClassStrings, SINGLE_CLASS_REGEX } from './class-strings.js';
 import { type Config, suggestCanonical } from './rules.js';
 import { makeLineSuppressor } from './suppressions.js';
 
@@ -8,7 +8,7 @@ export function fixFile(filePath: string, config: Config = {}): number {
   let count = 0;
 
   const transform = (raw: string) =>
-    raw.replace(/[^\s]+/g, (cls: string) => {
+    raw.replace(SINGLE_CLASS_REGEX, (cls: string) => {
       const s = suggestCanonical(cls, config);
       if (s) {
         count++;
