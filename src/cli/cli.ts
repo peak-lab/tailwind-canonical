@@ -44,6 +44,7 @@ type Flags = {
   typos: boolean;
   reporter: Reporter;
   targets: string[];
+  error?: string;
 };
 
 type FileCounts = {
@@ -67,21 +68,40 @@ function timestamp(): string {
   return `[${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}]`;
 }
 
+const REPORTERS: readonly Reporter[] = ['text', 'json', 'sarif'];
+
+function isReporter(value: string): value is Reporter {
+  return (REPORTERS as readonly string[]).includes(value);
+}
+
 export function parseArgs(argv: string[]): Flags {
-  const reporterIdx = argv.indexOf('--reporter');
-  const reporterValue = argv[reporterIdx + 1];
-  const reporter: Reporter =
-    reporterIdx !== -1 &&
-    (reporterValue === 'json' || reporterValue === 'sarif')
-      ? reporterValue
-      : 'text';
+  let reporter: Reporter = 'text';
+  let reporterRaw: string | undefined;
+  const consumed = new Set<number>();
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--reporter') {
+      consumed.add(i);
+      reporterRaw = argv[i + 1];
+      if (i + 1 < argv.length) consumed.add(i + 1);
+    } else if (arg.startsWith('--reporter=')) {
+      consumed.add(i);
+      reporterRaw = arg.slice('--reporter='.length);
+    }
+  }
+
+  let error: string | undefined;
+  if (reporterRaw !== undefined) {
+    if (isReporter(reporterRaw)) {
+      reporter = reporterRaw;
+    } else {
+      error = `Unknown reporter: ${reporterRaw} (expected ${REPORTERS.join('|')})`;
+    }
+  }
 
   const targets = argv.filter(
-    (a, i) =>
-      !a.startsWith('--') &&
-      argv[i - 1] !== '--reporter' &&
-      a !== 'json' &&
-      a !== 'sarif',
+    (a, i) => !(a.startsWith('--') || consumed.has(i)),
   );
 
   return {
@@ -94,6 +114,7 @@ export function parseArgs(argv: string[]): Flags {
     typos: argv.includes('--typos'),
     reporter,
     targets,
+    error,
   };
 }
 
@@ -285,6 +306,11 @@ export async function run(
   sink: Sink = defaultSink,
 ): Promise<RunResult> {
   const flags = parseArgs(argv);
+
+  if (flags.error) {
+    sink.error(flags.error);
+    return { exitCode: 1 };
+  }
 
   if (flags.targets.length === 0) {
     sink.error(USAGE);
