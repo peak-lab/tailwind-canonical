@@ -339,22 +339,26 @@ function collapseResponsiveCascade(classes: string[]): string[] {
     idx: number;
   }
 
+  // Last-wins keyword utilities (display, position) share a single CSS property
+  // even though their class names differ, so they must group by property — not
+  // by class name — or an intermediate override (e.g. md:block between flex and
+  // lg:flex) is missed and the restoring class is wrongly dropped.
+  const propertyKey = (base: string): string => {
+    if (DISPLAY_GROUP.has(base)) return 'display';
+    if (POSITION_GROUP.has(base)) return 'position';
+    const dash = base.lastIndexOf('-');
+    return dash === -1 ? base : base.slice(0, dash);
+  };
+
   const entries: Entry[] = classes.map((cls, idx) => {
     for (const bp of RESPONSIVE_BREAKPOINTS) {
       const prefix = `${bp}:`;
       if (cls.startsWith(prefix) && !cls.slice(prefix.length).includes(':')) {
         const base = cls.slice(prefix.length);
-        const dash = base.lastIndexOf('-');
-        return { bp, base, key: dash === -1 ? base : base.slice(0, dash), idx };
+        return { bp, base, key: propertyKey(base), idx };
       }
     }
-    const dash = cls.lastIndexOf('-');
-    return {
-      bp: '',
-      base: cls,
-      key: dash === -1 ? cls : cls.slice(0, dash),
-      idx,
-    };
+    return { bp: '', base: cls, key: propertyKey(cls), idx };
   });
 
   const groups = new Map<string, Entry[]>();
