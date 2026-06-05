@@ -44,7 +44,7 @@ Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 
 **Consumers of core:**
 
-- `src/cli/cli.ts` — `run(argv, cwd, sink?)`, the testable CLI core (no `process.exit`; injectable `sink`). Flags: `--fix`, `--dedup`, `--merge`, `--sort`, `--analyze`, `--typos`, `--watch`, `--reporter`. Pipeline order: fix → dedup → merge → sort. `--analyze` and `--typos` are standalone modes that short-circuit the per-file pipeline. `src/cli/index.ts` is a thin bin wrapper that calls `run` and `process.exit`s. Config loaded via `loadConfig` (validated). Exits 1 on findings in check mode.
+- `src/cli/cli.ts` — `run(argv, cwd, sink?)`, the testable CLI core (no `process.exit`; injectable `sink`). Flags: `--fix`, `--dedup`, `--merge`, `--sort`, `--analyze`, `--typos`, `--watch`, `--reporter`. Pipeline order: fix → dedup → merge → sort. `--analyze` and `--typos` are standalone modes that short-circuit the per-file pipeline. **Mode precedence is fixed: `--analyze` > `--typos` > transform/check.** Exactly one mode runs; flags belonging to a lower-priority mode are ignored, not errored. `--watch` is only honored in transform/check mode (it has no effect with `--analyze` or `--typos`). `flagWarnings(flags)` (pure, order-stable, in `cli.ts`) computes a `Warning: …` line for every ignored flag; `run` emits them via `sink.error` before dispatching — warnings never alter the active mode or exit code. `src/cli/index.ts` is a thin bin wrapper that calls `run` and `process.exit`s. Config loaded via `loadConfig` (validated). Exits 1 on findings in check mode.
 - `src/eslint/plugin.ts` — ESLint flat-config plugin. Rules: `no-arbitrary-canonical` (wraps `suggestCanonical`) and `no-conflicting-classes` (wraps `twMerge` via `createRequire`).
 
 ## Config

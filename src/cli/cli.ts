@@ -178,6 +178,45 @@ export function parseArgs(argv: string[]): Flags {
   };
 }
 
+const TRANSFORM_FLAGS: ReadonlyArray<{ key: keyof Flags; flag: string }> = [
+  { key: 'fix', flag: '--fix' },
+  { key: 'dedup', flag: '--dedup' },
+  { key: 'merge', flag: '--merge' },
+  { key: 'sort', flag: '--sort' },
+];
+
+/**
+ * Modes are mutually exclusive with a fixed precedence: analyze > typos >
+ * transform/check. `--watch` is only honored in transform/check mode. This
+ * computes warnings for every flag that the active mode will ignore. Pure and
+ * order-stable so it can be unit-tested via the injectable sink.
+ */
+export function flagWarnings(flags: Flags): string[] {
+  const warnings: string[] = [];
+
+  if (flags.analyze) {
+    for (const { key, flag } of TRANSFORM_FLAGS) {
+      if (flags[key])
+        warnings.push(`${flag} ignored: --analyze takes priority`);
+    }
+    if (flags.typos) warnings.push('--typos ignored: --analyze takes priority');
+    if (flags.watch)
+      warnings.push('--watch ignored: not supported with --analyze');
+    return warnings;
+  }
+
+  if (flags.typos) {
+    for (const { key, flag } of TRANSFORM_FLAGS) {
+      if (flags[key]) warnings.push(`${flag} ignored: --typos takes priority`);
+    }
+    if (flags.watch)
+      warnings.push('--watch ignored: not supported with --typos');
+    return warnings;
+  }
+
+  return warnings;
+}
+
 function runTypos(
   files: string[],
   config: Config,
@@ -395,6 +434,10 @@ export async function run(
       `tailwind-canonical: ${err instanceof Error ? err.message : String(err)}`,
     );
     return { exitCode: 1 };
+  }
+
+  for (const warning of flagWarnings(flags)) {
+    sink.error(`Warning: ${warning}`);
   }
 
   const files = await resolveTargets(flags.targets);
