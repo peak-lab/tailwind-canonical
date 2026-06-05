@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import {
-  type ClassStringOpts,
   extractClassStrings,
   SINGLE_CLASS_REGEX,
+  toClassStringOpts,
 } from './class-strings.js';
 import { type Config, type Suggestion, suggestCanonical } from './rules.js';
-import { getSuppressedLines } from './suppressions.js';
+import { getSuppressedLines, indexToLineCol } from './suppressions.js';
 
 export type Finding = {
   file: string;
@@ -14,24 +14,11 @@ export type Finding = {
   suggestion: Suggestion;
 };
 
-function indexToLineCol(
-  content: string,
-  index: number,
-): { line: number; col: number } {
-  const before = content.slice(0, index);
-  const line = before.split('\n').length;
-  const col = index - before.lastIndexOf('\n');
-  return { line, col };
-}
-
 export function analyzeFile(filePath: string, config: Config = {}): Finding[] {
   const content = readFileSync(filePath, 'utf8');
   const findings: Finding[] = [];
   const suppressed = getSuppressedLines(content);
-  const opts: ClassStringOpts = {
-    functionNames: config.functionNames,
-    attributeNames: config.attributeNames,
-  };
+  const opts = toClassStringOpts(config);
 
   for (const { value, start } of extractClassStrings(content, opts)) {
     for (const clsMatch of value.matchAll(SINGLE_CLASS_REGEX)) {

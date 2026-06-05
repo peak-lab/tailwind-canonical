@@ -3,10 +3,11 @@ import {
   type ClassStringOpts,
   extractClassStrings,
   SINGLE_CLASS_REGEX,
+  toClassStringOpts,
 } from './class-strings.js';
 import {
   COLOR_FAMILIES,
-  COLOR_PROPERTIES,
+  parseColorClass,
   SCALE_PROPERTIES,
   TAILWIND_COLORS,
 } from './lexicon.js';
@@ -63,17 +64,10 @@ function parseColor(
   families: Record<string, string>,
   knownColors: Set<string>,
 ): { property: string; family: string; token: string } | null {
-  const base = stripVariants(cls);
-  const dash = base.indexOf('-');
-  if (dash === -1) return null;
-  const property = base.slice(0, dash);
-  if (!COLOR_PROPERTIES.has(property)) return null;
-  const rest = base.slice(dash + 1);
-  const restDash = rest.indexOf('-');
-  if (restDash === -1) return null;
-  const color = rest.slice(0, restDash);
-  const shade = rest.slice(restDash + 1);
-  if (!/^\d+$/.test(shade)) return null;
+  const parsed = parseColorClass(cls);
+  if (!parsed) return null;
+  const { property, color, shade } = parsed;
+  if (shade === '') return null;
   // A known color without an explicit family forms its own family, so colors
   // newly added to the palette are grouped rather than silently dropped.
   const family = families[color] ?? (knownColors.has(color) ? color : null);
@@ -316,10 +310,7 @@ export function analyzeConsistencyFiles(
   options: ConsistencyOptions = {},
   onError?: (file: string, err: unknown) => void,
 ): ConsistencyReport {
-  const opts: ClassStringOpts = {
-    functionNames: config.functionNames,
-    attributeNames: config.attributeNames,
-  };
+  const opts = toClassStringOpts(config);
   const input: FileClasses[] = [];
   for (const file of filePaths) {
     try {

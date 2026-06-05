@@ -1,5 +1,9 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { replaceClassStrings, SINGLE_CLASS_REGEX } from './class-strings.js';
+import {
+  replaceClassStrings,
+  SINGLE_CLASS_REGEX,
+  toClassStringOpts,
+} from './class-strings.js';
 import { type Config, suggestCanonical } from './rules.js';
 import { makeLineSuppressor } from './suppressions.js';
 
@@ -18,8 +22,7 @@ export function fixFile(filePath: string, config: Config = {}): number {
     });
 
   const { result } = replaceClassStrings(content, transform, {
-    functionNames: config.functionNames,
-    attributeNames: config.attributeNames,
+    ...toClassStringOpts(config),
     isSuppressed: makeLineSuppressor(content),
   });
 

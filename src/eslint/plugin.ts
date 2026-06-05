@@ -5,6 +5,27 @@ import { type Config, suggestCanonical } from '../core/rules.js';
 
 const _require = createRequire(import.meta.url);
 
+/**
+ * Builds the shared ESLint visitor that runs `checkLiteral` on every string
+ * `Literal` and on each quasi of a `TemplateLiteral`. Both rules walk class
+ * strings identically, so the traversal lives here once.
+ */
+function makeStringRuleVisitor(
+  checkLiteral: (node: Literal) => void,
+): Rule.RuleListener {
+  return {
+    Literal: checkLiteral,
+    TemplateLiteral(node: TemplateLiteral) {
+      for (const quasi of node.quasis) {
+        checkLiteral({
+          type: 'Literal',
+          value: quasi.value.raw,
+        } as Literal);
+      }
+    },
+  };
+}
+
 const noArbitraryCanonical: Rule.RuleModule = {
   meta: {
     type: 'suggestion' as const,
@@ -58,17 +79,7 @@ const noArbitraryCanonical: Rule.RuleModule = {
       }
     }
 
-    return {
-      Literal: checkLiteral,
-      TemplateLiteral(node: TemplateLiteral) {
-        for (const quasi of node.quasis) {
-          checkLiteral({
-            type: 'Literal',
-            value: quasi.value.raw,
-          } as Literal);
-        }
-      },
-    };
+    return makeStringRuleVisitor(checkLiteral);
   },
 };
 
@@ -110,17 +121,7 @@ const noConflictingClasses: Rule.RuleModule = {
       });
     }
 
-    return {
-      Literal: checkLiteral,
-      TemplateLiteral(node: TemplateLiteral) {
-        for (const quasi of node.quasis) {
-          checkLiteral({
-            type: 'Literal',
-            value: quasi.value.raw,
-          } as Literal);
-        }
-      },
-    };
+    return makeStringRuleVisitor(checkLiteral);
   },
 };
 
