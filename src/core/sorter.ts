@@ -1,4 +1,3 @@
-import { readFileSync, writeFileSync } from 'node:fs';
 import { type ClassStringOpts, replaceClassStrings } from './class-strings.js';
 import { makeLineSuppressor } from './suppressions.js';
 
@@ -203,17 +202,15 @@ export function sortClasses(
     .join(' ');
 }
 
-export function sortFile(
-  filePath: string,
+export function sortContent(
+  content: string,
   opts: ClassStringOpts = {},
   sortOrder?: SortCategory[],
-): number {
-  const content = readFileSync(filePath, 'utf8');
-  const { result, count } = replaceClassStrings(
-    content,
-    (s) => sortClasses(s, sortOrder),
-    { ...opts, isSuppressed: makeLineSuppressor(content) },
-  );
-  if (count > 0) writeFileSync(filePath, result, 'utf8');
-  return count;
+): { result: string; count: number } {
+  return replaceClassStrings(content, (s) => sortClasses(s, sortOrder), {
+    ...opts,
+    isSuppressed: makeLineSuppressor(content),
+  });
 }
+
+export { sortFile } from '../io/sorter.js';

@@ -1,9 +1,7 @@
-import { readFileSync } from 'node:fs';
 import {
   type ClassStringOpts,
   extractClassStrings,
   SINGLE_CLASS_REGEX,
-  toClassStringOpts,
 } from './class-strings.js';
 import {
   COLOR_FAMILIES,
@@ -304,23 +302,4 @@ export function toConsistencyOptions(config: Config = {}): ConsistencyOptions {
   };
 }
 
-export function analyzeConsistencyFiles(
-  filePaths: string[],
-  config: Config = {},
-  options: ConsistencyOptions = {},
-  onError?: (file: string, err: unknown) => void,
-): ConsistencyReport {
-  const opts = toClassStringOpts(config);
-  const input: FileClasses[] = [];
-  for (const file of filePaths) {
-    try {
-      input.push({
-        file,
-        classes: collectClasses(readFileSync(file, 'utf8'), opts),
-      });
-    } catch (err) {
-      if (onError) onError(file, err);
-    }
-  }
-  return analyzeConsistency(input, options);
-}
+export { analyzeConsistencyFiles } from '../io/consistency.js';

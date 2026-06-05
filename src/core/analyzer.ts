@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import {
   extractClassStrings,
   SINGLE_CLASS_REGEX,
@@ -14,8 +13,11 @@ export type Finding = {
   suggestion: Suggestion;
 };
 
-export function analyzeFile(filePath: string, config: Config = {}): Finding[] {
-  const content = readFileSync(filePath, 'utf8');
+export function analyzeContent(
+  filePath: string,
+  content: string,
+  config: Config = {},
+): Finding[] {
   const findings: Finding[] = [];
   const suppressed = getSuppressedLines(content);
   const opts = toClassStringOpts(config);
@@ -33,3 +35,5 @@ export function analyzeFile(filePath: string, config: Config = {}): Finding[] {
 
   return findings;
 }
+
+export { analyzeFile } from '../io/analyzer.js';

@@ -1,4 +1,3 @@
-import { readFileSync, writeFileSync } from 'node:fs';
 import { type ClassStringOpts, replaceClassStrings } from './class-strings.js';
 import { makeLineSuppressor } from './suppressions.js';
 
@@ -480,15 +479,14 @@ export function deduplicateClasses(classStr: string): string {
   return result.join(' ');
 }
 
-export function dedupeFile(
-  filePath: string,
+export function dedupeContent(
+  content: string,
   opts: ClassStringOpts = {},
-): number {
-  const content = readFileSync(filePath, 'utf8');
-  const { result, count } = replaceClassStrings(content, deduplicateClasses, {
+): { result: string; count: number } {
+  return replaceClassStrings(content, deduplicateClasses, {
     ...opts,
     isSuppressed: makeLineSuppressor(content),
   });
-  if (count > 0) writeFileSync(filePath, result, 'utf8');
-  return count;
 }
+
+export { dedupeFile } from '../io/deduplicator.js';

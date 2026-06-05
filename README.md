@@ -343,7 +343,7 @@ npx tailwind-canonical --fix --dedup --sort ./src ./app
 pnpm knip
 ```
 
-Detects unused exports, files, and dependencies. Config in `knip.json`.
+Detects unused exports, files, and dependencies. Config in `knip.json`. Enforced in CI and in the `pre-push` git hook.
 
 ## Programmatic API
 

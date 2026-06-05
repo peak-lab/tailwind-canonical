@@ -1,10 +1,7 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import type { Config } from './rules.js';
 import { DEFAULT_SORT_ORDER } from './sorter.js';
 
-const CONFIG_FILENAME = 'tailwind-canonical.config.js';
+export const CONFIG_FILENAME = 'tailwind-canonical.config.js';
 
 const KNOWN_KEYS = [
   'customTextTokens',
@@ -99,9 +96,4 @@ export function validateConfig(input: unknown): Config {
   return cfg as Config;
 }
 
-export async function loadConfig(cwd: string): Promise<Config> {
-  const path = join(cwd, CONFIG_FILENAME);
-  if (!existsSync(path)) return {};
-  const mod = await import(pathToFileURL(path).href);
-  return validateConfig(mod.default);
-}
+export { loadConfig } from '../io/config.js';

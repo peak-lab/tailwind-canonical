@@ -21,21 +21,26 @@ node --import=tsx/esm --test src/core/rules.test.ts
 This is a zero-dependency TypeScript library published as ESM (`"type": "module"`).
 Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 
-**Core pipeline** (`src/core/`):
+**Layering:** `src/core/` is pure (no `node:fs`); all filesystem I/O lives in `src/io/`. Each `*File` wrapper (`analyzeFile`, `fixFile`, `dedupeFile`, `sortFile`, `mergeFile`, `analyzeTyposFile`, `analyzeConsistencyFiles`, `loadConfig`, `scanFiles`, `resolveTargets`) lives in `src/io/`; the matching `core/*.ts` re-exports it (`export { fixFile } from '../io/fixer.js'`) so existing import paths and the public barrel stay stable. The pure content-level functions live in core: `analyzeContent`, `fixContent`, `dedupeContent`, `sortContent`, `mergeContent`, `analyzeTyposContent`, `validateConfig`, `globToRegex`/`isGlob`. The only `node:fs` use left in core's tree is `cli.ts`'s `fsWatch` (the watcher) and test fixtures.
+
+**Core pipeline** (`src/core/` — pure logic, no `node:fs`):
 
 | File | Role |
 |---|---|
 | `rules.ts` | Pure function `suggestCanonical(cls, config)` — the single source of truth for all replacement logic. No I/O. |
-| `analyzer.ts` | Reads a file, extracts `className` attribute values via regex, maps each class through `suggestCanonical`, returns `Finding[]` with line/col. |
-| `fixer.ts` | Reads a file, applies all `suggestCanonical` replacements in-place, writes back. |
-| `deduplicator.ts` | `deduplicateClasses(str)` — pure expand-apply-collapse for p/m/border-width/inset box families. Display/position last-wins. `dedupeFile()` applies it. |
-| `sorter.ts` | `sortClasses(str)` — stable sort by category (layout→position→display→flex/grid→sizing→border→spacing→typography→colors→effects→…→variants). `sortFile()` applies it. |
-| `merger.ts` | `mergeFile()` — async; dynamically imports `tailwind-merge` (optional peer dep). |
-| `scanner.ts` | Recursive directory walker — returns matching file paths. Ignores `node_modules`, `dist`, etc. |
-| `consistency.ts` | `analyzeConsistency(fileClasses[], options?)` — pure cross-file detectors: color-variant grouping (by property + hue family), scale inconsistency (spacing/gap/z), repeated class combinations. Lexicons come from `lexicon.ts`; a known color without an explicit family forms its own family (new palette colors aren't dropped). `options.extraColorFamilies`/`extraScaleProperties` extend detection. Combinations key on the whole class set (no k-subset mining). |
+| `analyzer.ts` | `analyzeContent(file, content, config)` — extracts `className` values via regex, maps each class through `suggestCanonical`, returns `Finding[]` with line/col. Re-exports `analyzeFile` from `io/`. |
+| `fixer.ts` | `fixContent(content, config)` — applies all `suggestCanonical` replacements, returns `{result,count}`. Re-exports `fixFile` from `io/`. |
+| `deduplicator.ts` | `deduplicateClasses(str)` — pure expand-apply-collapse for p/m/border-width/inset box families. Display/position last-wins. `dedupeContent()` wraps it; re-exports `dedupeFile` from `io/`. |
+| `sorter.ts` | `sortClasses(str)` — stable sort by category (layout→position→display→flex/grid→sizing→border→spacing→typography→colors→effects→…→variants). `sortContent()` wraps it; re-exports `sortFile` from `io/`. |
+| `merger.ts` | `mergeContent(content, twMerge, opts)` — pure. Re-exports `mergeFile` from `io/` (async; dynamically imports `tailwind-merge`, an optional peer dep). |
+| `scanner.ts` | Pure glob helpers `globToRegex`/`isGlob` + `DEFAULT_EXTENSIONS`/`DEFAULT_IGNORE` + `ScanOptions`. Re-exports `scanFiles`/`resolveTargets` from `io/`. |
+| `consistency.ts` | `analyzeConsistency(fileClasses[], options?)` — pure cross-file detectors: color-variant grouping (by property + hue family), scale inconsistency (spacing/gap/z), repeated class combinations. `collectClasses`/`toConsistencyOptions` are pure. Re-exports `analyzeConsistencyFiles` from `io/`. Lexicons come from `lexicon.ts`; a known color without an explicit family forms its own family. `options.extraColorFamilies`/`extraScaleProperties` extend detection. |
+| `config.ts` | `validateConfig(input)` — pure validation. Re-exports `loadConfig` from `io/`. `CONFIG_FILENAME` is shared with `io/config.ts`. |
 | `suppressions.ts` | `getSuppressedLines(content)` — 1-based line set from `tailwind-canonical-disable-next-line` / `disable`…`enable` pragma comments (substring match). `makeLineSuppressor()` + `lineAt()` feed the `isSuppressed` predicate. |
-| `lexicon.ts` | Shared Tailwind vocab: `TAILWIND_COLORS`, `COLOR_PROPERTIES`, `COLOR_SHADES`, `COLOR_FAMILIES`, `SCALE_PROPERTIES`. Consumed by both `typos.ts` and `consistency.ts`. |
-| `typos.ts` | `detectTypo(cls)` — flags color-name typos via Levenshtein-1 against `TAILWIND_COLORS` (candidate len ≥3, low false-positive). `analyzeTyposFile()` adds line/col + suppression. CLI `--typos`. |
+| `lexicon.ts` | Shared Tailwind vocab: `TAILWIND_COLORS`, `COLOR_PROPERTIES`, `COLOR_FAMILIES`, `SCALE_PROPERTIES`. Consumed by both `typos.ts` and `consistency.ts`. |
+| `typos.ts` | `detectTypo(cls)` — flags color-name typos via Levenshtein-1 against `TAILWIND_COLORS` (candidate len ≥3, low false-positive). `analyzeTyposContent()` adds line/col + suppression. Re-exports `analyzeTyposFile` from `io/`. CLI `--typos`. |
+
+**I/O layer** (`src/io/` — all `node:fs` reads/writes): `analyzer.ts`, `fixer.ts`, `deduplicator.ts`, `sorter.ts`, `merger.ts`, `typos.ts`, `consistency.ts`, `config.ts`, `scanner.ts`. Each reads the file, delegates to the matching pure `core` function, and (for transforms) writes back when `count > 0`. `core/*.ts` re-export these so consumers and tests keep importing from `core/`.
 
 **Consumers of core:**
 
@@ -69,3 +74,5 @@ export default {
 - `merger.ts` uses dynamic `import('tailwind-merge')` — it is async; the ESLint rule uses synchronous `createRequire(import.meta.url)` instead.
 - Suppression is line-based (offset-shift-safe since replacements never change newline count). `replaceClassStrings` takes an `isSuppressed(line)` predicate; all four `*File` transformers pass `makeLineSuppressor(content)`, and `analyzeFile` filters findings by suppressed line. Pragmas are matched as substrings, checking `disable-next-line` before `disable`.
 - Tests use Node's built-in `node:test` runner with `tsx` for ESM TypeScript — no Jest, no Vitest.
+- `src/index.ts` is the **public API barrel** — it exports ONLY the stable surface (rule engine, `*File` appliers + their pure twins, consistency/typo analysis, config loading, file discovery). Internal plumbing (`extractClassStrings`, `replaceClassStrings`, `ClassStringOpts`, `validateConfig`, `collectClasses`, `analyzeConsistencyFiles`, `makeLineSuppressor`, `getSuppressedLines`) is NOT in the barrel — import it by direct module path. The `./eslint` entry (`plugin.ts`) does not consume the barrel; it imports `suggestCanonical` directly.
+- `pnpm knip` is enforced: it runs in CI (`.github/workflows/ci.yml`) and in the lefthook `pre-push` hook. Config in `knip.json` (`project: src/**/*.ts`; entries auto-detected from `package.json` exports/bin). Keep the tree free of unused exports — un-export (drop `export`) symbols only used internally rather than deleting them when they're still referenced.
