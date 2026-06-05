@@ -57,6 +57,63 @@ type FileCounts = {
   sorted: number;
 };
 
+type JsonTyposReport = {
+  total: number;
+  typos: TypoFinding[];
+};
+
+type JsonTransformReport = {
+  files: number;
+  changedFiles: string[];
+  fixed: number;
+  deduped: number;
+  merged: number;
+  sorted: number;
+};
+
+type JsonFinding = {
+  file: string;
+  line: number;
+  col: number;
+  original: string;
+  canonical: string;
+  isCustomToken: boolean;
+};
+
+type JsonFindingsReport = {
+  files: number;
+  total: number;
+  findings: JsonFinding[];
+};
+
+type SarifReport = {
+  $schema: string;
+  version: string;
+  runs: Array<{
+    tool: {
+      driver: {
+        name: string;
+        informationUri: string;
+        rules: Array<{
+          id: string;
+          name: string;
+          shortDescription: { text: string };
+        }>;
+      };
+    };
+    results: Array<{
+      ruleId: string;
+      message: { text: string };
+      locations: Array<{
+        physicalLocation: {
+          artifactLocation: { uri: string };
+          region: { startLine: number; startColumn: number };
+        };
+      }>;
+    }>;
+  }>;
+};
+
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -139,9 +196,11 @@ function runTypos(
   }
 
   if (reporter === 'json') {
-    sink.write(
-      `${JSON.stringify({ total: findings.length, typos: findings }, null, 2)}\n`,
-    );
+    const report: JsonTyposReport = {
+      total: findings.length,
+      typos: findings,
+    };
+    sink.write(`${JSON.stringify(report, null, 2)}\n`);
     return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
   }
 
@@ -408,20 +467,15 @@ export async function run(
 
   if (transforming) {
     if (flags.reporter === 'json') {
-      sink.write(
-        `${JSON.stringify(
-          {
-            files: files.length,
-            changedFiles,
-            fixed: totals.fixed,
-            deduped: totals.deduped,
-            merged: totals.merged,
-            sorted: totals.sorted,
-          },
-          null,
-          2,
-        )}\n`,
-      );
+      const report: JsonTransformReport = {
+        files: files.length,
+        changedFiles,
+        fixed: totals.fixed,
+        deduped: totals.deduped,
+        merged: totals.merged,
+        sorted: totals.sorted,
+      };
+      sink.write(`${JSON.stringify(report, null, 2)}\n`);
       return { exitCode: hadError ? 1 : 0 };
     }
     const parts: string[] = [];
@@ -439,29 +493,24 @@ export async function run(
   const totalFindings = allFindings.length;
 
   if (flags.reporter === 'json') {
-    sink.write(
-      `${JSON.stringify(
-        {
-          files: files.length,
-          total: totalFindings,
-          findings: allFindings.map((f) => ({
-            file: f.file,
-            line: f.line,
-            col: f.col,
-            original: f.suggestion.original,
-            canonical: f.suggestion.canonical,
-            isCustomToken: f.suggestion.isCustomToken,
-          })),
-        },
-        null,
-        2,
-      )}\n`,
-    );
+    const report: JsonFindingsReport = {
+      files: files.length,
+      total: totalFindings,
+      findings: allFindings.map((f) => ({
+        file: f.file,
+        line: f.line,
+        col: f.col,
+        original: f.suggestion.original,
+        canonical: f.suggestion.canonical,
+        isCustomToken: f.suggestion.isCustomToken,
+      })),
+    };
+    sink.write(`${JSON.stringify(report, null, 2)}\n`);
     return { exitCode: totalFindings > 0 || hadError ? 1 : 0 };
   }
 
   if (flags.reporter === 'sarif') {
-    const sarifOutput = {
+    const sarifOutput: SarifReport = {
       $schema: SARIF_SCHEMA,
       version: '2.1.0',
       runs: [
