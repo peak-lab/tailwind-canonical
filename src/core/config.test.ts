@@ -141,6 +141,20 @@ test('loadConfig - reads and validates a real config file', async (_t: TestConte
   }
 });
 
+test('loadConfig - rejects when the config file has a syntax error', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.js'),
+    'export default { sortOrder: [',
+    'utf8',
+  );
+  try {
+    await assert.rejects(loadConfig(dir));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('loadConfig - surfaces validation errors from a present file', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(

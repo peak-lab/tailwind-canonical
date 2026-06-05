@@ -249,6 +249,79 @@ test('no-conflicting-classes rule', async (t) => {
   });
 });
 
+function templateLiteral(...raws: string[]) {
+  return {
+    type: 'TemplateLiteral' as const,
+    quasis: raws.map((raw) => ({
+      type: 'TemplateElement' as const,
+      value: { raw, cooked: raw },
+      tail: false,
+    })),
+    expressions: [],
+  };
+}
+
+test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
+  await t.test('reports arbitrary classes inside a template literal', () => {
+    const reports: unknown[] = [];
+    const ctx = {
+      options: [{}] as [object],
+      report: (d: unknown) => reports.push(d),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    (rule.TemplateLiteral as (n: unknown) => void)(
+      templateLiteral('text-[12px] flex'),
+    );
+    assert.strictEqual(reports.length, 1);
+    assert.ok(JSON.stringify(reports[0]).includes('text-xs'));
+  });
+
+  await t.test('walks every quasi of a multi-part template', () => {
+    const reports: unknown[] = [];
+    const ctx = {
+      options: [{}] as [object],
+      report: (d: unknown) => reports.push(d),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    (rule.TemplateLiteral as (n: unknown) => void)(
+      templateLiteral('text-[12px] ', ' h-[64px]'),
+    );
+    assert.strictEqual(reports.length, 2);
+  });
+});
+
+test('no-conflicting-classes - TemplateLiteral visitor', async (t) => {
+  await t.test('reports conflicts inside a template literal', () => {
+    const reports: unknown[] = [];
+    const rule = noConflictingClasses.create(makeContext(reports) as never);
+    (rule.TemplateLiteral as (n: unknown) => void)(
+      templateLiteral('bg-red-500 bg-blue-500'),
+    );
+    assert.strictEqual(reports.length, 1);
+    assert.ok(JSON.stringify(reports[0]).includes('bg-blue-500'));
+  });
+
+  await t.test('does not report a conflict-free template quasi', () => {
+    const reports: unknown[] = [];
+    const rule = noConflictingClasses.create(makeContext(reports) as never);
+    (rule.TemplateLiteral as (n: unknown) => void)(
+      templateLiteral('flex items-center'),
+    );
+    assert.strictEqual(reports.length, 0);
+  });
+});
+
+test('no-conflicting-classes - twMerge peer is wired (peerMissing branch is false when installed)', () => {
+  // tailwind-merge is installed in this repo, so create() resolves twMerge and
+  // does NOT set peerMissing. This locks in that the rule activates rather than
+  // silently no-opping. The peerMissing early-return only triggers when the
+  // optional peer dep is absent, which cannot be reproduced while it is installed.
+  const reports: unknown[] = [];
+  const rule = noConflictingClasses.create(makeContext(reports) as never);
+  (rule.Literal as (n: unknown) => void)(literal('p-2 p-4'));
+  assert.strictEqual(reports.length, 1);
+});
+
 test('plugin exports', async (t) => {
   await t.test('exposes both rules', () => {
     assert.ok('no-arbitrary-canonical' in plugin.rules);
