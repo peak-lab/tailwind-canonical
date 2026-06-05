@@ -9,6 +9,9 @@ pnpm build        # compile TypeScript → dist/
 pnpm dev          # watch mode
 pnpm test         # run all tests (tsx ESM runner, no build required)
 pnpm typecheck    # type-check without emitting
+pnpm lint         # biome check src/
+pnpm lint:fix     # biome check --write src/
+pnpm knip         # detect unused exports/files/deps (enforced in CI + pre-push)
 ```
 
 Run a single test file:
@@ -39,6 +42,7 @@ Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 | `suppressions.ts` | `getSuppressedLines(content)` — 1-based line set from `tailwind-canonical-disable-next-line` / `disable`…`enable` pragma comments (substring match). `makeLineSuppressor()` + `lineAt()` feed the `isSuppressed` predicate. |
 | `lexicon.ts` | Shared Tailwind vocab: `TAILWIND_COLORS`, `COLOR_PROPERTIES`, `COLOR_FAMILIES`, `SCALE_PROPERTIES`. Consumed by both `typos.ts` and `consistency.ts`. |
 | `typos.ts` | `detectTypo(cls)` — flags color-name typos via Levenshtein-1 against `TAILWIND_COLORS` (candidate len ≥3, low false-positive). `analyzeTyposContent()` adds line/col + suppression. Re-exports `analyzeTyposFile` from `io/`. CLI `--typos`. |
+| `class-strings.ts` | Shared tokenizer: `extractClassStrings`/`replaceClassStrings` (the `className`/attribute + `cn(...)`/`clsx(...)` scanner), `SINGLE_CLASS_REGEX`, `ClassStringOpts`, and `toClassStringOpts(config)`. Consumed by `analyzer.ts`, `fixer.ts`, `deduplicator.ts`, `sorter.ts`, `merger.ts`, `typos.ts`. Internal — not in the public barrel. |
 
 **I/O layer** (`src/io/` — all `node:fs` reads/writes): `analyzer.ts`, `fixer.ts`, `deduplicator.ts`, `sorter.ts`, `merger.ts`, `typos.ts`, `consistency.ts`, `config.ts`, `scanner.ts`. Each reads the file, delegates to the matching pure `core` function, and (for transforms) writes back when `count > 0`. `core/*.ts` re-export these so consumers and tests keep importing from `core/`.
 
