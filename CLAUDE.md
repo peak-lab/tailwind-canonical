@@ -41,7 +41,7 @@ Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 | `config.ts` | `validateConfig(input)` — pure validation. Re-exports `loadConfig` from `io/`. `CONFIG_FILENAME` is shared with `io/config.ts`. |
 | `suppressions.ts` | `getSuppressedLines(content)` — 1-based line set from `tailwind-canonical-disable-next-line` / `disable`…`enable` pragma comments (substring match). `makeLineSuppressor()` + `lineAt()` feed the `isSuppressed` predicate. |
 | `lexicon.ts` | Shared Tailwind vocab: `TAILWIND_COLORS`, `COLOR_PROPERTIES`, `COLOR_FAMILIES`, `SCALE_PROPERTIES`. Consumed by both `typos.ts` and `consistency.ts`. |
-| `typos.ts` | `detectTypo(cls)` — flags color-name typos via Levenshtein-1 against `TAILWIND_COLORS` (candidate len ≥3, low false-positive). `analyzeTyposContent()` adds line/col + suppression. Re-exports `analyzeTyposFile` from `io/`. CLI `--typos`. |
+| `typos.ts` | `detectTypo(cls, extraColors?)` — flags color-name typos via Levenshtein-1 against `TAILWIND_COLORS` (candidate len ≥3, low false-positive). `extraColors` (from `config.extraColors`) are treated as known colors and short-circuit before suggestion. `analyzeTyposContent()` adds line/col + suppression. Re-exports `analyzeTyposFile` from `io/`. CLI `--typos`. |
 | `class-strings.ts` | Shared tokenizer: `extractClassStrings`/`replaceClassStrings` (the `className`/attribute + `cn(...)`/`clsx(...)` scanner), `SINGLE_CLASS_REGEX`, `ClassStringOpts`, and `toClassStringOpts(config)`. Consumed by `analyzer.ts`, `fixer.ts`, `deduplicator.ts`, `sorter.ts`, `merger.ts`, `typos.ts`. Internal — not in the public barrel. |
 
 **I/O layer** (`src/io/` — all `node:fs` reads/writes): `analyzer.ts`, `fixer.ts`, `deduplicator.ts`, `sorter.ts`, `merger.ts`, `typos.ts`, `consistency.ts`, `config.ts`, `scanner.ts`. Each reads the file, delegates to the matching pure `core` function, and (for transforms) writes back when `count > 0`. `core/*.ts` re-export these so consumers and tests keep importing from `core/`.
@@ -63,10 +63,11 @@ export default {
   sortOrder: ['display', 'spacing', 'colors'], // custom --sort category order
   extraColorFamilies: { brand: 'brand' }, // color → hue family for --analyze grouping
   extraScaleProperties: ['scroll-p'],     // extra scale prefixes for --analyze
+  extraColors: ['brand', 'accent'],       // custom palette colors --typos treats as known
 }
 ```
 
-`customTextTokens` merges with the built-in `TEXT_SIZE_MAP` in `rules.ts`. `customSpacingTokens` supplements the default ÷4 spacing logic. `sortOrder` is a `SortCategory[]`; omitted categories and unknown classes sort last. `ignorePatterns` is honored inside `suggestCanonical` (so CLI, analyzer, and the ESLint plugin all skip matching classes); lastIndex is reset so `/g` patterns stay deterministic. `extraColorFamilies`/`extraScaleProperties` feed `--analyze` via `toConsistencyOptions(config)` — they extend the built-in `consistency.ts` detection lexicons.
+`customTextTokens` merges with the built-in `TEXT_SIZE_MAP` in `rules.ts`. `customSpacingTokens` supplements the default ÷4 spacing logic. `sortOrder` is a `SortCategory[]`; omitted categories and unknown classes sort last. `ignorePatterns` is honored inside `suggestCanonical` (so CLI, analyzer, and the ESLint plugin all skip matching classes); lastIndex is reset so `/g` patterns stay deterministic. `extraColorFamilies`/`extraScaleProperties` feed `--analyze` via `toConsistencyOptions(config)` — they extend the built-in `consistency.ts` detection lexicons. `extraColors` feeds `--typos`: `detectTypo` treats these custom palette names as known colors, so they are never flagged and never used as suggestion targets (prevents false positives like `bg-brand-500` or a custom color that is Levenshtein-1 from a Tailwind color).
 
 ## Key invariants
 
