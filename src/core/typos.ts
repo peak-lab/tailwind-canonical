@@ -41,7 +41,10 @@ function nearestColor(name: string): string | null {
   return null;
 }
 
-export function detectTypo(cls: string): { suggestion: string } | null {
+export function detectTypo(
+  cls: string,
+  extraColors: ReadonlySet<string> = new Set(),
+): { suggestion: string } | null {
   const colon = cls.lastIndexOf(':');
   const prefix = colon === -1 ? '' : cls.slice(0, colon + 1);
 
@@ -49,7 +52,7 @@ export function detectTypo(cls: string): { suggestion: string } | null {
   if (!parsed) return null;
   const { property, color, shade } = parsed;
 
-  if (TAILWIND_COLORS.has(color)) return null;
+  if (TAILWIND_COLORS.has(color) || extraColors.has(color)) return null;
 
   const near = nearestColor(color);
   if (!near) return null;
@@ -66,10 +69,11 @@ export function analyzeTyposContent(
   const findings: TypoFinding[] = [];
   const suppressed = getSuppressedLines(content);
   const opts = toClassStringOpts(config);
+  const extraColors = new Set(config.extraColors ?? []);
 
   for (const { value, start } of extractClassStrings(content, opts)) {
     for (const clsMatch of value.matchAll(SINGLE_CLASS_REGEX)) {
-      const typo = detectTypo(clsMatch[0]);
+      const typo = detectTypo(clsMatch[0], extraColors);
       if (!typo) continue;
       const index = start + (clsMatch.index ?? 0);
       const { line, col } = indexToLineCol(content, index);

@@ -131,6 +131,7 @@ export type Config = {
   sortOrder?: SortCategory[];
   extraColorFamilies?: Record<string, string>;
   extraScaleProperties?: string[];
+  extraColors?: string[];
 };
 
 function remToPx(rem: number): number {

@@ -12,6 +12,7 @@ const KNOWN_KEYS = [
   'sortOrder',
   'extraColorFamilies',
   'extraScaleProperties',
+  'extraColors',
 ] as const;
 
 const KNOWN_KEY_SET = new Set<string>(KNOWN_KEYS);
@@ -92,6 +93,7 @@ export function validateConfig(input: unknown): Config {
     assertStringRecord(cfg.extraColorFamilies, 'extraColorFamilies');
   if ('extraScaleProperties' in cfg)
     assertStringArray(cfg.extraScaleProperties, 'extraScaleProperties');
+  if ('extraColors' in cfg) assertStringArray(cfg.extraColors, 'extraColors');
 
   return cfg as Config;
 }
