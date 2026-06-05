@@ -27,7 +27,7 @@ export type Sink = {
   write: (s: string) => void;
 };
 
-export const defaultSink: Sink = {
+const defaultSink: Sink = {
   log: (s) => console.log(s),
   error: (s) => console.error(s),
   write: (s) => process.stdout.write(s),

@@ -21,7 +21,7 @@ const DEFAULT_ATTR_NAMES = ['className'];
 
 export const SINGLE_CLASS_REGEX = /[^\s"'`{}]+/g;
 
-export function escapeRegex(s: string): string {
+function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 

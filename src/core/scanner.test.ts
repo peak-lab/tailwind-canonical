@@ -115,6 +115,29 @@ test('resolveTargets - glob patterns', async (t) => {
     assert.ok(!names.includes('src/App.tsx'));
   });
 
+  await t.test('glob mode honors custom options.extensions', async () => {
+    writeFileSync(join(root, 'src/notes.md'), '# notes');
+    const files = await resolveTargets([`${root}/src/**/*`], {
+      extensions: ['.md'],
+    });
+    const names = files.map(rel);
+    assert.ok(names.includes('src/notes.md'));
+    assert.ok(names.includes('src/utils/README.md'));
+    assert.ok(!names.includes('src/App.tsx'));
+    assert.ok(!names.includes('src/index.ts'));
+  });
+
+  await t.test('glob mode honors custom options.ignore', async () => {
+    const files = await resolveTargets([`${root}/src/**/*.tsx`], {
+      ignore: ['components'],
+    });
+    const names = files.map(rel);
+    assert.ok(names.includes('src/App.tsx'));
+    assert.ok(names.includes('src/pages/Home.tsx'));
+    assert.ok(!names.includes('src/components/Button.tsx'));
+    assert.ok(!names.includes('src/components/Input.tsx'));
+  });
+
   rmSync(root, { recursive: true, force: true });
 });
 

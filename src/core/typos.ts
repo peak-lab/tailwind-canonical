@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import {
   extractClassStrings,
   SINGLE_CLASS_REGEX,
@@ -59,11 +58,11 @@ export function detectTypo(cls: string): { suggestion: string } | null {
   return { suggestion };
 }
 
-export function analyzeTyposFile(
+export function analyzeTyposContent(
   filePath: string,
+  content: string,
   config: Config = {},
 ): TypoFinding[] {
-  const content = readFileSync(filePath, 'utf8');
   const findings: TypoFinding[] = [];
   const suppressed = getSuppressedLines(content);
   const opts = toClassStringOpts(config);
@@ -87,3 +86,5 @@ export function analyzeTyposFile(
 
   return findings;
 }
+
+export { analyzeTyposFile } from '../io/typos.js';

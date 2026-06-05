@@ -28,7 +28,7 @@ export const TAILWIND_COLORS = new Set([
   'inherit',
 ]);
 
-export const COLOR_PROPERTIES = new Set([
+const COLOR_PROPERTIES = new Set([
   'text',
   'bg',
   'border',
@@ -46,20 +46,6 @@ export const COLOR_PROPERTIES = new Set([
   'caret',
   'shadow',
   'placeholder',
-]);
-
-export const COLOR_SHADES = new Set([
-  '50',
-  '100',
-  '200',
-  '300',
-  '400',
-  '500',
-  '600',
-  '700',
-  '800',
-  '900',
-  '950',
 ]);
 
 export const COLOR_FAMILIES: Record<string, string> = {
