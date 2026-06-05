@@ -9,7 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type TestContext, test } from 'node:test';
-import { parseArgs, run, type Sink } from './cli.js';
+import { flagWarnings, parseArgs, run, type Sink } from './cli.js';
 
 let counter = 0;
 function freshDir(): string {
@@ -317,6 +317,71 @@ test('run - one unreadable file does not abort the batch', async (t: TestContext
     assert.ok(out.some((l) => l.includes('good.tsx')));
   } finally {
     chmodSync(bad, 0o644);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('flagWarnings - analyze suppresses transform/typos/watch flags', (_t: TestContext) => {
+  const w = flagWarnings(
+    parseArgs(['--fix', '--typos', '--watch', '--analyze', 'src']),
+  );
+  assert.deepEqual(w, [
+    '--fix ignored: --analyze takes priority',
+    '--typos ignored: --analyze takes priority',
+    '--watch ignored: not supported with --analyze',
+  ]);
+});
+
+test('flagWarnings - typos suppresses transform flags and watch', (_t: TestContext) => {
+  const w = flagWarnings(parseArgs(['--sort', '--watch', '--typos', 'src']));
+  assert.deepEqual(w, [
+    '--sort ignored: --typos takes priority',
+    '--watch ignored: not supported with --typos',
+  ]);
+});
+
+test('flagWarnings - transform/check mode emits no warnings (watch honored)', (_t: TestContext) => {
+  assert.deepEqual(flagWarnings(parseArgs(['--fix', '--watch', 'src'])), []);
+  assert.deepEqual(flagWarnings(parseArgs(['src'])), []);
+});
+
+test('run - --fix --analyze warns about ignored --fix but stays in analyze mode', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="text-red-500" />', 'utf8');
+  writeFileSync(
+    join(dir, 'b.tsx'),
+    '<div className="text-rose-600" />',
+    'utf8',
+  );
+  const fixed = join(dir, 'a.tsx');
+  const { sink, err, out } = captureSink();
+  try {
+    const result = await run(['--fix', '--analyze', dir], dir, sink);
+    assert.ok(
+      err.some((l) => l.includes('--fix ignored: --analyze takes priority')),
+    );
+    assert.ok(readFileSync(fixed, 'utf8').includes('text-red-500'));
+    assert.ok(out.some((l) => l.includes('color variants')));
+    assert.strictEqual(result.exitCode, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --typos --watch warns about ignored watch and does not watch', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="text-gry-500" />', 'utf8');
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['--typos', '--watch', dir], dir, sink);
+    assert.ok(
+      err.some((l) =>
+        l.includes('--watch ignored: not supported with --typos'),
+      ),
+    );
+    assert.strictEqual(result.watching, undefined);
+    assert.strictEqual(result.exitCode, 1);
+  } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
