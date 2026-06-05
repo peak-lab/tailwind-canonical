@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs';
 import {
-  type ClassStringOpts,
   extractClassStrings,
   SINGLE_CLASS_REGEX,
+  toClassStringOpts,
 } from './class-strings.js';
-import { COLOR_PROPERTIES, TAILWIND_COLORS } from './lexicon.js';
+import { parseColorClass, TAILWIND_COLORS } from './lexicon.js';
 import type { Config } from './rules.js';
-import { getSuppressedLines, lineAt } from './suppressions.js';
+import { getSuppressedLines, indexToLineCol } from './suppressions.js';
 
 export type TypoFinding = {
   file: string;
@@ -45,23 +45,10 @@ function nearestColor(name: string): string | null {
 export function detectTypo(cls: string): { suggestion: string } | null {
   const colon = cls.lastIndexOf(':');
   const prefix = colon === -1 ? '' : cls.slice(0, colon + 1);
-  const base = colon === -1 ? cls : cls.slice(colon + 1);
 
-  if (base.includes('[')) return null;
-
-  const dash = base.indexOf('-');
-  if (dash === -1) return null;
-  const property = base.slice(0, dash);
-  if (!COLOR_PROPERTIES.has(property)) return null;
-
-  const rest = base.slice(dash + 1);
-  const lastDash = rest.lastIndexOf('-');
-  let color = rest;
-  let shade = '';
-  if (lastDash !== -1 && /^\d+$/.test(rest.slice(lastDash + 1))) {
-    color = rest.slice(0, lastDash);
-    shade = rest.slice(lastDash + 1);
-  }
+  const parsed = parseColorClass(cls);
+  if (!parsed) return null;
+  const { property, color, shade } = parsed;
 
   if (TAILWIND_COLORS.has(color)) return null;
 
@@ -79,19 +66,15 @@ export function analyzeTyposFile(
   const content = readFileSync(filePath, 'utf8');
   const findings: TypoFinding[] = [];
   const suppressed = getSuppressedLines(content);
-  const opts: ClassStringOpts = {
-    functionNames: config.functionNames,
-    attributeNames: config.attributeNames,
-  };
+  const opts = toClassStringOpts(config);
 
   for (const { value, start } of extractClassStrings(content, opts)) {
     for (const clsMatch of value.matchAll(SINGLE_CLASS_REGEX)) {
       const typo = detectTypo(clsMatch[0]);
       if (!typo) continue;
       const index = start + (clsMatch.index ?? 0);
-      const line = lineAt(content, index);
+      const { line, col } = indexToLineCol(content, index);
       if (suppressed.has(line)) continue;
-      const col = index - content.lastIndexOf('\n', index - 1);
       findings.push({
         file: filePath,
         line,

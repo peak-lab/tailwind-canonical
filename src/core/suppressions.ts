@@ -30,11 +30,22 @@ export function makeLineSuppressor(content: string): (line: number) => boolean {
   return (line) => suppressed.has(line);
 }
 
-export function lineAt(content: string, offset: number): number {
+export function indexToLineCol(
+  content: string,
+  index: number,
+): { line: number; col: number } {
   let line = 1;
-  const end = Math.min(offset, content.length);
+  let lastNewline = -1;
+  const end = Math.min(index, content.length);
   for (let i = 0; i < end; i++) {
-    if (content[i] === '\n') line++;
+    if (content[i] === '\n') {
+      line++;
+      lastNewline = i;
+    }
   }
-  return line;
+  return { line, col: index - lastNewline };
+}
+
+export function lineAt(content: string, offset: number): number {
+  return indexToLineCol(content, offset).line;
 }

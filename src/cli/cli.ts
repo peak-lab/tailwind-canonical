@@ -1,7 +1,7 @@
 import { watch as fsWatch } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
-import type { ClassStringOpts } from '../core/class-strings.js';
+import { toClassStringOpts } from '../core/class-strings.js';
 import { loadConfig } from '../core/config.js';
 import {
   analyzeConsistencyFiles,
@@ -215,13 +215,6 @@ function runTypos(
     sink.log(`\n✖ Found ${pluralize(findings.length, 'likely typo')}`);
   }
   return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
-}
-
-function toClassStringOpts(config: Config): ClassStringOpts {
-  return {
-    functionNames: config.functionNames,
-    attributeNames: config.attributeNames,
-  };
 }
 
 async function processFile(

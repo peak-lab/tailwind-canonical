@@ -6,6 +6,17 @@ export type ClassStringOpts = {
   isSuppressed?: (line: number) => boolean;
 };
 
+/** Builds the shared {functionNames, attributeNames} extraction options from a config. */
+export function toClassStringOpts(config: {
+  functionNames?: string[];
+  attributeNames?: string[];
+}): ClassStringOpts {
+  return {
+    functionNames: config.functionNames,
+    attributeNames: config.attributeNames,
+  };
+}
+
 const DEFAULT_ATTR_NAMES = ['className'];
 
 export const SINGLE_CLASS_REGEX = /[^\s"'`{}]+/g;
