@@ -245,7 +245,10 @@ left-2 right-2                  → inset-x-2
 | `h-[64px]` | `h-16` | Spacing scale ÷4 |
 | `w-[50%]` | `w-1/2` | Percentage fractions |
 | `opacity-[0.5]` | `opacity-50` | Opacity scale |
-| `text-[11px]` | `text-2xs` | Custom token |
+| `text-[11px]` | `text-2xs` | Built-in extra token |
+| `text-[8px]`–`text-[10px]` | `text-3xs` | Built-in extra token |
+
+`text-2xs` (11px) and `text-3xs` (8–10px) are part of the built-in text size map — they convert with no config. Override or extend the map via `customTextTokens`.
 
 Non-divisible values (`h-[22px]`, `px-[7px]`) are left untouched.
 
