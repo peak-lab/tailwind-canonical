@@ -386,6 +386,191 @@ test('run - --typos --watch warns about ignored watch and does not watch', async
   }
 });
 
+test('run - --fix --reporter json emits a transform summary', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(['--fix', '--reporter', 'json', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    const parsed = JSON.parse(raw.join(''));
+    assert.strictEqual(parsed.files, 1);
+    assert.strictEqual(parsed.fixed, 1);
+    assert.deepEqual(parsed.changedFiles, [file]);
+    assert.ok(readFileSync(file, 'utf8').includes('text-xs'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - combined --fix --dedup --merge --sort runs the full pipeline', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  // text-[12px]→text-xs (fix), duplicate p-2 (dedup), bg conflict (merge),
+  // out-of-order classes (sort).
+  writeFileSync(
+    file,
+    '<div className="text-[12px] p-2 p-2 bg-red-500 bg-blue-500 flex" />',
+    'utf8',
+  );
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(
+      ['--fix', '--dedup', '--merge', '--sort', dir],
+      dir,
+      sink,
+    );
+    assert.strictEqual(result.exitCode, 0);
+    const content = readFileSync(file, 'utf8');
+    assert.ok(content.includes('text-xs'), 'fix applied');
+    assert.ok(content.includes('bg-blue-500'), 'merge kept last bg');
+    assert.ok(!content.includes('bg-red-500'), 'merge dropped conflicting bg');
+    assert.ok(!/p-2\s+p-2/.test(content), 'dedup collapsed duplicate padding');
+    assert.ok(out.some((l) => l.includes('✓ Fixed')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - combined pipeline json reports per-transform counts', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(
+    file,
+    '<div className="text-[12px] bg-red-500 bg-blue-500" />',
+    'utf8',
+  );
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(
+      ['--fix', '--merge', '--reporter', 'json', dir],
+      dir,
+      sink,
+    );
+    assert.strictEqual(result.exitCode, 0);
+    const parsed = JSON.parse(raw.join(''));
+    assert.ok(parsed.fixed >= 1);
+    assert.ok(parsed.merged >= 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --merge precheck passes when tailwind-merge is installed', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="bg-red-500 bg-blue-500" />', 'utf8');
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['--merge', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(
+      !err.some((l) => l.includes('requires tailwind-merge')),
+      'precheck should not report the peer as missing',
+    );
+    assert.ok(readFileSync(file, 'utf8').includes('bg-blue-500'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --typos --reporter json emits findings array', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="text-gry-500" />', 'utf8');
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(['--typos', '--reporter', 'json', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    const parsed = JSON.parse(raw.join(''));
+    assert.strictEqual(parsed.total, 1);
+    assert.strictEqual(parsed.typos[0].original, 'text-gry-500');
+    assert.strictEqual(parsed.typos[0].suggestion, 'text-gray-500');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze text mode reports color variants and exits 1', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="text-red-500" />', 'utf8');
+  writeFileSync(
+    join(dir, 'b.tsx'),
+    '<div className="text-rose-600" />',
+    'utf8',
+  );
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('color variants')));
+    assert.ok(out.some((l) => l.includes('consistency issue')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze text mode reports scale inconsistencies', async (_t: TestContext) => {
+  const dir = freshDir();
+  // Same property (gap) with two different scale values; needs >=3 occurrences.
+  writeFileSync(join(dir, 'a.tsx'), '<div className="gap-2" />', 'utf8');
+  writeFileSync(join(dir, 'b.tsx'), '<div className="gap-3" />', 'utf8');
+  writeFileSync(join(dir, 'c.tsx'), '<div className="gap-2" />', 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('inconsistency')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze text mode reports repeated combinations', async (_t: TestContext) => {
+  const dir = freshDir();
+  const combo = '<div className="flex items-center justify-between p-4" />';
+  // Repeated combination needs to appear in >=3 files.
+  writeFileSync(join(dir, 'a.tsx'), combo, 'utf8');
+  writeFileSync(join(dir, 'b.tsx'), combo, 'utf8');
+  writeFileSync(join(dir, 'c.tsx'), combo, 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('Pattern:')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze text mode on clean files exits 0', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="flex" />', 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(out.some((l) => l.includes('No cross-file inconsistencies')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - sarif reporter on clean files emits empty results and exits 0', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="flex text-xs" />', 'utf8');
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(['--reporter', 'sarif', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    const sarif = JSON.parse(raw.join(''));
+    assert.strictEqual(sarif.version, '2.1.0');
+    assert.strictEqual(sarif.runs[0].results.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - surfaces invalid config and exits 1', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(join(dir, 'a.tsx'), '<div className="flex" />', 'utf8');
