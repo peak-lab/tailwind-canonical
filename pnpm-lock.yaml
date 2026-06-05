@@ -15,6 +15,12 @@ importers:
       '@biomejs/biome':
         specifier: ^2.4.16
         version: 2.4.16
+      '@types/eslint':
+        specifier: ^9.6.1
+        version: 9.6.1
+      '@types/estree':
+        specifier: ^1.0.9
+        version: 1.0.9
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.19
@@ -549,6 +555,9 @@ packages:
 
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
+
+  '@types/eslint@9.6.1':
+    resolution: {integrity: sha512-FXx2pKgId/WyYo2jXw63kk7/+TY7u7AziEJxJAnSFzHlqTAS3Ync6SvgYAN/k4/PQpnnVuzoMuVnByKK2qp0ag==}
 
   '@types/esrecurse@4.3.1':
     resolution: {integrity: sha512-xJBAbDifo5hpffDBuHl0Y8ywswbiAp/Wi7Y/GtAgSlZyIABppyurxVueOPE8LUQOxdlgi6Zqce7uoEpqNTeiUw==}
@@ -1250,6 +1259,11 @@ snapshots:
     dependencies:
       tslib: 2.8.1
     optional: true
+
+  '@types/eslint@9.6.1':
+    dependencies:
+      '@types/estree': 1.0.9
+      '@types/json-schema': 7.0.15
 
   '@types/esrecurse@4.3.1': {}
 

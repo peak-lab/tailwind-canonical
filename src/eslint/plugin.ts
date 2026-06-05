@@ -1,20 +1,11 @@
 import { createRequire } from 'node:module';
+import type { Rule } from 'eslint';
+import type { Literal, TemplateLiteral } from 'estree';
 import { type Config, suggestCanonical } from '../core/rules.js';
 
 const _require = createRequire(import.meta.url);
 
-type RuleContext = {
-  options: [Config?];
-  report: (descriptor: {
-    node: unknown;
-    message: string;
-    fix?: (fixer: {
-      replaceText: (node: unknown, text: string) => unknown;
-    }) => unknown;
-  }) => void;
-};
-
-const noArbitraryCanonical = {
+const noArbitraryCanonical: Rule.RuleModule = {
   meta: {
     type: 'suggestion' as const,
     fixable: 'code' as const,
@@ -43,14 +34,10 @@ const noArbitraryCanonical = {
         "Use canonical class '{{canonical}}' instead of '{{original}}'",
     },
   },
-  create(context: RuleContext) {
-    const config: Config = context.options[0] ?? {};
+  create(context: Rule.RuleContext): Rule.RuleListener {
+    const config: Config = (context.options[0] as Config | undefined) ?? {};
 
-    function checkLiteral(node: {
-      value: unknown;
-      raw?: string;
-      type: string;
-    }) {
+    function checkLiteral(node: Literal) {
       if (typeof node.value !== 'string') return;
       const value = node.value;
       const corrected = value.replace(
@@ -73,14 +60,12 @@ const noArbitraryCanonical = {
 
     return {
       Literal: checkLiteral,
-      TemplateLiteral(node: {
-        quasis: Array<{
-          value: { raw: string };
-          type: string;
-        }>;
-      }) {
+      TemplateLiteral(node: TemplateLiteral) {
         for (const quasi of node.quasis) {
-          checkLiteral({ value: quasi.value.raw, type: 'Literal' });
+          checkLiteral({
+            type: 'Literal',
+            value: quasi.value.raw,
+          } as Literal);
         }
       },
     };
@@ -89,7 +74,7 @@ const noArbitraryCanonical = {
 
 type TwMerge = (classes: string) => string;
 
-const noConflictingClasses = {
+const noConflictingClasses: Rule.RuleModule = {
   meta: {
     type: 'suggestion' as const,
     fixable: 'code' as const,
@@ -99,7 +84,7 @@ const noConflictingClasses = {
         "Conflicting Tailwind classes detected. Use '{{merged}}' instead.",
     },
   },
-  create(context: RuleContext & { options: [] }) {
+  create(context: Rule.RuleContext): Rule.RuleListener {
     let twMerge: TwMerge | null = null;
     let peerMissing = false;
 
@@ -110,11 +95,7 @@ const noConflictingClasses = {
       peerMissing = true;
     }
 
-    function checkLiteral(node: {
-      value: unknown;
-      raw?: string;
-      type: string;
-    }) {
+    function checkLiteral(node: Literal) {
       if (peerMissing || !twMerge) return;
       if (typeof node.value !== 'string') return;
       const merged = twMerge(node.value);
@@ -131,11 +112,12 @@ const noConflictingClasses = {
 
     return {
       Literal: checkLiteral,
-      TemplateLiteral(node: {
-        quasis: Array<{ value: { raw: string }; type: string }>;
-      }) {
+      TemplateLiteral(node: TemplateLiteral) {
         for (const quasi of node.quasis) {
-          checkLiteral({ value: quasi.value.raw, type: 'Literal' });
+          checkLiteral({
+            type: 'Literal',
+            value: quasi.value.raw,
+          } as Literal);
         }
       },
     };
