@@ -136,6 +136,9 @@ export type Config = {
   extraColorFamilies?: Record<string, string>;
   extraScaleProperties?: string[];
   extraColors?: string[];
+  minRareScalePropertyOccurrences?: number;
+  rareScaleMaxFiles?: number;
+  rareScaleMaxCount?: number;
 };
 
 function remToPx(rem: number): number | null {

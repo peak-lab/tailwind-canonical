@@ -1,4 +1,4 @@
-import { watch as fsWatch } from 'node:fs';
+import { watch as fsWatch, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
 import { toClassStringOpts } from '../core/class-strings.js';
@@ -116,6 +116,8 @@ type SarifReport = {
 
 type SarifRule = SarifReport['runs'][0]['tool']['driver']['rules'][0];
 type SarifResult = SarifReport['runs'][0]['results'][0];
+
+const KNOWN_CLASS_FUNCTIONS = ['cn', 'clsx', 'cva'] as const;
 
 function sarifDocument(
   rules: SarifRule[],
@@ -358,6 +360,36 @@ function totalOf(c: FileCounts): number {
   return c.fixed + c.deduped + c.merged + c.sorted;
 }
 
+function scaleClass(property: string, value: string): string {
+  return value.startsWith('-')
+    ? `-${property}-${value.slice(1)}`
+    : `${property}-${value}`;
+}
+
+function findUnconfiguredClassFunctions(
+  files: string[],
+  config: Config,
+): string[] {
+  const configured = new Set(config.functionNames ?? []);
+  const missing = KNOWN_CLASS_FUNCTIONS.filter((name) => !configured.has(name));
+  if (missing.length === 0) return [];
+
+  const found = new Set<string>();
+  const re = new RegExp(`\\b(${missing.join('|')})\\s*\\(`);
+  for (const file of files) {
+    let content: string;
+    try {
+      content = readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    const match = content.match(re);
+    if (match?.[1]) found.add(match[1]);
+  }
+
+  return [...found].sort();
+}
+
 function runAnalyze(
   files: string[],
   config: Config,
@@ -379,6 +411,15 @@ function runAnalyze(
     report.colorVariants.length +
     report.scaleInconsistencies.length +
     report.combinations.length;
+  const unconfiguredFunctions = findUnconfiguredClassFunctions(files, config);
+  if (unconfiguredFunctions.length > 0) {
+    const calls = unconfiguredFunctions
+      .map((name) => `${name}(...)`)
+      .join(', ');
+    sink.error(
+      `Warning: detected ${calls} calls but functionNames does not include them; --analyze may miss class strings.`,
+    );
+  }
 
   if (reporter === 'json') {
     sink.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -399,12 +440,23 @@ function runAnalyze(
       });
     }
     for (const scale of report.scaleInconsistencies) {
-      const values = scale.values.map((v) => v.value).join(' vs ');
+      const values = scale.values
+        .map((v) => scaleClass(scale.property, v.value))
+        .join(' vs ');
       const files = [...new Set(scale.values.flatMap((v) => v.files))];
       results.push({
         ruleId: 'scale-inconsistency',
         message: { text: `${scale.property} inconsistency: ${values}` },
         locations: fileLocations(files),
+      });
+    }
+    for (const rare of report.rareScaleValues) {
+      results.push({
+        ruleId: 'rare-scale-value',
+        message: {
+          text: `${rare.className} is rare for ${rare.property}: ${rare.count} occurrence(s) in ${rare.files.length} file(s), within ${rare.propertyCount} ${rare.property} uses`,
+        },
+        locations: fileLocations(rare.files),
       });
     }
     for (const combo of report.combinations) {
@@ -433,6 +485,13 @@ function runAnalyze(
           },
         },
         {
+          id: 'rare-scale-value',
+          name: 'RareScaleValue',
+          shortDescription: {
+            text: 'A scale value appears rarely within an otherwise common property',
+          },
+        },
+        {
           id: 'repeated-combination',
           name: 'RepeatedCombination',
           shortDescription: {
@@ -458,10 +517,15 @@ function runAnalyze(
     const values = scale.values
       .map(
         (v) =>
-          `${scale.property}-${v.value} (${pluralize(v.files.length, 'file')})`,
+          `${scaleClass(scale.property, v.value)} (${pluralize(v.files.length, 'file')})`,
       )
       .join(' vs ');
     sink.log(`  Warning: ${scale.property} inconsistency: ${values}`);
+  }
+  for (const rare of report.rareScaleValues) {
+    sink.log(
+      `  Rare: ${rare.className} appears ${pluralize(rare.count, 'time')} in ${pluralize(rare.files.length, 'file')} (${rare.propertyCount} ${rare.property} uses total)`,
+    );
   }
   for (const combo of report.combinations) {
     sink.log(

@@ -197,6 +197,7 @@ test('run - analyze mode reports cross-file inconsistencies', async (_t: TestCon
     assert.strictEqual(result.exitCode, 1);
     const parsed = JSON.parse(raw.join(''));
     assert.strictEqual(parsed.colorVariants.length, 1);
+    assert.ok(Array.isArray(parsed.rareScaleValues));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -521,6 +522,61 @@ test('run - --analyze text mode reports scale inconsistencies', async (_t: TestC
     const result = await run(['--analyze', dir], dir, sink);
     assert.strictEqual(result.exitCode, 1);
     assert.ok(out.some((l) => l.includes('inconsistency')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze text mode reports rare scale values with negative class formatting', async (_t: TestContext) => {
+  const dir = freshDir();
+  for (let i = 0; i < 12; i++) {
+    writeFileSync(
+      join(dir, `common-${i}.tsx`),
+      '<div className="mt-2" />',
+      'utf8',
+    );
+  }
+  writeFileSync(join(dir, 'rare.tsx'), '<div className="-mt-2" />', 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('Rare: -mt-2')));
+    assert.ok(out.some((l) => l.includes('-mt-2') && !l.includes('mt--2')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze warns when known class functions are not configured', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), 'cn("gap-2")', 'utf8');
+  writeFileSync(join(dir, 'b.tsx'), '<div className="gap-3" />', 'utf8');
+  writeFileSync(join(dir, 'c.tsx'), '<div className="gap-2" />', 'utf8');
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(err.some((l) => l.includes('functionNames')));
+    assert.ok(err.some((l) => l.includes('cn(...)')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze does not warn for configured class functions', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), 'cn("gap-2")', 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.js'),
+    'export default { functionNames: ["cn"] }',
+    'utf8',
+  );
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.deepEqual(err, []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

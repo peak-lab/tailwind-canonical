@@ -13,6 +13,9 @@ const KNOWN_KEYS = [
   'extraColorFamilies',
   'extraScaleProperties',
   'extraColors',
+  'minRareScalePropertyOccurrences',
+  'rareScaleMaxFiles',
+  'rareScaleMaxCount',
 ] as const;
 
 const KNOWN_KEY_SET = new Set<string>(KNOWN_KEYS);
@@ -50,6 +53,12 @@ function assertStringRecord(value: unknown, key: string): void {
   }
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
     if (typeof v !== 'string') fail(`${key}[${k}] must be a string`);
+  }
+}
+
+function assertPositiveInteger(value: unknown, key: string): void {
+  if (!Number.isInteger(value) || Number(value) < 1) {
+    fail(`${key} must be a positive integer`);
   }
 }
 
@@ -94,6 +103,15 @@ export function validateConfig(input: unknown): Config {
   if ('extraScaleProperties' in cfg)
     assertStringArray(cfg.extraScaleProperties, 'extraScaleProperties');
   if ('extraColors' in cfg) assertStringArray(cfg.extraColors, 'extraColors');
+  if ('minRareScalePropertyOccurrences' in cfg)
+    assertPositiveInteger(
+      cfg.minRareScalePropertyOccurrences,
+      'minRareScalePropertyOccurrences',
+    );
+  if ('rareScaleMaxFiles' in cfg)
+    assertPositiveInteger(cfg.rareScaleMaxFiles, 'rareScaleMaxFiles');
+  if ('rareScaleMaxCount' in cfg)
+    assertPositiveInteger(cfg.rareScaleMaxCount, 'rareScaleMaxCount');
 
   return cfg as Config;
 }

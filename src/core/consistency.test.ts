@@ -174,15 +174,24 @@ test('toConsistencyOptions - maps config consistency fields', (_t: TestContext) 
   assert.deepEqual(toConsistencyOptions(), {
     extraColorFamilies: undefined,
     extraScaleProperties: undefined,
+    minRareScalePropertyOccurrences: undefined,
+    rareScaleMaxFiles: undefined,
+    rareScaleMaxCount: undefined,
   });
   assert.deepEqual(
     toConsistencyOptions({
       extraColorFamilies: { brand: 'brand' },
       extraScaleProperties: ['scroll-p'],
+      minRareScalePropertyOccurrences: 20,
+      rareScaleMaxFiles: 1,
+      rareScaleMaxCount: 3,
     }),
     {
       extraColorFamilies: { brand: 'brand' },
       extraScaleProperties: ['scroll-p'],
+      minRareScalePropertyOccurrences: 20,
+      rareScaleMaxFiles: 1,
+      rareScaleMaxCount: 3,
     },
   );
 });
@@ -231,6 +240,43 @@ test('scale inconsistency - variants stripped from prefix', (_t: TestContext) =>
   assert.ok(px);
   assert.strictEqual(px.values[0].value, '4');
   assert.strictEqual(px.values[0].count, 2);
+});
+
+test('rare scale values - highlights low-frequency values in common properties', (_t: TestContext) => {
+  const input: FileClasses[] = Array.from({ length: 12 }, (_, i) => ({
+    file: `common-${i}.tsx`,
+    classes: ['gap-2'],
+  })).concat([
+    { file: 'rare.tsx', classes: ['gap-24'] },
+    { file: 'other.tsx', classes: ['gap-3'] },
+  ]);
+  const report = analyzeConsistency(input);
+  assert.deepEqual(
+    report.rareScaleValues.map((value) => value.className),
+    ['gap-24', 'gap-3'],
+  );
+  assert.strictEqual(report.rareScaleValues[0].propertyCount, 14);
+});
+
+test('rare scale values - ignores tiny properties by default', (_t: TestContext) => {
+  const input: FileClasses[] = [
+    { file: 'a.tsx', classes: ['my-1'] },
+    { file: 'b.tsx', classes: ['my-2'] },
+    { file: 'c.tsx', classes: ['my-1.5'] },
+  ];
+  const report = analyzeConsistency(input);
+  assert.strictEqual(report.scaleInconsistencies.length, 1);
+  assert.strictEqual(report.rareScaleValues.length, 0);
+});
+
+test('rare scale values - formats negative class names', (_t: TestContext) => {
+  const input: FileClasses[] = Array.from({ length: 12 }, (_, i) => ({
+    file: `common-${i}.tsx`,
+    classes: ['mt-2'],
+  })).concat([{ file: 'rare.tsx', classes: ['-mt-2'] }]);
+  const report = analyzeConsistency(input);
+  assert.strictEqual(report.rareScaleValues[0].value, '-2');
+  assert.strictEqual(report.rareScaleValues[0].className, '-mt-2');
 });
 
 test('combinations - recurring class strings across files', (_t: TestContext) => {

@@ -127,6 +127,7 @@ Detects semantic inconsistencies visible only at project scale — it never modi
 npx tailwind-canonical --analyze ./src
 # Warning: 3 red color variants used for text: text-red-500 (4), text-rose-500 (1), text-red-600 (2)
 # Warning: px inconsistency: px-4 (8 files) vs px-3 (2 files)
+# Rare: px-11 appears 3 times in 1 file (608 px uses total)
 # Warning: z inconsistency: z-[100] (3 files) vs z-[200] (1 file) vs z-[50] (2 files)
 ```
 
@@ -136,6 +137,7 @@ Three detectors:
 |---|---|
 | Color variants | Multiple shades/colors of the same hue family used for one property (`text`, `bg`, `border`, …) |
 | Scale inconsistency | Competing values for the same spacing / `gap` / `z` property across files |
+| Rare scale values | Low-frequency scale values inside otherwise common properties (`ml-13`, `gap-24`, `px-11`, …) |
 | Repeated patterns | Identical class combinations recurring across 3+ files |
 
 Pairs with `--reporter json` for machine-readable output. Exits `1` when any inconsistency is found.
@@ -159,6 +161,10 @@ npx tailwind-canonical --analyze --reporter json ./src
         { "value": "4", "count": 8, "files": ["src/Button.tsx"] },
         { "value": "3", "count": 2, "files": ["src/IconButton.tsx"] }
       ] }
+  ],
+  "rareScaleValues": [
+    { "property": "px", "value": "11", "className": "px-11",
+      "count": 3, "files": ["src/Dialog.tsx"], "propertyCount": 608 }
   ],
   "combinations": []
 }
@@ -269,6 +275,10 @@ export default {
   attributeNames: ['className', 'class', ':class', 'tw'],
   // Support utility function wrappers
   functionNames: ['cn', 'clsx', 'cva'],
+  // Tune --analyze rare-value reporting
+  minRareScalePropertyOccurrences: 10,
+  rareScaleMaxFiles: 2,
+  rareScaleMaxCount: 3,
   // Never suggest replacements for classes matching these patterns
   ignorePatterns: [/^font-/, /-\[var\(/],
 }
@@ -279,6 +289,12 @@ export default {
 `attributeNames` controls which HTML/JSX attributes are scanned (default: `['className']`). Use `['class']` for plain HTML/PHP/Jinja templates, `[':class']` for Vue, `['tw']` for styled-components.
 
 `functionNames` enables scanning inside utility function calls like `cn(...)` and `clsx(...)`.
+
+`minRareScalePropertyOccurrences`, `rareScaleMaxFiles`, and `rareScaleMaxCount`
+control which low-frequency values are surfaced by `--analyze` as rare scale
+values. Defaults are conservative: only properties with 10+ total occurrences
+are considered, and a value is rare when it appears in at most 2 files and at
+most 3 times.
 
 ## ESLint plugin
 

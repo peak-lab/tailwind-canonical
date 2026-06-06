@@ -41,8 +41,29 @@ test('validateConfig - accepts a full valid config', (_t: TestContext) => {
     sortOrder: ['display', 'spacing', 'colors'],
     extraColorFamilies: { brand: 'brand' },
     extraScaleProperties: ['scroll-p'],
+    minRareScalePropertyOccurrences: 20,
+    rareScaleMaxFiles: 1,
+    rareScaleMaxCount: 3,
   };
   assert.deepEqual(validateConfig(cfg), cfg);
+});
+
+test('validateConfig - rare scale thresholds must be positive integers', (_t: TestContext) => {
+  assert.throws(
+    () => validateConfig({ minRareScalePropertyOccurrences: 0 }),
+    /positive integer/,
+  );
+  assert.throws(
+    () => validateConfig({ rareScaleMaxFiles: 1.5 }),
+    /positive integer/,
+  );
+  assert.throws(
+    () => validateConfig({ rareScaleMaxCount: '2' }),
+    /positive integer/,
+  );
+  assert.deepEqual(validateConfig({ rareScaleMaxFiles: 2 }), {
+    rareScaleMaxFiles: 2,
+  });
 });
 
 test('validateConfig - extraColorFamilies must be a string record', (_t: TestContext) => {
