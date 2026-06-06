@@ -6,21 +6,50 @@ import { type Config, suggestCanonical } from '../core/rules.js';
 const _require = createRequire(import.meta.url);
 
 /**
+ * A string-bearing node handed to `checkLiteral`: either a real `Literal` or a
+ * synthetic stand-in for a `TemplateLiteral` quasi. For quasis, `quasiRange`
+ * carries the range of the quasi's inner text only (excluding the surrounding
+ * backticks / `${`…`}` delimiters) so the fixer can replace it in place without
+ * stripping those delimiters and corrupting the template.
+ */
+type StringNode = Literal & { quasiRange?: [number, number] };
+
+/**
+ * Inner-text range of a `TemplateElement`. In espree, `quasi.range` spans the
+ * delimiters too (the opening backtick or `}` plus the closing backtick or
+ * `${`). The leading delimiter is always one character, so the raw text starts
+ * at `range[0] + 1` and runs for `raw.length` characters.
+ */
+function quasiTextRange(
+  quasi: TemplateLiteral['quasis'][number],
+): [number, number] | undefined {
+  if (!quasi.range) return undefined;
+  const start = quasi.range[0] + 1;
+  return [start, start + quasi.value.raw.length];
+}
+
+/**
  * Builds the shared ESLint visitor that runs `checkLiteral` on every string
  * `Literal` and on each quasi of a `TemplateLiteral`. Both rules walk class
- * strings identically, so the traversal lives here once.
+ * strings identically, so the traversal lives here once. Quasi nodes carry the
+ * real `range`/`loc` so `context.report` and the fixer operate on actual source
+ * positions instead of a detached synthetic node.
  */
 function makeStringRuleVisitor(
-  checkLiteral: (node: Literal) => void,
+  checkLiteral: (node: StringNode) => void,
 ): Rule.RuleListener {
   return {
-    Literal: checkLiteral,
+    Literal: (node) => checkLiteral(node as StringNode),
     TemplateLiteral(node: TemplateLiteral) {
       for (const quasi of node.quasis) {
         checkLiteral({
           type: 'Literal',
-          value: quasi.value.raw,
-        } as Literal);
+          value: quasi.value.cooked ?? quasi.value.raw,
+          raw: quasi.value.raw,
+          range: quasi.range,
+          loc: quasi.loc,
+          quasiRange: quasiTextRange(quasi),
+        } as StringNode);
       }
     },
   };
@@ -58,7 +87,7 @@ const noArbitraryCanonical: Rule.RuleModule = {
   create(context: Rule.RuleContext): Rule.RuleListener {
     const config: Config = (context.options[0] as Config | undefined) ?? {};
 
-    function checkLiteral(node: Literal) {
+    function checkLiteral(node: StringNode) {
       if (typeof node.value !== 'string') return;
       const value = node.value;
       const corrected = value.replace(
@@ -72,6 +101,8 @@ const noArbitraryCanonical: Rule.RuleModule = {
           node,
           message: `Use canonical class '${suggestion.canonical}' instead of '${suggestion.original}'`,
           fix(fixer) {
+            if (node.quasiRange)
+              return fixer.replaceTextRange(node.quasiRange, corrected);
             const quote = node.raw?.startsWith('"') ? '"' : "'";
             return fixer.replaceText(node, `${quote}${corrected}${quote}`);
           },
@@ -106,7 +137,7 @@ const noConflictingClasses: Rule.RuleModule = {
       peerMissing = true;
     }
 
-    function checkLiteral(node: Literal) {
+    function checkLiteral(node: StringNode) {
       if (peerMissing || !twMerge) return;
       if (typeof node.value !== 'string') return;
       const merged = twMerge(node.value);
@@ -115,6 +146,8 @@ const noConflictingClasses: Rule.RuleModule = {
         node,
         message: `Conflicting Tailwind classes detected. Use '${merged}' instead.`,
         fix(fixer) {
+          if (node.quasiRange)
+            return fixer.replaceTextRange(node.quasiRange, merged);
           const quote = node.raw?.startsWith('"') ? '"' : "'";
           return fixer.replaceText(node, `${quote}${merged}${quote}`);
         },

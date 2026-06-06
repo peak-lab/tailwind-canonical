@@ -32,7 +32,12 @@ export function scanFiles(target: string, options: ScanOptions = {}): string[] {
     }
   }
 
-  const stat = statSync(target);
+  let stat: ReturnType<typeof statSync>;
+  try {
+    stat = statSync(target);
+  } catch {
+    return [];
+  }
   if (stat.isFile())
     return extensions.some((ext) => target.endsWith(ext)) ? [target] : [];
   walk(target);
