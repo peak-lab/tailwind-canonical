@@ -143,6 +143,17 @@ test('replaceClassStrings - function call support', async (t: TestContext) => {
     assert.strictEqual(result, `cn(\`P-4 ${D}{A ? "X" : "Y"}\`, "FLEX")`);
     assert.strictEqual(count, 2);
   });
+
+  await t.test('preserves unterminated strings in configured functions', () => {
+    const input = 'cn("flex p-4';
+    const { result, count } = replaceClassStrings(
+      input,
+      (s) => s.toUpperCase(),
+      FN_OPTS,
+    );
+    assert.strictEqual(result, input);
+    assert.strictEqual(count, 0);
+  });
 });
 
 test('fixFile with functionNames', async (t: TestContext) => {

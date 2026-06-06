@@ -59,18 +59,22 @@ test('no-arbitrary-canonical rule', async (t) => {
     assert.strictEqual(reports.length, 0);
   });
 
-  await t.test('reports multiple classes in one literal', () => {
-    const reports: unknown[] = [];
-    const ctx = {
-      options: [{}] as [object],
-      report: (d: unknown) => reports.push(d),
-    };
-    const rule = noArbitraryCanonical.create(ctx as never);
-    (rule.Literal as (n: unknown) => void)(
-      literal('text-[12px] h-[64px] flex'),
-    );
-    assert.strictEqual(reports.length, 2);
-  });
+  await t.test(
+    'reports one combined issue for multiple classes in one literal',
+    () => {
+      const reports: unknown[] = [];
+      const ctx = {
+        options: [{}] as [object],
+        report: (d: unknown) => reports.push(d),
+      };
+      const rule = noArbitraryCanonical.create(ctx as never);
+      (rule.Literal as (n: unknown) => void)(
+        literal('text-[12px] h-[64px] flex'),
+      );
+      assert.strictEqual(reports.length, 1);
+      assert.ok(JSON.stringify(reports[0]).includes('text-xs h-16'));
+    },
+  );
 
   await t.test('applies fix that replaces arbitrary with canonical', () => {
     const reports: Array<{
@@ -98,7 +102,7 @@ test('no-arbitrary-canonical rule', async (t) => {
     };
     const rule = noArbitraryCanonical.create(ctx as never);
     (rule.Literal as (n: unknown) => void)(literal('max-w-[50%] w-[50%]'));
-    assert.strictEqual(reports.length, 2);
+    assert.strictEqual(reports.length, 1);
     for (const r of reports) {
       const result = r.fix?.({ replaceText: (_n, s) => s });
       assert.strictEqual(result, '"max-w-1/2 w-1/2"');
@@ -117,7 +121,7 @@ test('no-arbitrary-canonical rule', async (t) => {
     (rule.Literal as (n: unknown) => void)(
       literal('text-[12px] flex h-[64px]'),
     );
-    assert.strictEqual(reports.length, 2);
+    assert.strictEqual(reports.length, 1);
     const result = reports[0].fix?.({ replaceText: (_n, s) => s });
     assert.strictEqual(result, '"text-xs flex h-16"');
   });
