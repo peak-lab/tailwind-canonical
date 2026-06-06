@@ -175,11 +175,11 @@ test('loadConfig - missing file returns empty config', async (_t: TestContext) =
   assert.deepEqual(await loadConfig(freshDir()), {});
 });
 
-test('loadConfig - reads and validates a real config file', async (_t: TestContext) => {
+test('loadConfig - reads and validates a TypeScript config file', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
-    'export default { sortOrder: ["display"] }',
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { sortOrder: ["display"] satisfies string[] }',
     'utf8',
   );
   try {
@@ -189,10 +189,43 @@ test('loadConfig - reads and validates a real config file', async (_t: TestConte
   }
 });
 
-test('loadConfig - rejects when the config file has a syntax error', async (_t: TestContext) => {
+test('loadConfig - prefers TypeScript config over JavaScript fallback', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { sortOrder: ["display"] }',
+    'utf8',
+  );
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.js'),
+    'export default { sortOrder: ["spacing"] }',
+    'utf8',
+  );
+  try {
+    assert.deepEqual(await loadConfig(dir), { sortOrder: ['display'] });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig - falls back to JavaScript config file', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(
     join(dir, 'tailwind-canonical.config.js'),
+    'export default { sortOrder: ["spacing"] }',
+    'utf8',
+  );
+  try {
+    assert.deepEqual(await loadConfig(dir), { sortOrder: ['spacing'] });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig - rejects when the config file has a syntax error', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
     'export default { sortOrder: [',
     'utf8',
   );
@@ -206,12 +239,15 @@ test('loadConfig - rejects when the config file has a syntax error', async (_t: 
 test('loadConfig - surfaces validation errors from a present file', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
+    join(dir, 'tailwind-canonical.config.ts'),
     'export default { sortOrder: ["nope"] }',
     'utf8',
   );
   try {
-    await assert.rejects(loadConfig(dir), /invalid category "nope"/);
+    await assert.rejects(
+      loadConfig(dir),
+      /Invalid tailwind-canonical\.config\.ts: .*invalid category "nope"/,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

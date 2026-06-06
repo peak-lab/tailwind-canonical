@@ -197,8 +197,8 @@ Variants (`hover:`, `sm:`, `focus:`) are sorted after base classes, with respons
 
 Override the category order via config. Categories you omit (and unknown classes) sort to the end, preserving their original relative order. Variants are always sorted after base classes regardless of order.
 
-```js
-// tailwind-canonical.config.js
+```ts
+// tailwind-canonical.config.ts
 export default {
   sortOrder: [
     'display',
@@ -269,9 +269,9 @@ Non-divisible values (`h-[22px]`, `px-[7px]`) are left untouched.
 
 ## Config
 
-Create `tailwind-canonical.config.js` at the root:
+Create `tailwind-canonical.config.ts` at the root:
 
-```js
+```ts
 export default {
   customTextTokens: {
     10: '3xs',
@@ -315,6 +315,9 @@ files and at most 3 times.
 
 The older top-level rare-value keys are still accepted for compatibility, but
 new configs should prefer `analyze`.
+
+`tailwind-canonical.config.js` is still loaded as a fallback when no TypeScript
+config exists.
 
 ## ESLint plugin
 

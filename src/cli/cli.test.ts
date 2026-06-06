@@ -254,7 +254,7 @@ test('run - honors attributeNames from config file', async (_t: TestContext) => 
   const dir = freshDir();
   writeFileSync(join(dir, 'a.tsx'), '<div class="text-[12px]" />', 'utf8');
   writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
+    join(dir, 'tailwind-canonical.config.ts'),
     'export default { attributeNames: ["class"] }',
     'utf8',
   );
@@ -569,7 +569,7 @@ test('run - --analyze does not warn for configured class functions', async (_t: 
   const dir = freshDir();
   writeFileSync(join(dir, 'a.tsx'), 'cn("gap-2")', 'utf8');
   writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
+    join(dir, 'tailwind-canonical.config.ts'),
     'export default { functionNames: ["cn"] }',
     'utf8',
   );
@@ -603,7 +603,7 @@ test('run - --analyze text mode reports repeated combinations', async (_t: TestC
 test('run - --analyze text output honors analyze display config', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
+    join(dir, 'tailwind-canonical.config.ts'),
     'export default { analyze: { maxScaleGroups: 1, maxScaleValues: 1, maxRareValues: 1, maxPatterns: 1 } }',
     'utf8',
   );
@@ -676,7 +676,7 @@ test('run - surfaces invalid config and exits 1', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(join(dir, 'a.tsx'), '<div className="flex" />', 'utf8');
   writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
+    join(dir, 'tailwind-canonical.config.ts'),
     'export default { sortOrder: ["nope"] }',
     'utf8',
   );
