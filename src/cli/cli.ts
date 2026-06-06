@@ -5,6 +5,7 @@ import { toClassStringOpts } from '../core/class-strings.js';
 import { loadConfig } from '../core/config.js';
 import {
   analyzeConsistencyFiles,
+  type ConsistencyReport,
   toConsistencyOptions,
 } from '../core/consistency.js';
 import { dedupeFile } from '../core/deduplicator.js';
@@ -118,6 +119,10 @@ type SarifRule = SarifReport['runs'][0]['tool']['driver']['rules'][0];
 type SarifResult = SarifReport['runs'][0]['results'][0];
 
 const KNOWN_CLASS_FUNCTIONS = ['cn', 'clsx', 'cva'] as const;
+const ANALYZE_SCALE_GROUPS = 8;
+const ANALYZE_TOP_VALUES = 5;
+const ANALYZE_RARE_VALUES = 12;
+const ANALYZE_PATTERNS = 10;
 
 function sarifDocument(
   rules: SarifRule[],
@@ -390,6 +395,117 @@ function findUnconfiguredClassFunctions(
   return [...found].sort();
 }
 
+function compactPath(file: string): string {
+  const normalized = file.replace(/\\/g, '/');
+  const parts = normalized.split('/');
+  if (parts.length <= 4) return normalized;
+  return `.../${parts.slice(-4).join('/')}`;
+}
+
+function withMore<T>(
+  values: T[],
+  limit: number,
+  format: (value: T) => string,
+): string {
+  const shown = values.slice(0, limit).map(format);
+  const remaining = values.length - shown.length;
+  if (remaining > 0) shown.push(`+${remaining} more`);
+  return shown.join(', ');
+}
+
+function scaleValueSummary(
+  property: string,
+  value: { value: string; count: number; files: string[] },
+): string {
+  return `${scaleClass(property, value.value)} (${pluralize(value.count, 'use')}, ${pluralize(value.files.length, 'file')})`;
+}
+
+function scaleTotalUses(
+  scale: ConsistencyReport['scaleInconsistencies'][number],
+): number {
+  return scale.values.reduce((sum, value) => sum + value.count, 0);
+}
+
+function logAnalyzeText(
+  report: ConsistencyReport,
+  issueCount: number,
+  sink: Sink,
+): void {
+  sink.log('tailwind-canonical analyze');
+  sink.log(`Files analyzed: ${report.filesAnalyzed}`);
+  sink.log(
+    `Issue groups: ${issueCount} (${pluralize(report.colorVariants.length, 'color')}, ${pluralize(report.scaleInconsistencies.length, 'scale')}, ${pluralize(report.combinations.length, 'pattern')})`,
+  );
+  if (report.rareScaleValues.length > 0) {
+    sink.log(`Rare values: ${report.rareScaleValues.length}`);
+  }
+
+  if (issueCount === 0) {
+    sink.log('\nNo cross-file inconsistencies found');
+    return;
+  }
+
+  if (report.colorVariants.length > 0) {
+    sink.log('\nColor variants');
+    for (const group of report.colorVariants) {
+      const tokens = group.variants
+        .map((v) => `${group.property}-${v.token} x${v.count}`)
+        .join(', ');
+      sink.log(`  - ${group.property}/${group.family}: ${tokens}`);
+    }
+  }
+
+  if (report.scaleInconsistencies.length > 0) {
+    sink.log('\nScale inconsistency groups');
+    const scales = [...report.scaleInconsistencies].sort(
+      (a, b) =>
+        scaleTotalUses(b) - scaleTotalUses(a) ||
+        a.property.localeCompare(b.property),
+    );
+    for (const scale of scales.slice(0, ANALYZE_SCALE_GROUPS)) {
+      const totalUses = scaleTotalUses(scale);
+      const files = new Set(scale.values.flatMap((value) => value.files));
+      sink.log(
+        `  - ${scale.property}: ${scale.values.length} values, ${totalUses} uses, ${pluralize(files.size, 'file')}`,
+      );
+      sink.log(
+        `    Top: ${withMore(scale.values, ANALYZE_TOP_VALUES, (value) => scaleValueSummary(scale.property, value))}`,
+      );
+    }
+    const remaining = scales.length - ANALYZE_SCALE_GROUPS;
+    if (remaining > 0) sink.log(`  - +${remaining} more scale groups`);
+  }
+
+  if (report.rareScaleValues.length > 0) {
+    sink.log('\nRare scale values');
+    for (const rare of report.rareScaleValues.slice(0, ANALYZE_RARE_VALUES)) {
+      const example = rare.files[0]
+        ? `; e.g. ${compactPath(rare.files[0])}`
+        : '';
+      sink.log(
+        `  - ${rare.className}: ${pluralize(rare.count, 'use')} in ${pluralize(rare.files.length, 'file')} (${rare.propertyCount} ${rare.property} uses total)${example}`,
+      );
+    }
+    const remaining = report.rareScaleValues.length - ANALYZE_RARE_VALUES;
+    if (remaining > 0) sink.log(`  - +${remaining} more rare values`);
+  }
+
+  if (report.combinations.length > 0) {
+    sink.log('\nRepeated patterns');
+    for (const combo of report.combinations.slice(0, ANALYZE_PATTERNS)) {
+      sink.log(
+        `  - Pattern: "${combo.classes.join(' ')}" repeated in ${pluralize(combo.files.length, 'file')}`,
+      );
+    }
+    const remaining = report.combinations.length - ANALYZE_PATTERNS;
+    if (remaining > 0) sink.log(`  - +${remaining} more repeated patterns`);
+  }
+
+  sink.log(
+    `\nFound ${pluralize(issueCount, 'consistency issue')} across ${pluralize(report.filesAnalyzed, 'file')}`,
+  );
+}
+
 function runAnalyze(
   files: string[],
   config: Config,
@@ -505,40 +621,7 @@ function runAnalyze(
     return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
   }
 
-  for (const group of report.colorVariants) {
-    const tokens = group.variants
-      .map((v) => `${group.property}-${v.token} (${v.count})`)
-      .join(', ');
-    sink.log(
-      `  Warning: ${group.variants.length} ${group.family} color variants used for ${group.property}: ${tokens}`,
-    );
-  }
-  for (const scale of report.scaleInconsistencies) {
-    const values = scale.values
-      .map(
-        (v) =>
-          `${scaleClass(scale.property, v.value)} (${pluralize(v.files.length, 'file')})`,
-      )
-      .join(' vs ');
-    sink.log(`  Warning: ${scale.property} inconsistency: ${values}`);
-  }
-  for (const rare of report.rareScaleValues) {
-    sink.log(
-      `  Rare: ${rare.className} appears ${pluralize(rare.count, 'time')} in ${pluralize(rare.files.length, 'file')} (${rare.propertyCount} ${rare.property} uses total)`,
-    );
-  }
-  for (const combo of report.combinations) {
-    sink.log(
-      `  Pattern: "${combo.classes.join(' ')}" repeated in ${pluralize(combo.files.length, 'file')}`,
-    );
-  }
-  if (issueCount === 0) {
-    sink.log('✓ No cross-file inconsistencies found');
-  } else {
-    sink.log(
-      `\n✖ Found ${pluralize(issueCount, 'consistency issue')} across ${pluralize(report.filesAnalyzed, 'file')}`,
-    );
-  }
+  logAnalyzeText(report, issueCount, sink);
   return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
 }
 

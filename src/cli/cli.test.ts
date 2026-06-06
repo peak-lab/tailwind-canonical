@@ -362,7 +362,7 @@ test('run - --fix --analyze warns about ignored --fix but stays in analyze mode'
       err.some((l) => l.includes('--fix ignored: --analyze takes priority')),
     );
     assert.ok(readFileSync(fixed, 'utf8').includes('text-red-500'));
-    assert.ok(out.some((l) => l.includes('color variants')));
+    assert.ok(out.some((l) => l.includes('Color variants')));
     assert.strictEqual(result.exitCode, 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -504,7 +504,7 @@ test('run - --analyze text mode reports color variants and exits 1', async (_t: 
   try {
     const result = await run(['--analyze', dir], dir, sink);
     assert.strictEqual(result.exitCode, 1);
-    assert.ok(out.some((l) => l.includes('color variants')));
+    assert.ok(out.some((l) => l.includes('Color variants')));
     assert.ok(out.some((l) => l.includes('consistency issue')));
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -541,7 +541,8 @@ test('run - --analyze text mode reports rare scale values with negative class fo
   try {
     const result = await run(['--analyze', dir], dir, sink);
     assert.strictEqual(result.exitCode, 1);
-    assert.ok(out.some((l) => l.includes('Rare: -mt-2')));
+    assert.ok(out.some((l) => l.includes('-mt-2')));
+    assert.ok(out.some((l) => l.includes('Rare scale values')));
     assert.ok(out.some((l) => l.includes('-mt-2') && !l.includes('mt--2')));
   } finally {
     rmSync(dir, { recursive: true, force: true });

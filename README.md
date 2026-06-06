@@ -125,10 +125,19 @@ Detects semantic inconsistencies visible only at project scale — it never modi
 
 ```bash
 npx tailwind-canonical --analyze ./src
-# Warning: 3 red color variants used for text: text-red-500 (4), text-rose-500 (1), text-red-600 (2)
-# Warning: px inconsistency: px-4 (8 files) vs px-3 (2 files)
-# Rare: px-11 appears 3 times in 1 file (608 px uses total)
-# Warning: z inconsistency: z-[100] (3 files) vs z-[200] (1 file) vs z-[50] (2 files)
+# tailwind-canonical analyze
+# Files analyzed: 42
+# Issue groups: 3 (1 color, 2 scales, 0 patterns)
+#
+# Color variants
+#   - text/red: text-red-500 x4, text-rose-500 x1
+#
+# Scale inconsistency groups
+#   - px: 2 values, 10 uses, 10 files
+#     Top: px-4 (8 uses, 8 files), px-3 (2 uses, 2 files)
+#
+# Rare scale values
+#   - px-11: 3 uses in 1 file (608 px uses total); e.g. src/Dialog.tsx
 ```
 
 Three detectors:
