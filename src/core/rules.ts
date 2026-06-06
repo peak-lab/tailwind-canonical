@@ -6,6 +6,16 @@ export type Suggestion = {
   isCustomToken: boolean;
 };
 
+export type AnalyzeConfig = {
+  minRareScalePropertyOccurrences?: number;
+  rareScaleMaxFiles?: number;
+  rareScaleMaxCount?: number;
+  maxScaleGroups?: number;
+  maxScaleValues?: number;
+  maxRareValues?: number;
+  maxPatterns?: number;
+};
+
 const TEXT_SIZE_MAP: Record<number, string> = {
   8: '3xs',
   9: '3xs',
@@ -136,6 +146,7 @@ export type Config = {
   extraColorFamilies?: Record<string, string>;
   extraScaleProperties?: string[];
   extraColors?: string[];
+  analyze?: AnalyzeConfig;
   minRareScalePropertyOccurrences?: number;
   rareScaleMaxFiles?: number;
   rareScaleMaxCount?: number;

@@ -367,9 +367,13 @@ export function toConsistencyOptions(config: Config = {}): ConsistencyOptions {
   return {
     extraColorFamilies: config.extraColorFamilies,
     extraScaleProperties: config.extraScaleProperties,
-    minRareScalePropertyOccurrences: config.minRareScalePropertyOccurrences,
-    rareScaleMaxFiles: config.rareScaleMaxFiles,
-    rareScaleMaxCount: config.rareScaleMaxCount,
+    minRareScalePropertyOccurrences:
+      config.analyze?.minRareScalePropertyOccurrences ??
+      config.minRareScalePropertyOccurrences,
+    rareScaleMaxFiles:
+      config.analyze?.rareScaleMaxFiles ?? config.rareScaleMaxFiles,
+    rareScaleMaxCount:
+      config.analyze?.rareScaleMaxCount ?? config.rareScaleMaxCount,
   };
 }
 

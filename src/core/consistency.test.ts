@@ -182,6 +182,11 @@ test('toConsistencyOptions - maps config consistency fields', (_t: TestContext) 
     toConsistencyOptions({
       extraColorFamilies: { brand: 'brand' },
       extraScaleProperties: ['scroll-p'],
+      analyze: {
+        minRareScalePropertyOccurrences: 30,
+        rareScaleMaxFiles: 2,
+        rareScaleMaxCount: 4,
+      },
       minRareScalePropertyOccurrences: 20,
       rareScaleMaxFiles: 1,
       rareScaleMaxCount: 3,
@@ -189,6 +194,20 @@ test('toConsistencyOptions - maps config consistency fields', (_t: TestContext) 
     {
       extraColorFamilies: { brand: 'brand' },
       extraScaleProperties: ['scroll-p'],
+      minRareScalePropertyOccurrences: 30,
+      rareScaleMaxFiles: 2,
+      rareScaleMaxCount: 4,
+    },
+  );
+  assert.deepEqual(
+    toConsistencyOptions({
+      minRareScalePropertyOccurrences: 20,
+      rareScaleMaxFiles: 1,
+      rareScaleMaxCount: 3,
+    }),
+    {
+      extraColorFamilies: undefined,
+      extraScaleProperties: undefined,
       minRareScalePropertyOccurrences: 20,
       rareScaleMaxFiles: 1,
       rareScaleMaxCount: 3,

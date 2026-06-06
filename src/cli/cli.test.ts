@@ -600,6 +600,50 @@ test('run - --analyze text mode reports repeated combinations', async (_t: TestC
   }
 });
 
+test('run - --analyze text output honors analyze display config', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.js'),
+    'export default { analyze: { maxScaleGroups: 1, maxScaleValues: 1, maxRareValues: 1, maxPatterns: 1 } }',
+    'utf8',
+  );
+  for (let i = 0; i < 12; i++) {
+    writeFileSync(
+      join(dir, `common-${i}.tsx`),
+      '<div className="gap-2 px-4" />',
+      'utf8',
+    );
+  }
+  writeFileSync(
+    join(dir, 'rare-a.tsx'),
+    '<div className="gap-24 px-11" />',
+    'utf8',
+  );
+  writeFileSync(
+    join(dir, 'rare-b.tsx'),
+    '<div className="gap-10 px-7" />',
+    'utf8',
+  );
+  const comboA = '<div className="flex items-center p-4" />';
+  const comboB = '<div className="grid gap-2 p-4" />';
+  for (const [index, combo] of [comboA, comboB].entries()) {
+    for (let i = 0; i < 3; i++) {
+      writeFileSync(join(dir, `combo-${index}-${i}.tsx`), combo, 'utf8');
+    }
+  }
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('+1 more scale groups')));
+    assert.ok(out.some((l) => l.includes('+1 more')));
+    assert.ok(out.some((l) => l.includes('+3 more rare values')));
+    assert.ok(out.some((l) => l.includes('+2 more repeated patterns')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - --analyze text mode on clean files exits 0', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(join(dir, 'a.tsx'), '<div className="flex" />', 'utf8');

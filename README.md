@@ -284,10 +284,16 @@ export default {
   attributeNames: ['className', 'class', ':class', 'tw'],
   // Support utility function wrappers
   functionNames: ['cn', 'clsx', 'cva'],
-  // Tune --analyze rare-value reporting
-  minRareScalePropertyOccurrences: 10,
-  rareScaleMaxFiles: 2,
-  rareScaleMaxCount: 3,
+  // Tune --analyze reporting
+  analyze: {
+    maxScaleGroups: 8,
+    maxScaleValues: 5,
+    maxRareValues: 12,
+    maxPatterns: 10,
+    minRareScalePropertyOccurrences: 10,
+    rareScaleMaxFiles: 2,
+    rareScaleMaxCount: 3,
+  },
   // Never suggest replacements for classes matching these patterns
   ignorePatterns: [/^font-/, /-\[var\(/],
 }
@@ -299,11 +305,16 @@ export default {
 
 `functionNames` enables scanning inside utility function calls like `cn(...)` and `clsx(...)`.
 
-`minRareScalePropertyOccurrences`, `rareScaleMaxFiles`, and `rareScaleMaxCount`
-control which low-frequency values are surfaced by `--analyze` as rare scale
-values. Defaults are conservative: only properties with 10+ total occurrences
-are considered, and a value is rare when it appears in at most 2 files and at
-most 3 times.
+`analyze` controls project-scale consistency reporting. `maxScaleGroups`,
+`maxScaleValues`, `maxRareValues`, and `maxPatterns` keep terminal output
+compact. `minRareScalePropertyOccurrences`, `rareScaleMaxFiles`, and
+`rareScaleMaxCount` control which low-frequency values are surfaced as rare
+scale values. Defaults are conservative: only properties with 10+ total
+occurrences are considered, and a value is rare when it appears in at most 2
+files and at most 3 times.
+
+The older top-level rare-value keys are still accepted for compatibility, but
+new configs should prefer `analyze`.
 
 ## ESLint plugin
 

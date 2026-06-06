@@ -41,6 +41,15 @@ test('validateConfig - accepts a full valid config', (_t: TestContext) => {
     sortOrder: ['display', 'spacing', 'colors'],
     extraColorFamilies: { brand: 'brand' },
     extraScaleProperties: ['scroll-p'],
+    analyze: {
+      minRareScalePropertyOccurrences: 20,
+      rareScaleMaxFiles: 1,
+      rareScaleMaxCount: 3,
+      maxScaleGroups: 4,
+      maxScaleValues: 2,
+      maxRareValues: 6,
+      maxPatterns: 5,
+    },
     minRareScalePropertyOccurrences: 20,
     rareScaleMaxFiles: 1,
     rareScaleMaxCount: 3,
@@ -63,6 +72,24 @@ test('validateConfig - rare scale thresholds must be positive integers', (_t: Te
   );
   assert.deepEqual(validateConfig({ rareScaleMaxFiles: 2 }), {
     rareScaleMaxFiles: 2,
+  });
+});
+
+test('validateConfig - analyze options must be known positive integers', (_t: TestContext) => {
+  assert.throws(
+    () => validateConfig({ analyze: [] }),
+    /analyze must be an object/,
+  );
+  assert.throws(
+    () => validateConfig({ analyze: { nope: 1 } }),
+    /analyze contains unknown key "nope"/,
+  );
+  assert.throws(
+    () => validateConfig({ analyze: { maxScaleGroups: 0 } }),
+    /analyze\.maxScaleGroups must be a positive integer/,
+  );
+  assert.deepEqual(validateConfig({ analyze: { maxScaleGroups: 2 } }), {
+    analyze: { maxScaleGroups: 2 },
   });
 });
 

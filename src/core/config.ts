@@ -13,10 +13,23 @@ const KNOWN_KEYS = [
   'extraColorFamilies',
   'extraScaleProperties',
   'extraColors',
+  'analyze',
   'minRareScalePropertyOccurrences',
   'rareScaleMaxFiles',
   'rareScaleMaxCount',
 ] as const;
+
+const ANALYZE_KEYS = [
+  'minRareScalePropertyOccurrences',
+  'rareScaleMaxFiles',
+  'rareScaleMaxCount',
+  'maxScaleGroups',
+  'maxScaleValues',
+  'maxRareValues',
+  'maxPatterns',
+] as const;
+
+const ANALYZE_KEY_SET = new Set<string>(ANALYZE_KEYS);
 
 const KNOWN_KEY_SET = new Set<string>(KNOWN_KEYS);
 const SORT_CATEGORIES = new Set<string>(DEFAULT_SORT_ORDER);
@@ -62,6 +75,23 @@ function assertPositiveInteger(value: unknown, key: string): void {
   }
 }
 
+function assertAnalyzeConfig(value: unknown): void {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    fail('analyze must be an object');
+  }
+  const cfg = value as Record<string, unknown>;
+  for (const key of Object.keys(cfg)) {
+    if (!ANALYZE_KEY_SET.has(key)) {
+      fail(
+        `analyze contains unknown key "${key}" (expected one of: ${ANALYZE_KEYS.join(', ')})`,
+      );
+    }
+  }
+  for (const key of ANALYZE_KEYS) {
+    if (key in cfg) assertPositiveInteger(cfg[key], `analyze.${key}`);
+  }
+}
+
 function assertSortOrder(value: unknown): void {
   if (!Array.isArray(value))
     fail('sortOrder must be an array of category names');
@@ -103,6 +133,7 @@ export function validateConfig(input: unknown): Config {
   if ('extraScaleProperties' in cfg)
     assertStringArray(cfg.extraScaleProperties, 'extraScaleProperties');
   if ('extraColors' in cfg) assertStringArray(cfg.extraColors, 'extraColors');
+  if ('analyze' in cfg) assertAnalyzeConfig(cfg.analyze);
   if ('minRareScalePropertyOccurrences' in cfg)
     assertPositiveInteger(
       cfg.minRareScalePropertyOccurrences,

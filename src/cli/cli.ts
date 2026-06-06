@@ -119,10 +119,12 @@ type SarifRule = SarifReport['runs'][0]['tool']['driver']['rules'][0];
 type SarifResult = SarifReport['runs'][0]['results'][0];
 
 const KNOWN_CLASS_FUNCTIONS = ['cn', 'clsx', 'cva'] as const;
-const ANALYZE_SCALE_GROUPS = 8;
-const ANALYZE_TOP_VALUES = 5;
-const ANALYZE_RARE_VALUES = 12;
-const ANALYZE_PATTERNS = 10;
+const DEFAULT_ANALYZE_TEXT_OPTIONS = {
+  maxScaleGroups: 8,
+  maxScaleValues: 5,
+  maxRareValues: 12,
+  maxPatterns: 10,
+};
 
 function sarifDocument(
   rules: SarifRule[],
@@ -429,8 +431,23 @@ function scaleTotalUses(
 function logAnalyzeText(
   report: ConsistencyReport,
   issueCount: number,
+  config: Config,
   sink: Sink,
 ): void {
+  const textOptions = {
+    maxScaleGroups:
+      config.analyze?.maxScaleGroups ??
+      DEFAULT_ANALYZE_TEXT_OPTIONS.maxScaleGroups,
+    maxScaleValues:
+      config.analyze?.maxScaleValues ??
+      DEFAULT_ANALYZE_TEXT_OPTIONS.maxScaleValues,
+    maxRareValues:
+      config.analyze?.maxRareValues ??
+      DEFAULT_ANALYZE_TEXT_OPTIONS.maxRareValues,
+    maxPatterns:
+      config.analyze?.maxPatterns ?? DEFAULT_ANALYZE_TEXT_OPTIONS.maxPatterns,
+  };
+
   sink.log('tailwind-canonical analyze');
   sink.log(`Files analyzed: ${report.filesAnalyzed}`);
   sink.log(
@@ -462,23 +479,26 @@ function logAnalyzeText(
         scaleTotalUses(b) - scaleTotalUses(a) ||
         a.property.localeCompare(b.property),
     );
-    for (const scale of scales.slice(0, ANALYZE_SCALE_GROUPS)) {
+    for (const scale of scales.slice(0, textOptions.maxScaleGroups)) {
       const totalUses = scaleTotalUses(scale);
       const files = new Set(scale.values.flatMap((value) => value.files));
       sink.log(
         `  - ${scale.property}: ${scale.values.length} values, ${totalUses} uses, ${pluralize(files.size, 'file')}`,
       );
       sink.log(
-        `    Top: ${withMore(scale.values, ANALYZE_TOP_VALUES, (value) => scaleValueSummary(scale.property, value))}`,
+        `    Top: ${withMore(scale.values, textOptions.maxScaleValues, (value) => scaleValueSummary(scale.property, value))}`,
       );
     }
-    const remaining = scales.length - ANALYZE_SCALE_GROUPS;
+    const remaining = scales.length - textOptions.maxScaleGroups;
     if (remaining > 0) sink.log(`  - +${remaining} more scale groups`);
   }
 
   if (report.rareScaleValues.length > 0) {
     sink.log('\nRare scale values');
-    for (const rare of report.rareScaleValues.slice(0, ANALYZE_RARE_VALUES)) {
+    for (const rare of report.rareScaleValues.slice(
+      0,
+      textOptions.maxRareValues,
+    )) {
       const example = rare.files[0]
         ? `; e.g. ${compactPath(rare.files[0])}`
         : '';
@@ -486,18 +506,18 @@ function logAnalyzeText(
         `  - ${rare.className}: ${pluralize(rare.count, 'use')} in ${pluralize(rare.files.length, 'file')} (${rare.propertyCount} ${rare.property} uses total)${example}`,
       );
     }
-    const remaining = report.rareScaleValues.length - ANALYZE_RARE_VALUES;
+    const remaining = report.rareScaleValues.length - textOptions.maxRareValues;
     if (remaining > 0) sink.log(`  - +${remaining} more rare values`);
   }
 
   if (report.combinations.length > 0) {
     sink.log('\nRepeated patterns');
-    for (const combo of report.combinations.slice(0, ANALYZE_PATTERNS)) {
+    for (const combo of report.combinations.slice(0, textOptions.maxPatterns)) {
       sink.log(
         `  - Pattern: "${combo.classes.join(' ')}" repeated in ${pluralize(combo.files.length, 'file')}`,
       );
     }
-    const remaining = report.combinations.length - ANALYZE_PATTERNS;
+    const remaining = report.combinations.length - textOptions.maxPatterns;
     if (remaining > 0) sink.log(`  - +${remaining} more repeated patterns`);
   }
 
@@ -621,7 +641,7 @@ function runAnalyze(
     return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
   }
 
-  logAnalyzeText(report, issueCount, sink);
+  logAnalyzeText(report, issueCount, config, sink);
   return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
 }
 
