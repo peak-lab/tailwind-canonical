@@ -91,12 +91,17 @@ export function parseColorClass(
   const base = stripVariants(cls);
   if (base.includes('[')) return null;
 
-  const dash = base.indexOf('-');
-  if (dash === -1) return null;
-  const property = base.slice(0, dash);
+  const firstDash = base.indexOf('-');
+  if (firstDash === -1) return null;
+  let property = base.slice(0, firstDash);
+  const secondDash = base.indexOf('-', firstDash + 1);
+  if (secondDash !== -1) {
+    const twoWord = base.slice(0, secondDash);
+    if (COLOR_PROPERTIES.has(twoWord)) property = twoWord;
+  }
   if (!COLOR_PROPERTIES.has(property)) return null;
 
-  const rest = base.slice(dash + 1);
+  const rest = base.slice(property.length + 1);
   if (rest === '') return null;
   const lastDash = rest.lastIndexOf('-');
   if (lastDash !== -1 && /^\d+$/.test(rest.slice(lastDash + 1))) {

@@ -249,15 +249,36 @@ test('no-conflicting-classes rule', async (t) => {
   });
 });
 
+// Mirrors espree: a TemplateElement.range spans its delimiters too (leading
+// backtick or `}`, trailing backtick or `${`), so the source string and the
+// quasi ranges are built together. `source` lets fix tests apply the fixer's
+// replaceTextRange against real source and confirm the delimiters survive.
 function templateLiteral(...raws: string[]) {
-  return {
-    type: 'TemplateLiteral' as const,
-    quasis: raws.map((raw) => ({
+  let source = '';
+  const quasis = raws.map((raw, i) => {
+    const tail = i === raws.length - 1;
+    const lead = i === 0 ? '`' : '}';
+    const trail = tail ? '`' : '${';
+    const start = source.length;
+    source += lead + raw + trail;
+    const end = source.length;
+    if (!tail) source += '0';
+    return {
       type: 'TemplateElement' as const,
       value: { raw, cooked: raw },
-      tail: false,
-    })),
+      tail,
+      range: [start, end] as [number, number],
+      loc: {
+        start: { line: 1, column: start },
+        end: { line: 1, column: end },
+      },
+    };
+  });
+  return {
+    type: 'TemplateLiteral' as const,
+    quasis,
     expressions: [],
+    source,
   };
 }
 
@@ -288,6 +309,55 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
     );
     assert.strictEqual(reports.length, 2);
   });
+
+  await t.test(
+    'fix rewrites the quasi text in place, preserving template delimiters',
+    () => {
+      const reports: {
+        fix?: (f: {
+          replaceTextRange: (r: [number, number], s: string) => unknown;
+          replaceText: () => never;
+        }) => unknown;
+      }[] = [];
+      const ctx = {
+        options: [{}] as [object],
+        report: (d: unknown) => reports.push(d as (typeof reports)[number]),
+      };
+      const rule = noArbitraryCanonical.create(ctx as never);
+
+      // Single-quasi template and a multi-part template with an interpolation:
+      // applying the fixer's range edit to the real source must keep every
+      // backtick and interpolation intact and only swap the arbitrary class.
+      const interp = `$${'{0}'}`;
+      const cases: Array<[ReturnType<typeof templateLiteral>, string]> = [
+        [templateLiteral('text-[12px] flex'), '`text-xs flex`'],
+        [
+          templateLiteral('p-2 text-[12px]', ' flex'),
+          `\`p-2 text-xs${interp} flex\``,
+        ],
+      ];
+
+      for (const [node, expected] of cases) {
+        reports.length = 0;
+        (rule.TemplateLiteral as (n: unknown) => void)(node);
+        let output = node.source;
+        for (const r of reports) {
+          r.fix?.({
+            replaceTextRange: (range, s) => {
+              output = output.slice(0, range[0]) + s + output.slice(range[1]);
+              return null;
+            },
+            replaceText: () => {
+              throw new Error(
+                'quasi fix must use replaceTextRange, not replaceText',
+              );
+            },
+          });
+        }
+        assert.strictEqual(output, expected);
+      }
+    },
+  );
 });
 
 test('no-conflicting-classes - TemplateLiteral visitor', async (t) => {

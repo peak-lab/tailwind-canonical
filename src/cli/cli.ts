@@ -114,6 +114,40 @@ type SarifReport = {
   }>;
 };
 
+type SarifRule = SarifReport['runs'][0]['tool']['driver']['rules'][0];
+type SarifResult = SarifReport['runs'][0]['results'][0];
+
+function sarifDocument(
+  rules: SarifRule[],
+  results: SarifResult[],
+): SarifReport {
+  return {
+    $schema: SARIF_SCHEMA,
+    version: '2.1.0',
+    runs: [
+      {
+        tool: {
+          driver: {
+            name: 'tailwind-canonical',
+            informationUri: 'https://github.com/peak-lab/tailwind-canonical',
+            rules,
+          },
+        },
+        results,
+      },
+    ],
+  };
+}
+
+function fileLocations(files: string[]): SarifResult['locations'] {
+  return files.map((uri) => ({
+    physicalLocation: {
+      artifactLocation: { uri },
+      region: { startLine: 1, startColumn: 1 },
+    },
+  }));
+}
+
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -129,6 +163,17 @@ function timestamp(): string {
 }
 
 const REPORTERS: readonly Reporter[] = ['text', 'json', 'sarif'];
+
+const KNOWN_FLAGS = new Set([
+  '--fix',
+  '--merge',
+  '--dedup',
+  '--sort',
+  '--watch',
+  '--analyze',
+  '--typos',
+  '--reporter',
+]);
 
 function isReporter(value: string): value is Reporter {
   return (REPORTERS as readonly string[]).includes(value);
@@ -158,6 +203,17 @@ export function parseArgs(argv: string[]): Flags {
     } else {
       error = `Unknown reporter: ${reporterRaw} (expected ${REPORTERS.join('|')})`;
     }
+  }
+
+  if (!error) {
+    const unknown = argv.find(
+      (a, i) =>
+        a.startsWith('--') &&
+        !consumed.has(i) &&
+        !KNOWN_FLAGS.has(a) &&
+        !a.startsWith('--reporter='),
+    );
+    if (unknown) error = `Unknown flag: ${unknown}`;
   }
 
   const targets = argv.filter(
@@ -243,6 +299,34 @@ function runTypos(
     return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
   }
 
+  if (reporter === 'sarif') {
+    const sarifOutput = sarifDocument(
+      [
+        {
+          id: 'color-typo',
+          name: 'ColorTypo',
+          shortDescription: {
+            text: 'Class color name is a likely typo of a Tailwind color',
+          },
+        },
+      ],
+      findings.map((f) => ({
+        ruleId: 'color-typo',
+        message: { text: `${f.original} → ${f.suggestion}` },
+        locations: [
+          {
+            physicalLocation: {
+              artifactLocation: { uri: f.file },
+              region: { startLine: f.line, startColumn: f.col },
+            },
+          },
+        ],
+      })),
+    );
+    sink.write(`${JSON.stringify(sarifOutput, null, 2)}\n`);
+    return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
+  }
+
   for (const f of findings) {
     sink.log(
       `  ${f.file}:${f.line}:${f.col}  ${f.original} → ${f.suggestion} [typo]`,
@@ -298,6 +382,67 @@ function runAnalyze(
 
   if (reporter === 'json') {
     sink.write(`${JSON.stringify(report, null, 2)}\n`);
+    return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
+  }
+
+  if (reporter === 'sarif') {
+    const results: SarifResult[] = [];
+    for (const group of report.colorVariants) {
+      const tokens = group.variants.map((v) => v.token).join(', ');
+      const files = [...new Set(group.variants.flatMap((v) => v.files))];
+      results.push({
+        ruleId: 'color-variant-inconsistency',
+        message: {
+          text: `${group.variants.length} ${group.family} color variants for ${group.property}: ${tokens}`,
+        },
+        locations: fileLocations(files),
+      });
+    }
+    for (const scale of report.scaleInconsistencies) {
+      const values = scale.values.map((v) => v.value).join(' vs ');
+      const files = [...new Set(scale.values.flatMap((v) => v.files))];
+      results.push({
+        ruleId: 'scale-inconsistency',
+        message: { text: `${scale.property} inconsistency: ${values}` },
+        locations: fileLocations(files),
+      });
+    }
+    for (const combo of report.combinations) {
+      results.push({
+        ruleId: 'repeated-combination',
+        message: {
+          text: `Repeated class combination: ${combo.classes.join(' ')}`,
+        },
+        locations: fileLocations(combo.files),
+      });
+    }
+    const sarifOutput = sarifDocument(
+      [
+        {
+          id: 'color-variant-inconsistency',
+          name: 'ColorVariantInconsistency',
+          shortDescription: {
+            text: 'Multiple color variants of the same family used for one property',
+          },
+        },
+        {
+          id: 'scale-inconsistency',
+          name: 'ScaleInconsistency',
+          shortDescription: {
+            text: 'Inconsistent scale values used for the same property',
+          },
+        },
+        {
+          id: 'repeated-combination',
+          name: 'RepeatedCombination',
+          shortDescription: {
+            text: 'Identical class combination repeated across files',
+          },
+        },
+      ],
+      results,
+    );
+    sink.write(`${JSON.stringify(sarifOutput, null, 2)}\n`);
     return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
   }
 
@@ -392,7 +537,7 @@ function startWatch(
     });
   }
 
-  process.on('SIGINT', () => {
+  process.once('SIGINT', () => {
     sink.log('\nWatcher stopped.');
     process.exit(0);
   });
@@ -546,43 +691,31 @@ export async function run(
   }
 
   if (flags.reporter === 'sarif') {
-    const sarifOutput: SarifReport = {
-      $schema: SARIF_SCHEMA,
-      version: '2.1.0',
-      runs: [
+    const sarifOutput = sarifDocument(
+      [
         {
-          tool: {
-            driver: {
-              name: 'tailwind-canonical',
-              informationUri: 'https://github.com/peak-lab/tailwind-canonical',
-              rules: [
-                {
-                  id: 'no-arbitrary-canonical',
-                  name: 'NoArbitraryCanonical',
-                  shortDescription: {
-                    text: 'Arbitrary value has a canonical Tailwind equivalent',
-                  },
-                },
-              ],
-            },
+          id: 'no-arbitrary-canonical',
+          name: 'NoArbitraryCanonical',
+          shortDescription: {
+            text: 'Arbitrary value has a canonical Tailwind equivalent',
           },
-          results: allFindings.map((f) => ({
-            ruleId: 'no-arbitrary-canonical',
-            message: {
-              text: `${f.suggestion.original} → ${f.suggestion.canonical}`,
-            },
-            locations: [
-              {
-                physicalLocation: {
-                  artifactLocation: { uri: f.file },
-                  region: { startLine: f.line, startColumn: f.col },
-                },
-              },
-            ],
-          })),
         },
       ],
-    };
+      allFindings.map((f) => ({
+        ruleId: 'no-arbitrary-canonical',
+        message: {
+          text: `${f.suggestion.original} → ${f.suggestion.canonical}`,
+        },
+        locations: [
+          {
+            physicalLocation: {
+              artifactLocation: { uri: f.file },
+              region: { startLine: f.line, startColumn: f.col },
+            },
+          },
+        ],
+      })),
+    );
     sink.write(`${JSON.stringify(sarifOutput, null, 2)}\n`);
     return { exitCode: totalFindings > 0 || hadError ? 1 : 0 };
   }

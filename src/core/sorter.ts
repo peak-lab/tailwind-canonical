@@ -169,9 +169,9 @@ function buildRank(
 
 function getVariantOrder(cls: string): number {
   if (!cls.includes(':')) return 0;
-  const prefix = cls.slice(0, cls.lastIndexOf(':'));
-  if (RE_BREAKPOINTS.test(prefix)) return 1;
-  if (/^(dark|print)$/.test(prefix)) return 2;
+  const segments = cls.slice(0, cls.lastIndexOf(':')).split(':');
+  if (segments.some((s) => RE_BREAKPOINTS.test(s))) return 1;
+  if (segments.some((s) => /^(dark|print)$/.test(s))) return 2;
   return 3;
 }
 

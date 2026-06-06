@@ -2,3 +2,5 @@ node_modules/
 dist/
 *.js.map
 *.tgz
+
+.Codex/.worktrees/

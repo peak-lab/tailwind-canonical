@@ -118,6 +118,10 @@ const SPACING_REM_RE = new RegExp(
   `^(${SPACING_PREFIXES.join('|')})-\\[(\\d+(?:\\.\\d+)?)rem\\]$`,
 );
 
+const FRACTION_RE = new RegExp(
+  `^(${FRACTION_PREFIXES.join('|')})-\\[(\\d+(?:\\.\\d+)?)%\\]$`,
+);
+
 const OPACITY_SCALE = new Set([
   0, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95, 100,
 ]);
@@ -134,8 +138,9 @@ export type Config = {
   extraColors?: string[];
 };
 
-function remToPx(rem: number): number {
-  return Math.round(rem * 16);
+function remToPx(rem: number): number | null {
+  const px = rem * 16;
+  return Number.isInteger(px) ? px : null;
 }
 
 function isIgnored(cls: string, patterns?: RegExp[]): boolean {
@@ -172,6 +177,7 @@ export function suggestCanonical(
   const textRemMatch = cls.match(/^text-\[(\d+(?:\.\d+)?)rem\]$/);
   if (textRemMatch) {
     const px = remToPx(parseFloat(textRemMatch[1]));
+    if (px === null) return null;
     const token = textTokens[px];
     if (!token) return null;
     return {
@@ -208,6 +214,7 @@ export function suggestCanonical(
   if (spacingRemMatch) {
     const prefix = spacingRemMatch[1];
     const px = remToPx(parseFloat(spacingRemMatch[2]));
+    if (px === null) return null;
     if (spacingTokens[px]) {
       return {
         original: cls,
@@ -226,10 +233,7 @@ export function suggestCanonical(
   }
 
   // w/h/inset/etc-[N.N%]
-  const fractionPrefixPattern = FRACTION_PREFIXES.join('|');
-  const fractionMatch = cls.match(
-    new RegExp(`^(${fractionPrefixPattern})-\\[([\\d.]+)%\\]$`),
-  );
+  const fractionMatch = cls.match(FRACTION_RE);
   if (fractionMatch) {
     const prefix = fractionMatch[1];
     const pct = fractionMatch[2];
