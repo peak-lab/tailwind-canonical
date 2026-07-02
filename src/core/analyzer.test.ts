@@ -79,9 +79,14 @@ test('analyzeFile - detects classes inside configured function calls', (_t: Test
   });
 });
 
-test('analyzeFile - className={`...`} not matched (parity with fixer)', (_t: TestContext) => {
+test('analyzeFile - className={`...`} is matched', (_t: TestContext) => {
   withFile('<div className={`text-[18px] px-[16px]`} />', (path) => {
-    assert.strictEqual(analyzeFile(path).length, 0);
+    const findings = analyzeFile(path);
+    assert.strictEqual(findings.length, 2);
+    assert.deepStrictEqual(
+      findings.map((f) => f.suggestion.canonical),
+      ['text-lg', 'px-4'],
+    );
   });
 });
 

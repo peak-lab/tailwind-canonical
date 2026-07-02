@@ -28,7 +28,7 @@ function escapeRegex(s: string): string {
 function buildAttrRegex(names: string[]): RegExp {
   const alts = names.map(escapeRegex).join('|');
   return new RegExp(
-    `(${alts})\\s*=\\s*(?:"([^"]+)"|'([^']+)'|\`([^\`]+)\`)`,
+    `(^|[^\\w:$-])(${alts})\\s*=\\s*(?:({)(?:"([^"]+)"|'([^']+)'|\`([^\`]+)\`)(})|(?:"([^"]+)"|'([^']+)'|\`([^\`]+)\`))`,
     'g',
   );
 }
@@ -134,14 +134,33 @@ export function replaceClassStrings(
 
   result = result.replace(
     buildAttrRegex(attrNames),
-    (_full, attr, dq, sq, bt, offset: number) => {
-      const raw = dq ?? sq ?? bt ?? '';
-      const q = dq !== undefined ? '"' : sq !== undefined ? "'" : '`';
-      const out = isSuppressed?.(lineAt(content, offset))
+    (
+      _full,
+      before,
+      attr,
+      open,
+      bracedDq,
+      bracedSq,
+      bracedBt,
+      close,
+      dq,
+      sq,
+      bt,
+      offset: number,
+    ) => {
+      const raw = bracedDq ?? bracedSq ?? bracedBt ?? dq ?? sq ?? bt ?? '';
+      const q =
+        bracedDq !== undefined || dq !== undefined
+          ? '"'
+          : bracedSq !== undefined || sq !== undefined
+            ? "'"
+            : '`';
+      const attrOffset = offset + before.length;
+      const out = isSuppressed?.(lineAt(content, attrOffset))
         ? raw
         : transform(raw);
       if (out !== raw) count++;
-      return `${attr}=${q}${out}${q}`;
+      return `${before}${attr}=${open ?? ''}${q}${out}${q}${close ?? ''}`;
     },
   );
 
@@ -184,8 +203,8 @@ export function extractClassStrings(
   const results: Array<{ value: string; start: number; end: number }> = [];
 
   for (const m of content.matchAll(buildAttrRegex(attrNames))) {
-    const raw = m[2] ?? m[3] ?? m[4] ?? '';
-    const start = (m.index ?? 0) + m[0].length - raw.length - 1;
+    const raw = m[4] ?? m[5] ?? m[6] ?? m[8] ?? m[9] ?? m[10] ?? '';
+    const start = (m.index ?? 0) + m[0].lastIndexOf(raw);
     results.push({ value: raw, start, end: start + raw.length });
   }
 

@@ -30,17 +30,9 @@ test('suggestCanonical - text sizes', async (t: TestContext) => {
     });
   });
 
-  await t.test(
-    'text-[11px] without custom tokens maps to text-2xs (custom)',
-    () => {
-      const result = suggestCanonical('text-[11px]');
-      assert.deepEqual(result, {
-        original: 'text-[11px]',
-        canonical: 'text-2xs',
-        isCustomToken: true,
-      });
-    },
-  );
+  await t.test('text-[11px] without custom tokens returns null', () => {
+    assert.strictEqual(suggestCanonical('text-[11px]'), null);
+  });
 
   await t.test(
     'text-[11px] with custom text tokens maps to custom token',
@@ -73,6 +65,24 @@ test('suggestCanonical - text sizes', async (t: TestContext) => {
     });
   });
 
+  await t.test('text-[96px] maps to text-8xl', () => {
+    const result = suggestCanonical('text-[96px]');
+    assert.deepEqual(result, {
+      original: 'text-[96px]',
+      canonical: 'text-8xl',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('text-[128px] maps to text-9xl', () => {
+    const result = suggestCanonical('text-[128px]');
+    assert.deepEqual(result, {
+      original: 'text-[128px]',
+      canonical: 'text-9xl',
+      isCustomToken: false,
+    });
+  });
+
   await t.test('text-[13px] returns null (no canonical token)', () => {
     assert.strictEqual(suggestCanonical('text-[13px]'), null);
   });
@@ -88,8 +98,14 @@ test('suggestCanonical - text sizes', async (t: TestContext) => {
     });
   });
 
-  await t.test('text-[9px] maps to text-3xs (custom)', () => {
-    const result = suggestCanonical('text-[9px]');
+  await t.test('text-[9px] without custom tokens returns null', () => {
+    assert.strictEqual(suggestCanonical('text-[9px]'), null);
+  });
+
+  await t.test('text-[9px] honors a custom text token', () => {
+    const result = suggestCanonical('text-[9px]', {
+      customTextTokens: { 9: '3xs' },
+    });
     assert.deepEqual(result, {
       original: 'text-[9px]',
       canonical: 'text-3xs',

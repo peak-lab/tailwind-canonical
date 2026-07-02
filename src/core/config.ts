@@ -1,7 +1,7 @@
 import type { Config } from './rules.js';
 import { DEFAULT_SORT_ORDER } from './sorter.js';
 
-export const CONFIG_FILENAME = 'tailwind-canonical.config.ts';
+const CONFIG_FILENAME = 'tailwind-canonical.config.ts';
 export const CONFIG_FILENAMES = [
   CONFIG_FILENAME,
   'tailwind-canonical.config.js',
