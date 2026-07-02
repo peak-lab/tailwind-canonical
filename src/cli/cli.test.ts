@@ -586,6 +586,27 @@ test('run - --merge precheck passes when tailwind-merge is installed', async (_t
   }
 });
 
+test('run - --merge preserves leading next to configured custom text tokens', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const content =
+    '<span className="font-mono leading-none text-2xs text-text-quaternary" />';
+  writeFileSync(file, content, 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { customTextTokens: { 11: "2xs" } }',
+    'utf8',
+  );
+  const { sink } = captureSink();
+  try {
+    const result = await run(['--merge', file], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(readFileSync(file, 'utf8'), content);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - --typos --reporter json emits findings array', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(join(dir, 'a.tsx'), '<div className="text-gry-500" />', 'utf8');
