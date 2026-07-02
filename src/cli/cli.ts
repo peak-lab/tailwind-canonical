@@ -49,6 +49,9 @@ type Flags = {
   reporter: Reporter;
   targets: string[];
   error?: string;
+  hasExplicitMode: boolean;
+  hasExplicitReporter: boolean;
+  hasExplicitWatch: boolean;
 };
 
 type FileCounts = {
@@ -172,6 +175,14 @@ function timestamp(): string {
 }
 
 const REPORTERS: readonly Reporter[] = ['text', 'json', 'sarif'];
+const MODE_FLAGS = [
+  '--fix',
+  '--merge',
+  '--dedup',
+  '--sort',
+  '--analyze',
+  '--typos',
+] as const;
 
 const KNOWN_FLAGS = new Set([
   '--fix',
@@ -240,7 +251,46 @@ export function parseArgs(argv: string[]): Flags {
     reporter,
     targets,
     error,
+    hasExplicitMode: MODE_FLAGS.some((flag) => argv.includes(flag)),
+    hasExplicitReporter: reporterRaw !== undefined,
+    hasExplicitWatch: argv.includes('--watch'),
   };
+}
+
+function applyDefaultCommand(flags: Flags, config: Config): Flags {
+  const defaults = config.defaultCommand;
+  if (!defaults) return flags;
+
+  return {
+    ...flags,
+    fix: flags.hasExplicitMode ? flags.fix : (defaults.fix ?? flags.fix),
+    merge: flags.hasExplicitMode
+      ? flags.merge
+      : (defaults.merge ?? flags.merge),
+    dedup: flags.hasExplicitMode
+      ? flags.dedup
+      : (defaults.dedup ?? flags.dedup),
+    sort: flags.hasExplicitMode ? flags.sort : (defaults.sort ?? flags.sort),
+    analyze: flags.hasExplicitMode
+      ? flags.analyze
+      : (defaults.analyze ?? flags.analyze),
+    typos: flags.hasExplicitMode
+      ? flags.typos
+      : (defaults.typos ?? flags.typos),
+    watch: flags.hasExplicitWatch
+      ? flags.watch
+      : (defaults.watch ?? flags.watch),
+    reporter: flags.hasExplicitReporter
+      ? flags.reporter
+      : (defaults.reporter ?? flags.reporter),
+    targets:
+      flags.targets.length > 0 ? flags.targets : (defaults.targets ?? []),
+  };
+}
+
+function resolveTarget(cwd: string, target: string): string {
+  if (target.startsWith('!')) return `!${resolve(cwd, target.slice(1))}`;
+  return resolve(cwd, target);
 }
 
 const TRANSFORM_FLAGS: ReadonlyArray<{ key: keyof Flags; flag: string }> = [
@@ -717,12 +767,24 @@ export async function run(
   cwd: string,
   sink: Sink = defaultSink,
 ): Promise<RunResult> {
-  const flags = parseArgs(argv);
+  let flags = parseArgs(argv);
 
   if (flags.error) {
     sink.error(flags.error);
     return { exitCode: 1 };
   }
+
+  let config: Config;
+  try {
+    config = await loadConfig(cwd);
+  } catch (err) {
+    sink.error(
+      `tailwind-canonical: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { exitCode: 1 };
+  }
+
+  flags = applyDefaultCommand(flags, config);
 
   if (flags.targets.length === 0) {
     sink.error(USAGE);
@@ -738,21 +800,12 @@ export async function run(
     }
   }
 
-  let config: Config;
-  try {
-    config = await loadConfig(cwd);
-  } catch (err) {
-    sink.error(
-      `tailwind-canonical: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return { exitCode: 1 };
-  }
-
   for (const warning of flagWarnings(flags)) {
     sink.error(`Warning: ${warning}`);
   }
 
-  const files = await resolveTargets(flags.targets);
+  const targetPaths = flags.targets.map((target) => resolveTarget(cwd, target));
+  const files = await resolveTargets(targetPaths);
 
   if (flags.analyze) return runAnalyze(files, config, flags.reporter, sink);
 

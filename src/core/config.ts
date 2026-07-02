@@ -21,6 +21,7 @@ const KNOWN_KEYS = [
   'minRareScalePropertyOccurrences',
   'rareScaleMaxFiles',
   'rareScaleMaxCount',
+  'defaultCommand',
 ] as const;
 
 const ANALYZE_KEYS = [
@@ -34,6 +35,21 @@ const ANALYZE_KEYS = [
 ] as const;
 
 const ANALYZE_KEY_SET = new Set<string>(ANALYZE_KEYS);
+
+const DEFAULT_COMMAND_KEYS = [
+  'fix',
+  'merge',
+  'dedup',
+  'sort',
+  'analyze',
+  'typos',
+  'watch',
+  'reporter',
+  'targets',
+] as const;
+
+const DEFAULT_COMMAND_KEY_SET = new Set<string>(DEFAULT_COMMAND_KEYS);
+const REPORTERS = new Set<string>(['text', 'json', 'sarif']);
 
 const KNOWN_KEY_SET = new Set<string>(KNOWN_KEYS);
 const SORT_CATEGORIES = new Set<string>(DEFAULT_SORT_ORDER);
@@ -121,6 +137,43 @@ function assertAnalyzeConfig(value: unknown, filename: string): void {
   }
 }
 
+function assertDefaultCommandConfig(value: unknown, filename: string): void {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    fail(filename, 'defaultCommand must be an object');
+  }
+  const cfg = value as Record<string, unknown>;
+  for (const key of Object.keys(cfg)) {
+    if (!DEFAULT_COMMAND_KEY_SET.has(key)) {
+      fail(
+        filename,
+        `defaultCommand contains unknown key "${key}" (expected one of: ${DEFAULT_COMMAND_KEYS.join(', ')})`,
+      );
+    }
+  }
+  for (const key of [
+    'fix',
+    'merge',
+    'dedup',
+    'sort',
+    'analyze',
+    'typos',
+    'watch',
+  ]) {
+    if (key in cfg && typeof cfg[key] !== 'boolean') {
+      fail(filename, `defaultCommand.${key} must be a boolean`);
+    }
+  }
+  if (
+    'reporter' in cfg &&
+    (typeof cfg.reporter !== 'string' || !REPORTERS.has(cfg.reporter))
+  ) {
+    fail(filename, 'defaultCommand.reporter must be one of: text, json, sarif');
+  }
+  if ('targets' in cfg) {
+    assertStringArray(cfg.targets, 'defaultCommand.targets', filename);
+  }
+}
+
 function assertSortOrder(value: unknown, filename: string): void {
   if (!Array.isArray(value))
     fail(filename, 'sortOrder must be an array of category names');
@@ -185,6 +238,8 @@ export function validateConfig(
     assertPositiveInteger(cfg.rareScaleMaxFiles, 'rareScaleMaxFiles', filename);
   if ('rareScaleMaxCount' in cfg)
     assertPositiveInteger(cfg.rareScaleMaxCount, 'rareScaleMaxCount', filename);
+  if ('defaultCommand' in cfg)
+    assertDefaultCommandConfig(cfg.defaultCommand, filename);
 
   return cfg as Config;
 }

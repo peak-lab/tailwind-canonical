@@ -53,8 +53,58 @@ test('validateConfig - accepts a full valid config', (_t: TestContext) => {
     minRareScalePropertyOccurrences: 20,
     rareScaleMaxFiles: 1,
     rareScaleMaxCount: 3,
+    defaultCommand: {
+      fix: true,
+      dedup: true,
+      merge: true,
+      sort: true,
+      watch: false,
+      reporter: 'json',
+      targets: ['src'],
+    },
   };
   assert.deepEqual(validateConfig(cfg), cfg);
+});
+
+test('validateConfig - defaultCommand options', (_t: TestContext) => {
+  assert.throws(
+    () => validateConfig({ defaultCommand: [] }),
+    /defaultCommand must be an object/,
+  );
+  assert.throws(
+    () => validateConfig({ defaultCommand: { target: ['src'] } }),
+    /defaultCommand contains unknown key "target"/,
+  );
+  assert.throws(
+    () => validateConfig({ defaultCommand: { fix: 'yes' } }),
+    /defaultCommand\.fix must be a boolean/,
+  );
+  assert.throws(
+    () => validateConfig({ defaultCommand: { reporter: 'xml' } }),
+    /defaultCommand\.reporter must be one of/,
+  );
+  assert.throws(
+    () => validateConfig({ defaultCommand: { targets: [1] } }),
+    /defaultCommand\.targets must be an array of strings/,
+  );
+  assert.deepEqual(
+    validateConfig({
+      defaultCommand: {
+        fix: true,
+        sort: true,
+        reporter: 'json',
+        targets: ['src'],
+      },
+    }),
+    {
+      defaultCommand: {
+        fix: true,
+        sort: true,
+        reporter: 'json',
+        targets: ['src'],
+      },
+    },
+  );
 });
 
 test('validateConfig - rare scale thresholds must be positive integers', (_t: TestContext) => {
