@@ -3,6 +3,7 @@ import { lineAt } from './suppressions.js';
 export type ClassStringOpts = {
   functionNames?: string[];
   attributeNames?: string[];
+  customTextTokens?: Record<number, string>;
   isSuppressed?: (line: number) => boolean;
 };
 
@@ -10,10 +11,12 @@ export type ClassStringOpts = {
 export function toClassStringOpts(config: {
   functionNames?: string[];
   attributeNames?: string[];
+  customTextTokens?: Record<number, string>;
 }): ClassStringOpts {
   return {
     functionNames: config.functionNames,
     attributeNames: config.attributeNames,
+    customTextTokens: config.customTextTokens,
   };
 }
 
