@@ -16,6 +16,18 @@ type AnalyzeConfig = {
   maxPatterns?: number;
 };
 
+type DefaultCommandConfig = {
+  fix?: boolean;
+  merge?: boolean;
+  dedup?: boolean;
+  sort?: boolean;
+  analyze?: boolean;
+  typos?: boolean;
+  watch?: boolean;
+  reporter?: 'text' | 'json' | 'sarif';
+  targets?: string[];
+};
+
 const TEXT_SIZE_MAP: Record<number, string> = {
   12: 'xs',
   14: 'sm',
@@ -150,6 +162,7 @@ export type Config = {
   minRareScalePropertyOccurrences?: number;
   rareScaleMaxFiles?: number;
   rareScaleMaxCount?: number;
+  defaultCommand?: DefaultCommandConfig;
 };
 
 function remToPx(rem: number): number | null {

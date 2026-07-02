@@ -284,6 +284,14 @@ export default {
   attributeNames: ['className', 'class', ':class', 'tw'],
   // Support utility function wrappers
   functionNames: ['cn', 'clsx', 'cva'],
+  // Optional CLI defaults, so `tailwind-canonical` is enough locally/CI
+  defaultCommand: {
+    fix: true,
+    dedup: true,
+    merge: true,
+    sort: true,
+    targets: ['./src'],
+  },
   // Tune --analyze reporting
   analyze: {
     maxScaleGroups: 8,
@@ -304,6 +312,12 @@ export default {
 `attributeNames` controls which HTML/JSX attributes are scanned (default: `['className']`). Use `['class']` for plain HTML/PHP/Jinja templates, `[':class']` for Vue, `['tw']` for styled-components.
 
 `functionNames` enables scanning inside utility function calls like `cn(...)` and `clsx(...)`.
+
+`defaultCommand` lets the config provide the CLI defaults. With the example
+above, running `tailwind-canonical` is equivalent to
+`tailwind-canonical --fix --dedup --merge --sort ./src`. Explicit CLI flags and
+targets still override the config, so `tailwind-canonical --typos ./app` runs
+only typo detection on `./app`.
 
 `analyze` controls project-scale consistency reporting. `maxScaleGroups`,
 `maxScaleValues`, `maxRareValues`, and `maxPatterns` keep terminal output
