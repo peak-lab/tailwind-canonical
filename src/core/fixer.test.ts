@@ -67,7 +67,7 @@ test('fixFile', async (t) => {
     }
   });
 
-  await t.test('handles backtick-quoted className attributes', () => {
+  await t.test('handles braced backtick-quoted className attributes', () => {
     const tempFile = join(tmpdir(), `test-${Date.now()}.tsx`);
     const content = '<div className={`text-[18px] px-[16px]`}>Content</div>';
 
@@ -76,13 +76,13 @@ test('fixFile', async (t) => {
 
       const count = fixFile(tempFile);
 
-      // Backticks in curly braces are not matched by the fixer regex
-      // The regex only matches className="..." className='...' className=`...`
-      // not className={`...`}
-      assert.strictEqual(count, 0);
+      assert.strictEqual(count, 2);
 
       const fixed = readFileSync(tempFile, 'utf8');
-      assert.strictEqual(fixed, content);
+      assert.strictEqual(
+        fixed,
+        '<div className={`text-lg px-4`}>Content</div>',
+      );
     } finally {
       unlinkSync(tempFile);
     }

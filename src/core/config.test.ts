@@ -41,8 +41,56 @@ test('validateConfig - accepts a full valid config', (_t: TestContext) => {
     sortOrder: ['display', 'spacing', 'colors'],
     extraColorFamilies: { brand: 'brand' },
     extraScaleProperties: ['scroll-p'],
+    analyze: {
+      minRareScalePropertyOccurrences: 20,
+      rareScaleMaxFiles: 1,
+      rareScaleMaxCount: 3,
+      maxScaleGroups: 4,
+      maxScaleValues: 2,
+      maxRareValues: 6,
+      maxPatterns: 5,
+    },
+    minRareScalePropertyOccurrences: 20,
+    rareScaleMaxFiles: 1,
+    rareScaleMaxCount: 3,
   };
   assert.deepEqual(validateConfig(cfg), cfg);
+});
+
+test('validateConfig - rare scale thresholds must be positive integers', (_t: TestContext) => {
+  assert.throws(
+    () => validateConfig({ minRareScalePropertyOccurrences: 0 }),
+    /positive integer/,
+  );
+  assert.throws(
+    () => validateConfig({ rareScaleMaxFiles: 1.5 }),
+    /positive integer/,
+  );
+  assert.throws(
+    () => validateConfig({ rareScaleMaxCount: '2' }),
+    /positive integer/,
+  );
+  assert.deepEqual(validateConfig({ rareScaleMaxFiles: 2 }), {
+    rareScaleMaxFiles: 2,
+  });
+});
+
+test('validateConfig - analyze options must be known positive integers', (_t: TestContext) => {
+  assert.throws(
+    () => validateConfig({ analyze: [] }),
+    /analyze must be an object/,
+  );
+  assert.throws(
+    () => validateConfig({ analyze: { nope: 1 } }),
+    /analyze contains unknown key "nope"/,
+  );
+  assert.throws(
+    () => validateConfig({ analyze: { maxScaleGroups: 0 } }),
+    /analyze\.maxScaleGroups must be a positive integer/,
+  );
+  assert.deepEqual(validateConfig({ analyze: { maxScaleGroups: 2 } }), {
+    analyze: { maxScaleGroups: 2 },
+  });
 });
 
 test('validateConfig - extraColorFamilies must be a string record', (_t: TestContext) => {
@@ -127,11 +175,11 @@ test('loadConfig - missing file returns empty config', async (_t: TestContext) =
   assert.deepEqual(await loadConfig(freshDir()), {});
 });
 
-test('loadConfig - reads and validates a real config file', async (_t: TestContext) => {
+test('loadConfig - reads and validates a TypeScript config file', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
-    'export default { sortOrder: ["display"] }',
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { sortOrder: ["display"] satisfies string[] }',
     'utf8',
   );
   try {
@@ -141,10 +189,43 @@ test('loadConfig - reads and validates a real config file', async (_t: TestConte
   }
 });
 
-test('loadConfig - rejects when the config file has a syntax error', async (_t: TestContext) => {
+test('loadConfig - prefers TypeScript config over JavaScript fallback', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { sortOrder: ["display"] }',
+    'utf8',
+  );
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.js'),
+    'export default { sortOrder: ["spacing"] }',
+    'utf8',
+  );
+  try {
+    assert.deepEqual(await loadConfig(dir), { sortOrder: ['display'] });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig - falls back to JavaScript config file', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(
     join(dir, 'tailwind-canonical.config.js'),
+    'export default { sortOrder: ["spacing"] }',
+    'utf8',
+  );
+  try {
+    assert.deepEqual(await loadConfig(dir), { sortOrder: ['spacing'] });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig - rejects when the config file has a syntax error', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
     'export default { sortOrder: [',
     'utf8',
   );
@@ -158,12 +239,15 @@ test('loadConfig - rejects when the config file has a syntax error', async (_t: 
 test('loadConfig - surfaces validation errors from a present file', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
+    join(dir, 'tailwind-canonical.config.ts'),
     'export default { sortOrder: ["nope"] }',
     'utf8',
   );
   try {
-    await assert.rejects(loadConfig(dir), /invalid category "nope"/);
+    await assert.rejects(
+      loadConfig(dir),
+      /Invalid tailwind-canonical\.config\.ts: .*invalid category "nope"/,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

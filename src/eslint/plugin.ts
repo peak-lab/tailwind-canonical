@@ -55,6 +55,11 @@ function makeStringRuleVisitor(
   };
 }
 
+function quoteReplacement(node: StringNode, value: string): string {
+  const quote = node.raw?.startsWith('"') ? '"' : "'";
+  return `${quote}${value}${quote}`;
+}
+
 const noArbitraryCanonical: Rule.RuleModule = {
   meta: {
     type: 'suggestion' as const,
@@ -90,24 +95,30 @@ const noArbitraryCanonical: Rule.RuleModule = {
     function checkLiteral(node: StringNode) {
       if (typeof node.value !== 'string') return;
       const value = node.value;
+      const suggestions = [...value.matchAll(/\S+/g)]
+        .map((match) => suggestCanonical(match[0], config))
+        .filter((suggestion) => suggestion !== null);
+      if (suggestions.length === 0) return;
+
       const corrected = value.replace(
         /\S+/g,
         (token) => suggestCanonical(token, config)?.canonical ?? token,
       );
-      for (const cls of value.split(/\s+/)) {
-        const suggestion = suggestCanonical(cls, config);
-        if (!suggestion) continue;
-        context.report({
-          node,
-          message: `Use canonical class '${suggestion.canonical}' instead of '${suggestion.original}'`,
-          fix(fixer) {
-            if (node.quasiRange)
-              return fixer.replaceTextRange(node.quasiRange, corrected);
-            const quote = node.raw?.startsWith('"') ? '"' : "'";
-            return fixer.replaceText(node, `${quote}${corrected}${quote}`);
-          },
-        });
-      }
+
+      const message =
+        suggestions.length === 1
+          ? `Use canonical class '${suggestions[0].canonical}' instead of '${suggestions[0].original}'`
+          : `Use canonical classes '${suggestions.map((s) => s.canonical).join(' ')}' instead of '${suggestions.map((s) => s.original).join(' ')}'`;
+
+      context.report({
+        node,
+        message,
+        fix(fixer) {
+          if (node.quasiRange)
+            return fixer.replaceTextRange(node.quasiRange, corrected);
+          return fixer.replaceText(node, quoteReplacement(node, corrected));
+        },
+      });
     }
 
     return makeStringRuleVisitor(checkLiteral);
@@ -148,8 +159,7 @@ const noConflictingClasses: Rule.RuleModule = {
         fix(fixer) {
           if (node.quasiRange)
             return fixer.replaceTextRange(node.quasiRange, merged);
-          const quote = node.raw?.startsWith('"') ? '"' : "'";
-          return fixer.replaceText(node, `${quote}${merged}${quote}`);
+          return fixer.replaceText(node, quoteReplacement(node, merged));
         },
       });
     }

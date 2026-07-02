@@ -28,9 +28,65 @@ function escapeRegex(s: string): string {
 function buildAttrRegex(names: string[]): RegExp {
   const alts = names.map(escapeRegex).join('|');
   return new RegExp(
-    `(${alts})\\s*=\\s*(?:"([^"]+)"|'([^']+)'|\`([^\`]+)\`)`,
+    `(^|[^\\w:$-])(${alts})\\s*=\\s*(?:({)(?:"([^"]+)"|'([^']+)'|\`([^\`]+)\`)(})|(?:"([^"]+)"|'([^']+)'|\`([^\`]+)\`))`,
     'g',
   );
+}
+
+type StringRange = { value: string; start: number; end: number };
+
+function readQuotedString(
+  content: string,
+  quoteStart: number,
+): (StringRange & { next: number }) | null {
+  const quote = content[quoteStart];
+  let quoteEnd = quoteStart + 1;
+  while (quoteEnd < content.length && content[quoteEnd] !== quote) {
+    if (content[quoteEnd] === '\\') quoteEnd++;
+    quoteEnd++;
+  }
+  if (quoteEnd >= content.length) return null;
+  return {
+    value: content.slice(quoteStart + 1, quoteEnd),
+    start: quoteStart + 1,
+    end: quoteEnd,
+    next: quoteEnd + 1,
+  };
+}
+
+function scanCallStrings(
+  content: string,
+  start: number,
+): { strings: StringRange[]; consumed: number; complete: boolean } {
+  const strings: StringRange[] = [];
+  let i = start;
+  let depth = 1;
+
+  while (i < content.length && depth > 0) {
+    const ch = content[i];
+    if (ch === '(' || ch === '[' || ch === '{') {
+      depth++;
+      i++;
+    } else if (ch === ')' || ch === ']' || ch === '}') {
+      depth--;
+      i++;
+    } else if (ch === '"' || ch === "'" || ch === '`') {
+      const quoted = readQuotedString(content, i);
+      if (!quoted) {
+        return {
+          strings: [],
+          consumed: content.length - start,
+          complete: false,
+        };
+      }
+      strings.push(quoted);
+      i = quoted.next;
+    } else {
+      i++;
+    }
+  }
+
+  return { strings, consumed: i - start, complete: depth === 0 };
 }
 
 function transformCallContent(
@@ -39,40 +95,28 @@ function transformCallContent(
   transform: (s: string) => string,
   isSuppressed?: (line: number) => boolean,
 ): { processed: string; consumed: number; count: number } {
-  const parts: string[] = [];
-  let i = start;
-  let depth = 1;
-  let count = 0;
-
-  while (i < content.length && depth > 0) {
-    const ch = content[i];
-    if (ch === '(' || ch === '[' || ch === '{') {
-      depth++;
-      parts.push(ch);
-      i++;
-    } else if (ch === ')' || ch === ']' || ch === '}') {
-      depth--;
-      parts.push(ch);
-      i++;
-    } else if (ch === '"' || ch === "'" || ch === '`') {
-      const q = ch;
-      let j = i + 1;
-      while (j < content.length && content[j] !== q) {
-        if (content[j] === '\\') j++;
-        j++;
-      }
-      const raw = content.slice(i + 1, j);
-      const out = isSuppressed?.(lineAt(content, i)) ? raw : transform(raw);
-      if (out !== raw) count++;
-      parts.push(`${q}${out}${q}`);
-      i = j + 1;
-    } else {
-      parts.push(ch);
-      i++;
-    }
+  const scanned = scanCallStrings(content, start);
+  const original = content.slice(start, start + scanned.consumed);
+  if (!scanned.complete) {
+    return { processed: original, consumed: scanned.consumed, count: 0 };
   }
 
-  return { processed: parts.join(''), consumed: i - start, count };
+  const parts: string[] = [];
+  let pos = start;
+  let count = 0;
+
+  for (const string of scanned.strings) {
+    parts.push(content.slice(pos, string.start));
+    const out = isSuppressed?.(lineAt(content, string.start - 1))
+      ? string.value
+      : transform(string.value);
+    if (out !== string.value) count++;
+    parts.push(out);
+    pos = string.end;
+  }
+  parts.push(content.slice(pos, start + scanned.consumed));
+
+  return { processed: parts.join(''), consumed: scanned.consumed, count };
 }
 
 export function replaceClassStrings(
@@ -90,14 +134,33 @@ export function replaceClassStrings(
 
   result = result.replace(
     buildAttrRegex(attrNames),
-    (_full, attr, dq, sq, bt, offset: number) => {
-      const raw = dq ?? sq ?? bt ?? '';
-      const q = dq !== undefined ? '"' : sq !== undefined ? "'" : '`';
-      const out = isSuppressed?.(lineAt(content, offset))
+    (
+      _full,
+      before,
+      attr,
+      open,
+      bracedDq,
+      bracedSq,
+      bracedBt,
+      close,
+      dq,
+      sq,
+      bt,
+      offset: number,
+    ) => {
+      const raw = bracedDq ?? bracedSq ?? bracedBt ?? dq ?? sq ?? bt ?? '';
+      const q =
+        bracedDq !== undefined || dq !== undefined
+          ? '"'
+          : bracedSq !== undefined || sq !== undefined
+            ? "'"
+            : '`';
+      const attrOffset = offset + before.length;
+      const out = isSuppressed?.(lineAt(content, attrOffset))
         ? raw
         : transform(raw);
       if (out !== raw) count++;
-      return `${attr}=${q}${out}${q}`;
+      return `${before}${attr}=${open ?? ''}${q}${out}${q}${close ?? ''}`;
     },
   );
 
@@ -140,8 +203,8 @@ export function extractClassStrings(
   const results: Array<{ value: string; start: number; end: number }> = [];
 
   for (const m of content.matchAll(buildAttrRegex(attrNames))) {
-    const raw = m[2] ?? m[3] ?? m[4] ?? '';
-    const start = (m.index ?? 0) + m[0].length - raw.length - 1;
+    const raw = m[4] ?? m[5] ?? m[6] ?? m[8] ?? m[9] ?? m[10] ?? '';
+    const start = (m.index ?? 0) + m[0].lastIndexOf(raw);
     results.push({ value: raw, start, end: start + raw.length });
   }
 
@@ -154,29 +217,8 @@ export function extractClassStrings(
   );
 
   for (const m of content.matchAll(funcRe)) {
-    let i = (m.index ?? 0) + m[0].length;
-    let depth = 1;
-    while (i < content.length && depth > 0) {
-      const ch = content[i];
-      if (ch === '(' || ch === '[' || ch === '{') {
-        depth++;
-        i++;
-      } else if (ch === ')' || ch === ']' || ch === '}') {
-        depth--;
-        i++;
-      } else if (ch === '"' || ch === "'" || ch === '`') {
-        const q = ch;
-        let j = i + 1;
-        while (j < content.length && content[j] !== q) {
-          if (content[j] === '\\') j++;
-          j++;
-        }
-        results.push({ value: content.slice(i + 1, j), start: i + 1, end: j });
-        i = j + 1;
-      } else {
-        i++;
-      }
-    }
+    const start = (m.index ?? 0) + m[0].length;
+    results.push(...scanCallStrings(content, start).strings);
   }
 
   return results;

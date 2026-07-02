@@ -197,6 +197,7 @@ test('run - analyze mode reports cross-file inconsistencies', async (_t: TestCon
     assert.strictEqual(result.exitCode, 1);
     const parsed = JSON.parse(raw.join(''));
     assert.strictEqual(parsed.colorVariants.length, 1);
+    assert.ok(Array.isArray(parsed.rareScaleValues));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -253,7 +254,7 @@ test('run - honors attributeNames from config file', async (_t: TestContext) => 
   const dir = freshDir();
   writeFileSync(join(dir, 'a.tsx'), '<div class="text-[12px]" />', 'utf8');
   writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
+    join(dir, 'tailwind-canonical.config.ts'),
     'export default { attributeNames: ["class"] }',
     'utf8',
   );
@@ -361,7 +362,7 @@ test('run - --fix --analyze warns about ignored --fix but stays in analyze mode'
       err.some((l) => l.includes('--fix ignored: --analyze takes priority')),
     );
     assert.ok(readFileSync(fixed, 'utf8').includes('text-red-500'));
-    assert.ok(out.some((l) => l.includes('color variants')));
+    assert.ok(out.some((l) => l.includes('Color variants')));
     assert.strictEqual(result.exitCode, 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -503,7 +504,7 @@ test('run - --analyze text mode reports color variants and exits 1', async (_t: 
   try {
     const result = await run(['--analyze', dir], dir, sink);
     assert.strictEqual(result.exitCode, 1);
-    assert.ok(out.some((l) => l.includes('color variants')));
+    assert.ok(out.some((l) => l.includes('Color variants')));
     assert.ok(out.some((l) => l.includes('consistency issue')));
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -526,6 +527,62 @@ test('run - --analyze text mode reports scale inconsistencies', async (_t: TestC
   }
 });
 
+test('run - --analyze text mode reports rare scale values with negative class formatting', async (_t: TestContext) => {
+  const dir = freshDir();
+  for (let i = 0; i < 12; i++) {
+    writeFileSync(
+      join(dir, `common-${i}.tsx`),
+      '<div className="mt-2" />',
+      'utf8',
+    );
+  }
+  writeFileSync(join(dir, 'rare.tsx'), '<div className="-mt-2" />', 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('-mt-2')));
+    assert.ok(out.some((l) => l.includes('Rare scale values')));
+    assert.ok(out.some((l) => l.includes('-mt-2') && !l.includes('mt--2')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze warns when known class functions are not configured', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), 'cn("gap-2")', 'utf8');
+  writeFileSync(join(dir, 'b.tsx'), '<div className="gap-3" />', 'utf8');
+  writeFileSync(join(dir, 'c.tsx'), '<div className="gap-2" />', 'utf8');
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(err.some((l) => l.includes('functionNames')));
+    assert.ok(err.some((l) => l.includes('cn(...)')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze does not warn for configured class functions', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), 'cn("gap-2")', 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { functionNames: ["cn"] }',
+    'utf8',
+  );
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.deepEqual(err, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - --analyze text mode reports repeated combinations', async (_t: TestContext) => {
   const dir = freshDir();
   const combo = '<div className="flex items-center justify-between p-4" />';
@@ -538,6 +595,50 @@ test('run - --analyze text mode reports repeated combinations', async (_t: TestC
     const result = await run(['--analyze', dir], dir, sink);
     assert.strictEqual(result.exitCode, 1);
     assert.ok(out.some((l) => l.includes('Pattern:')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze text output honors analyze display config', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { analyze: { maxScaleGroups: 1, maxScaleValues: 1, maxRareValues: 1, maxPatterns: 1 } }',
+    'utf8',
+  );
+  for (let i = 0; i < 12; i++) {
+    writeFileSync(
+      join(dir, `common-${i}.tsx`),
+      '<div className="gap-2 px-4" />',
+      'utf8',
+    );
+  }
+  writeFileSync(
+    join(dir, 'rare-a.tsx'),
+    '<div className="gap-24 px-11" />',
+    'utf8',
+  );
+  writeFileSync(
+    join(dir, 'rare-b.tsx'),
+    '<div className="gap-10 px-7" />',
+    'utf8',
+  );
+  const comboA = '<div className="flex items-center p-4" />';
+  const comboB = '<div className="grid gap-2 p-4" />';
+  for (const [index, combo] of [comboA, comboB].entries()) {
+    for (let i = 0; i < 3; i++) {
+      writeFileSync(join(dir, `combo-${index}-${i}.tsx`), combo, 'utf8');
+    }
+  }
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--analyze', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('+1 more scale groups')));
+    assert.ok(out.some((l) => l.includes('+1 more')));
+    assert.ok(out.some((l) => l.includes('+3 more rare values')));
+    assert.ok(out.some((l) => l.includes('+2 more repeated patterns')));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -575,7 +676,7 @@ test('run - surfaces invalid config and exits 1', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(join(dir, 'a.tsx'), '<div className="flex" />', 'utf8');
   writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
+    join(dir, 'tailwind-canonical.config.ts'),
     'export default { sortOrder: ["nope"] }',
     'utf8',
   );

@@ -125,9 +125,19 @@ Detects semantic inconsistencies visible only at project scale — it never modi
 
 ```bash
 npx tailwind-canonical --analyze ./src
-# Warning: 3 red color variants used for text: text-red-500 (4), text-rose-500 (1), text-red-600 (2)
-# Warning: px inconsistency: px-4 (8 files) vs px-3 (2 files)
-# Warning: z inconsistency: z-[100] (3 files) vs z-[200] (1 file) vs z-[50] (2 files)
+# tailwind-canonical analyze
+# Files analyzed: 42
+# Issue groups: 3 (1 color, 2 scales, 0 patterns)
+#
+# Color variants
+#   - text/red: text-red-500 x4, text-rose-500 x1
+#
+# Scale inconsistency groups
+#   - px: 2 values, 10 uses, 10 files
+#     Top: px-4 (8 uses, 8 files), px-3 (2 uses, 2 files)
+#
+# Rare scale values
+#   - px-11: 3 uses in 1 file (608 px uses total); e.g. src/Dialog.tsx
 ```
 
 Three detectors:
@@ -136,6 +146,7 @@ Three detectors:
 |---|---|
 | Color variants | Multiple shades/colors of the same hue family used for one property (`text`, `bg`, `border`, …) |
 | Scale inconsistency | Competing values for the same spacing / `gap` / `z` property across files |
+| Rare scale values | Low-frequency scale values inside otherwise common properties (`ml-13`, `gap-24`, `px-11`, …) |
 | Repeated patterns | Identical class combinations recurring across 3+ files |
 
 Pairs with `--reporter json` for machine-readable output. Exits `1` when any inconsistency is found.
@@ -160,6 +171,10 @@ npx tailwind-canonical --analyze --reporter json ./src
         { "value": "3", "count": 2, "files": ["src/IconButton.tsx"] }
       ] }
   ],
+  "rareScaleValues": [
+    { "property": "px", "value": "11", "className": "px-11",
+      "count": 3, "files": ["src/Dialog.tsx"], "propertyCount": 608 }
+  ],
   "combinations": []
 }
 ```
@@ -182,8 +197,8 @@ Variants (`hover:`, `sm:`, `focus:`) are sorted after base classes, with respons
 
 Override the category order via config. Categories you omit (and unknown classes) sort to the end, preserving their original relative order. Variants are always sorted after base classes regardless of order.
 
-```js
-// tailwind-canonical.config.js
+```ts
+// tailwind-canonical.config.ts
 export default {
   sortOrder: [
     'display',
@@ -254,9 +269,9 @@ Non-divisible values (`h-[22px]`, `px-[7px]`) are left untouched.
 
 ## Config
 
-Create `tailwind-canonical.config.js` at the root:
+Create `tailwind-canonical.config.ts` at the root:
 
-```js
+```ts
 export default {
   customTextTokens: {
     10: '3xs',
@@ -269,6 +284,16 @@ export default {
   attributeNames: ['className', 'class', ':class', 'tw'],
   // Support utility function wrappers
   functionNames: ['cn', 'clsx', 'cva'],
+  // Tune --analyze reporting
+  analyze: {
+    maxScaleGroups: 8,
+    maxScaleValues: 5,
+    maxRareValues: 12,
+    maxPatterns: 10,
+    minRareScalePropertyOccurrences: 10,
+    rareScaleMaxFiles: 2,
+    rareScaleMaxCount: 3,
+  },
   // Never suggest replacements for classes matching these patterns
   ignorePatterns: [/^font-/, /-\[var\(/],
 }
@@ -279,6 +304,20 @@ export default {
 `attributeNames` controls which HTML/JSX attributes are scanned (default: `['className']`). Use `['class']` for plain HTML/PHP/Jinja templates, `[':class']` for Vue, `['tw']` for styled-components.
 
 `functionNames` enables scanning inside utility function calls like `cn(...)` and `clsx(...)`.
+
+`analyze` controls project-scale consistency reporting. `maxScaleGroups`,
+`maxScaleValues`, `maxRareValues`, and `maxPatterns` keep terminal output
+compact. `minRareScalePropertyOccurrences`, `rareScaleMaxFiles`, and
+`rareScaleMaxCount` control which low-frequency values are surfaced as rare
+scale values. Defaults are conservative: only properties with 10+ total
+occurrences are considered, and a value is rare when it appears in at most 2
+files and at most 3 times.
+
+The older top-level rare-value keys are still accepted for compatibility, but
+new configs should prefer `analyze`.
+
+`tailwind-canonical.config.js` is still loaded as a fallback when no TypeScript
+config exists.
 
 ## ESLint plugin
 

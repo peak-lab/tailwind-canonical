@@ -28,6 +28,15 @@ export type ScaleInconsistency = {
   values: ScaleValue[];
 };
 
+type RareScaleValue = {
+  property: string;
+  value: string;
+  className: string;
+  count: number;
+  files: string[];
+  propertyCount: number;
+};
+
 export type ClassCombination = {
   classes: string[];
   count: number;
@@ -38,6 +47,7 @@ export type ConsistencyReport = {
   filesAnalyzed: number;
   colorVariants: ColorVariantGroup[];
   scaleInconsistencies: ScaleInconsistency[];
+  rareScaleValues: RareScaleValue[];
   combinations: ClassCombination[];
 };
 
@@ -46,6 +56,9 @@ export type ConsistencyOptions = {
   minCombinationFiles?: number;
   maxCombinations?: number;
   minScaleOccurrences?: number;
+  minRareScalePropertyOccurrences?: number;
+  rareScaleMaxFiles?: number;
+  rareScaleMaxCount?: number;
   /** Extra color → family mappings merged onto the built-in palette. */
   extraColorFamilies?: Record<string, string>;
   /** Extra scale property prefixes (e.g. 'scroll-p') added to the defaults. */
@@ -204,6 +217,49 @@ function detectScaleInconsistencies(
   return result.sort((a, b) => a.property.localeCompare(b.property));
 }
 
+function formatScaleClass(property: string, value: string): string {
+  return value.startsWith('-')
+    ? `-${property}-${value.slice(1)}`
+    : `${property}-${value}`;
+}
+
+function detectRareScaleValues(
+  inconsistencies: ScaleInconsistency[],
+  minPropertyOccurrences: number,
+  maxFiles: number,
+  maxCount: number,
+): RareScaleValue[] {
+  const rare: RareScaleValue[] = [];
+
+  for (const scale of inconsistencies) {
+    const propertyCount = scale.values.reduce(
+      (sum, value) => sum + value.count,
+      0,
+    );
+    if (propertyCount < minPropertyOccurrences) continue;
+
+    for (const value of scale.values) {
+      if (value.files.length > maxFiles || value.count > maxCount) continue;
+      rare.push({
+        property: scale.property,
+        value: value.value,
+        className: formatScaleClass(scale.property, value.value),
+        count: value.count,
+        files: value.files,
+        propertyCount,
+      });
+    }
+  }
+
+  return rare.sort(
+    (a, b) =>
+      a.files.length - b.files.length ||
+      a.count - b.count ||
+      b.propertyCount - a.propertyCount ||
+      a.className.localeCompare(b.className),
+  );
+}
+
 // NOTE: combinations are keyed on the whole de-duplicated, sorted class set of
 // each element. Two elements that share most classes but differ by one are
 // treated as distinct combinations — this finds repeated whole patterns, not
@@ -257,6 +313,10 @@ export function analyzeConsistency(
   const minCombinationFiles = options.minCombinationFiles ?? 3;
   const maxCombinations = options.maxCombinations ?? 20;
   const minScaleOccurrences = options.minScaleOccurrences ?? 3;
+  const minRareScalePropertyOccurrences =
+    options.minRareScalePropertyOccurrences ?? 10;
+  const rareScaleMaxFiles = options.rareScaleMaxFiles ?? 2;
+  const rareScaleMaxCount = options.rareScaleMaxCount ?? 3;
 
   const families = { ...COLOR_FAMILIES, ...options.extraColorFamilies };
   const knownColors = new Set([...TAILWIND_COLORS, ...Object.keys(families)]);
@@ -265,13 +325,21 @@ export function analyzeConsistency(
     ...(options.extraScaleProperties ?? []),
   ]);
 
+  const scaleInconsistencies = detectScaleInconsistencies(
+    input,
+    minScaleOccurrences,
+    scaleProperties,
+  );
+
   return {
     filesAnalyzed: input.length,
     colorVariants: detectColorVariants(input, families, knownColors),
-    scaleInconsistencies: detectScaleInconsistencies(
-      input,
-      minScaleOccurrences,
-      scaleProperties,
+    scaleInconsistencies,
+    rareScaleValues: detectRareScaleValues(
+      scaleInconsistencies,
+      minRareScalePropertyOccurrences,
+      rareScaleMaxFiles,
+      rareScaleMaxCount,
     ),
     combinations: detectCombinations(
       input,
@@ -299,6 +367,13 @@ export function toConsistencyOptions(config: Config = {}): ConsistencyOptions {
   return {
     extraColorFamilies: config.extraColorFamilies,
     extraScaleProperties: config.extraScaleProperties,
+    minRareScalePropertyOccurrences:
+      config.analyze?.minRareScalePropertyOccurrences ??
+      config.minRareScalePropertyOccurrences,
+    rareScaleMaxFiles:
+      config.analyze?.rareScaleMaxFiles ?? config.rareScaleMaxFiles,
+    rareScaleMaxCount:
+      config.analyze?.rareScaleMaxCount ?? config.rareScaleMaxCount,
   };
 }
 

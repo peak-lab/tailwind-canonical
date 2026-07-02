@@ -6,11 +6,17 @@ export type Suggestion = {
   isCustomToken: boolean;
 };
 
+type AnalyzeConfig = {
+  minRareScalePropertyOccurrences?: number;
+  rareScaleMaxFiles?: number;
+  rareScaleMaxCount?: number;
+  maxScaleGroups?: number;
+  maxScaleValues?: number;
+  maxRareValues?: number;
+  maxPatterns?: number;
+};
+
 const TEXT_SIZE_MAP: Record<number, string> = {
-  8: '3xs',
-  9: '3xs',
-  10: '3xs',
-  11: '2xs',
   12: 'xs',
   14: 'sm',
   16: 'base',
@@ -22,9 +28,13 @@ const TEXT_SIZE_MAP: Record<number, string> = {
   48: '5xl',
   60: '6xl',
   72: '7xl',
+  96: '8xl',
+  128: '9xl',
 };
 
-const BUILT_IN_TEXT_PX = new Set([12, 14, 16, 18, 20, 24, 30, 36, 48, 60, 72]);
+const BUILT_IN_TEXT_PX = new Set([
+  12, 14, 16, 18, 20, 24, 30, 36, 48, 60, 72, 96, 128,
+]);
 
 const ROUNDED_MAP: Record<number, string> = {
   2: 'sm',
@@ -136,6 +146,10 @@ export type Config = {
   extraColorFamilies?: Record<string, string>;
   extraScaleProperties?: string[];
   extraColors?: string[];
+  analyze?: AnalyzeConfig;
+  minRareScalePropertyOccurrences?: number;
+  rareScaleMaxFiles?: number;
+  rareScaleMaxCount?: number;
 };
 
 function remToPx(rem: number): number | null {

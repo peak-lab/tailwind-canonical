@@ -143,6 +143,49 @@ test('replaceClassStrings - function call support', async (t: TestContext) => {
     assert.strictEqual(result, `cn(\`P-4 ${D}{A ? "X" : "Y"}\`, "FLEX")`);
     assert.strictEqual(count, 2);
   });
+
+  await t.test('preserves unterminated strings in configured functions', () => {
+    const input = 'cn("flex p-4';
+    const { result, count } = replaceClassStrings(
+      input,
+      (s) => s.toUpperCase(),
+      FN_OPTS,
+    );
+    assert.strictEqual(result, input);
+    assert.strictEqual(count, 0);
+  });
+});
+
+test('replaceClassStrings - braced attribute strings', async (t: TestContext) => {
+  await t.test('transforms className={`...`}', () => {
+    const { result, count } = replaceClassStrings(
+      '<div className={`text-[18px] px-[16px]`}>',
+      (s) => s.replace('text-[18px]', 'text-lg').replace('px-[16px]', 'px-4'),
+    );
+
+    assert.strictEqual(count, 1);
+    assert.strictEqual(result, '<div className={`text-lg px-4`}>');
+  });
+
+  await t.test('transforms className={"..."}', () => {
+    const { result, count } = replaceClassStrings(
+      '<div className={"text-[12px]"}>',
+      (s) => s.replace('text-[12px]', 'text-xs'),
+    );
+
+    assert.strictEqual(count, 1);
+    assert.strictEqual(result, '<div className={"text-xs"}>');
+  });
+
+  await t.test("transforms className={'...'}", () => {
+    const { result, count } = replaceClassStrings(
+      "<div className={'h-[64px]'}>",
+      (s) => s.replace('h-[64px]', 'h-16'),
+    );
+
+    assert.strictEqual(count, 1);
+    assert.strictEqual(result, "<div className={'h-16'}>");
+  });
 });
 
 test('fixFile with functionNames', async (t: TestContext) => {
@@ -273,6 +316,41 @@ test('replaceClassStrings - attributeNames config', async (t: TestContext) => {
     });
     assert.ok(result.includes('class="flex"'));
     assert.ok(!result.includes('className='));
+  });
+
+  await t.test(
+    'does not match attributes that merely contain className',
+    () => {
+      const input =
+        '<div data-className="text-[12px]" xclassName="h-[64px]" className="w-[16px]">';
+      const { result, count } = replaceClassStrings(input, (s) =>
+        s
+          .replace('text-[12px]', 'text-xs')
+          .replace('h-[64px]', 'h-16')
+          .replace('w-[16px]', 'w-4'),
+      );
+
+      assert.strictEqual(count, 1);
+      assert.strictEqual(
+        result,
+        '<div data-className="text-[12px]" xclassName="h-[64px]" className="w-4">',
+      );
+    },
+  );
+
+  await t.test('matches configured colon-prefixed attributes exactly', () => {
+    const { result, count } = replaceClassStrings(
+      '<div data-:class="text-[12px]" :class="text-[14px]">',
+      (s) =>
+        s.replace('text-[12px]', 'text-xs').replace('text-[14px]', 'text-sm'),
+      { attributeNames: [':class'] },
+    );
+
+    assert.strictEqual(count, 1);
+    assert.strictEqual(
+      result,
+      '<div data-:class="text-[12px]" :class="text-sm">',
+    );
   });
 });
 
