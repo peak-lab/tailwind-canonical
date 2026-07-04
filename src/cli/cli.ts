@@ -22,6 +22,23 @@ const SARIF_SCHEMA =
 const USAGE =
   'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--analyze] [--typos] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]';
 
+const HELP_TEXT = [
+  USAGE,
+  '',
+  '  --fix              Auto-replace arbitrary values with canonical Tailwind classes',
+  '  --dedup            Remove redundant classes and collapse shorthands',
+  '  --merge            Resolve conflicting classes via tailwind-merge',
+  '  --sort             Sort classes into canonical order',
+  '  --analyze          Cross-file consistency analysis (read-only)',
+  '  --typos            Flag likely misspelled color names (read-only)',
+  '  --watch            Re-run on every file save (transform/check mode only)',
+  '  --reporter <type>  Output format: text|json|sarif',
+  '  --help, -h         Show this help message',
+  '  --version, -V      Show the installed version',
+  '',
+  'Mode precedence: --analyze > --typos > transform/check (only one runs).',
+].join('\n');
+
 export type Sink = {
   log: (s: string) => void;
   error: (s: string) => void;
@@ -46,6 +63,8 @@ type Flags = {
   watch: boolean;
   analyze: boolean;
   typos: boolean;
+  help: boolean;
+  version: boolean;
   reporter: Reporter;
   targets: string[];
   error?: string;
@@ -193,6 +212,8 @@ const KNOWN_FLAGS = new Set([
   '--analyze',
   '--typos',
   '--reporter',
+  '--help',
+  '--version',
 ]);
 
 function isReporter(value: string): value is Reporter {
@@ -202,22 +223,31 @@ function isReporter(value: string): value is Reporter {
 export function parseArgs(argv: string[]): Flags {
   let reporter: Reporter = 'text';
   let reporterRaw: string | undefined;
+  let reporterDangling = false;
   const consumed = new Set<number>();
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--reporter') {
       consumed.add(i);
-      reporterRaw = argv[i + 1];
-      if (i + 1 < argv.length) consumed.add(i + 1);
+      if (i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
+        reporterRaw = argv[i + 1];
+        consumed.add(i + 1);
+      } else {
+        reporterDangling = true;
+      }
     } else if (arg.startsWith('--reporter=')) {
       consumed.add(i);
       reporterRaw = arg.slice('--reporter='.length);
+    } else if (arg === '-h' || arg === '-V') {
+      consumed.add(i);
     }
   }
 
   let error: string | undefined;
-  if (reporterRaw !== undefined) {
+  if (reporterDangling) {
+    error = 'Missing value for --reporter (expected text|json|sarif)';
+  } else if (reporterRaw !== undefined) {
     if (isReporter(reporterRaw)) {
       reporter = reporterRaw;
     } else {
@@ -248,6 +278,8 @@ export function parseArgs(argv: string[]): Flags {
     watch: argv.includes('--watch'),
     analyze: argv.includes('--analyze'),
     typos: argv.includes('--typos'),
+    help: argv.includes('--help') || argv.includes('-h'),
+    version: argv.includes('--version') || argv.includes('-V'),
     reporter,
     targets,
     error,
@@ -769,6 +801,24 @@ export async function run(
 ): Promise<RunResult> {
   let flags = parseArgs(argv);
 
+  if (flags.help) {
+    sink.log(HELP_TEXT);
+    return { exitCode: 0 };
+  }
+
+  if (flags.version) {
+    try {
+      const pkg = JSON.parse(
+        readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+      ) as { version: string };
+      sink.log(pkg.version);
+      return { exitCode: 0 };
+    } catch (err) {
+      sink.error(`tailwind-canonical: could not read version: ${errMsg(err)}`);
+      return { exitCode: 1 };
+    }
+  }
+
   if (flags.error) {
     sink.error(flags.error);
     return { exitCode: 1 };
@@ -791,7 +841,7 @@ export async function run(
     return { exitCode: 1 };
   }
 
-  if (flags.merge) {
+  if (flags.merge && !flags.analyze && !flags.typos) {
     try {
       await import('tailwind-merge');
     } catch {
@@ -806,6 +856,11 @@ export async function run(
 
   const targetPaths = flags.targets.map((target) => resolveTarget(cwd, target));
   const files = await resolveTargets(targetPaths);
+
+  if (files.length === 0) {
+    sink.error(`No files matched: ${flags.targets.join(' ')}`);
+    return { exitCode: 1 };
+  }
 
   if (flags.analyze) return runAnalyze(files, config, flags.reporter, sink);
 

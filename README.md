@@ -44,10 +44,16 @@ npx tailwind-canonical --analyze ./src
 # Watch mode: re-run on every file save
 npx tailwind-canonical --watch --fix --sort ./src
 
-# Structured output for CI (check mode only)
+# Structured output for CI (findings in check mode, summary in fix mode)
 npx tailwind-canonical --reporter json ./src
 npx tailwind-canonical --reporter sarif ./src
+
+# Help and version
+npx tailwind-canonical --help
+npx tailwind-canonical --version
 ```
+
+An unmatched target exits `1` with `No files matched: <targets>`.
 
 ## What each flag does
 
@@ -59,6 +65,7 @@ npx tailwind-canonical --reporter sarif ./src
 | `--merge` | tailwind-merge conflict resolution | `bg-red-500 bg-blue-500` → `bg-blue-500` |
 | `--analyze` | Cross-file consistency (color variants, scale drift, repeated patterns) | `Warning: 3 red color variants used for text: text-red-500, text-rose-500, text-red-600` |
 | `--watch` | Re-run on every file save (debounced 50ms) | `[12:34:01] src/Button.tsx — 2 changes applied` |
+| `--typos` | Likely misspelled color names (read-only) | `text-gry-500` → `text-gray-500` [typo] |
 | `--reporter json` | JSON output (check mode) or fix summary | machine-readable for CI pipelines |
 | `--reporter sarif` | SARIF 2.1.0 output (check mode) | GitHub Code Scanning / VS Code |
 
@@ -349,6 +356,15 @@ export default [
     },
   },
 ]
+```
+
+Or use the bundled flat-config shortcut:
+
+```js
+// eslint.config.js
+import tailwindCanonical from 'tailwind-canonical/eslint'
+
+export default [tailwindCanonical.configs.recommended]
 ```
 
 ### Rule options

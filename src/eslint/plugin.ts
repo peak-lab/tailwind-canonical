@@ -168,17 +168,32 @@ const noConflictingClasses: Rule.RuleModule = {
   },
 };
 
-export default {
+interface TailwindCanonicalPlugin {
+  rules: {
+    'no-arbitrary-canonical': Rule.RuleModule;
+    'no-conflicting-classes': Rule.RuleModule;
+  };
+  configs: {
+    recommended: {
+      plugins: { 'tailwind-canonical': TailwindCanonicalPlugin };
+      rules: Record<string, string>;
+    };
+  };
+}
+
+const plugin: TailwindCanonicalPlugin = {
   rules: {
     'no-arbitrary-canonical': noArbitraryCanonical,
     'no-conflicting-classes': noConflictingClasses,
   },
-  configs: {
-    recommended: {
-      plugins: ['tailwind-canonical'],
-      rules: {
-        'tailwind-canonical/no-arbitrary-canonical': 'warn',
-      },
-    },
+  configs: {} as TailwindCanonicalPlugin['configs'],
+};
+
+plugin.configs.recommended = {
+  plugins: { 'tailwind-canonical': plugin },
+  rules: {
+    'tailwind-canonical/no-arbitrary-canonical': 'warn',
   },
 };
+
+export default plugin;

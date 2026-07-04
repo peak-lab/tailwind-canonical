@@ -803,6 +803,99 @@ test('run - sarif reporter on clean files emits empty results and exits 0', asyn
   }
 });
 
+test('run - --help exits 0 and prints usage', async (_t: TestContext) => {
+  const { sink, out } = captureSink();
+  const result = await run(['--help'], freshDir(), sink);
+  assert.strictEqual(result.exitCode, 0);
+  assert.ok(out.some((l) => l.includes('Usage:')));
+  assert.ok(out.some((l) => l.includes('--help, -h')));
+  assert.ok(out.some((l) => l.includes('--version, -V')));
+  assert.ok(out.some((l) => l.includes('Mode precedence:')));
+});
+
+test('run - -h short flag exits 0 and prints usage', async (_t: TestContext) => {
+  const { sink, out } = captureSink();
+  const result = await run(['-h'], freshDir(), sink);
+  assert.strictEqual(result.exitCode, 0);
+  assert.ok(out.some((l) => l.includes('Usage:')));
+});
+
+test('run - -V short flag exits 0 and prints the version', async (_t: TestContext) => {
+  const pkg = JSON.parse(
+    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  ) as { version: string };
+  const { sink, out } = captureSink();
+  const result = await run(['-V'], freshDir(), sink);
+  assert.strictEqual(result.exitCode, 0);
+  assert.ok(out.includes(pkg.version));
+});
+
+test('run - --version wins over a reporter error', async (_t: TestContext) => {
+  const { sink, out, err } = captureSink();
+  const result = await run(
+    ['--version', '--reporter', 'xml'],
+    freshDir(),
+    sink,
+  );
+  assert.strictEqual(result.exitCode, 0);
+  assert.strictEqual(err.length, 0);
+  assert.ok(out.length > 0);
+});
+
+test('run - --reporter followed by a flag is a missing value', async (_t: TestContext) => {
+  const dir = freshDir();
+  const { sink, err } = captureSink();
+  try {
+    const result = await run([dir, '--reporter', '--fix'], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(
+      err.some((l) =>
+        l.includes('Missing value for --reporter (expected text|json|sarif)'),
+      ),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --version exits 0 and prints the package.json version', async (_t: TestContext) => {
+  const pkg = JSON.parse(
+    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  ) as { version: string };
+  const { sink, out } = captureSink();
+  const result = await run(['--version'], freshDir(), sink);
+  assert.strictEqual(result.exitCode, 0);
+  assert.ok(out.includes(pkg.version));
+});
+
+test('run - nonexistent target exits 1 with No files matched', async (_t: TestContext) => {
+  const dir = freshDir();
+  const { sink, err } = captureSink();
+  try {
+    const result = await run([join(dir, 'does-not-exist')], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(err.some((l) => l.includes('No files matched:')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - dangling --reporter exits 1 with the missing-value error', async (_t: TestContext) => {
+  const dir = freshDir();
+  const { sink, err } = captureSink();
+  try {
+    const result = await run([dir, '--reporter'], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(
+      err.some((l) =>
+        l.includes('Missing value for --reporter (expected text|json|sarif)'),
+      ),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - surfaces invalid config and exits 1', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(join(dir, 'a.tsx'), '<div className="flex" />', 'utf8');
