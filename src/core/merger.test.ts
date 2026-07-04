@@ -109,6 +109,77 @@ test('mergeFile - no-op cases', async (t: TestContext) => {
   });
 });
 
+test('mergeFile - preserves leading with text sizes that have no bundled line-height', async (t: TestContext) => {
+  await t.test('customTextTokens do not conflict with leading', async () => {
+    const file = join(tmpdir(), `merger-test-${Date.now()}.tsx`);
+    const content =
+      '<span className="font-mono leading-none text-2xs text-text-quaternary" />';
+    writeFileSync(file, content, 'utf8');
+    try {
+      const count = await mergeFile(file, {
+        customTextTokens: { 11: '2xs' },
+      });
+      assert.strictEqual(count, 0);
+      assert.strictEqual(readFileSync(file, 'utf8'), content);
+    } finally {
+      unlinkSync(file);
+    }
+  });
+
+  await t.test(
+    'arbitrary text length values do not conflict with leading',
+    async () => {
+      const file = join(tmpdir(), `merger-test-${Date.now()}.tsx`);
+      const content =
+        '<span className="leading-5 text-[13.5px] font-medium" />';
+      writeFileSync(file, content, 'utf8');
+      try {
+        const count = await mergeFile(file);
+        assert.strictEqual(count, 0);
+        assert.strictEqual(readFileSync(file, 'utf8'), content);
+      } finally {
+        unlinkSync(file);
+      }
+    },
+  );
+
+  await t.test('matching variants are preserved', async () => {
+    const file = join(tmpdir(), `merger-test-${Date.now()}.tsx`);
+    const content = '<span className="sm:leading-5 sm:text-[13.5px]" />';
+    writeFileSync(file, content, 'utf8');
+    try {
+      const count = await mergeFile(file);
+      assert.strictEqual(count, 0);
+      assert.strictEqual(readFileSync(file, 'utf8'), content);
+    } finally {
+      unlinkSync(file);
+    }
+  });
+
+  await t.test(
+    'built-in text sizes still override earlier leading',
+    async () => {
+      const file = join(tmpdir(), `merger-test-${Date.now()}.tsx`);
+      writeFileSync(
+        file,
+        '<span className="leading-5 text-sm font-medium" />',
+        'utf8',
+      );
+      try {
+        const count = await mergeFile(file);
+        assert.strictEqual(count, 1);
+        assert.ok(
+          readFileSync(file, 'utf8').includes(
+            'className="text-sm font-medium"',
+          ),
+        );
+      } finally {
+        unlinkSync(file);
+      }
+    },
+  );
+});
+
 test('mergeFile - quote styles', async (t: TestContext) => {
   await t.test('preserves double quotes', async () => {
     const file = join(tmpdir(), `merger-test-${Date.now()}.tsx`);

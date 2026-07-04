@@ -268,6 +268,116 @@ test('run - honors attributeNames from config file', async (_t: TestContext) => 
   }
 });
 
+test('run - defaultCommand can provide targets and transform flags', async (_t: TestContext) => {
+  const dir = freshDir();
+  const src = join(dir, 'src');
+  mkdirSync(src, { recursive: true });
+  const file = join(src, 'a.tsx');
+  writeFileSync(file, '<div className="text-[12px] text-sm flex" />', 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { defaultCommand: { fix: true, sort: true, targets: ["src"] } }',
+    'utf8',
+  );
+  const { sink, out } = captureSink();
+  try {
+    const result = await run([], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(readFileSync(file, 'utf8').includes('flex text-xs text-sm'));
+    assert.ok(out.some((l) => l.includes('✓ Fixed')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - CLI targets override defaultCommand targets', async (_t: TestContext) => {
+  const dir = freshDir();
+  const src = join(dir, 'src');
+  const app = join(dir, 'app');
+  mkdirSync(src, { recursive: true });
+  mkdirSync(app, { recursive: true });
+  const srcFile = join(src, 'a.tsx');
+  const appFile = join(app, 'b.tsx');
+  writeFileSync(srcFile, '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(appFile, '<div className="text-[14px]" />', 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { defaultCommand: { fix: true, targets: ["src"] } }',
+    'utf8',
+  );
+  const { sink } = captureSink();
+  try {
+    const result = await run(['app'], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(readFileSync(appFile, 'utf8').includes('text-sm'));
+    assert.ok(readFileSync(srcFile, 'utf8').includes('text-[12px]'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - defaultCommand targets support negation globs', async (_t: TestContext) => {
+  const dir = freshDir();
+  const src = join(dir, 'src');
+  mkdirSync(src, { recursive: true });
+  const included = join(src, 'included.tsx');
+  const skipped = join(src, 'skipped.tsx');
+  writeFileSync(included, '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(skipped, '<div className="text-[14px]" />', 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { defaultCommand: { fix: true, targets: ["src/**/*.tsx", "!src/skipped.tsx"] } }',
+    'utf8',
+  );
+  const { sink } = captureSink();
+  try {
+    const result = await run([], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(readFileSync(included, 'utf8').includes('text-xs'));
+    assert.ok(readFileSync(skipped, 'utf8').includes('text-[14px]'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - explicit mode flags override defaultCommand modes', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { defaultCommand: { fix: true, targets: ["."] } }',
+    'utf8',
+  );
+  const { sink } = captureSink();
+  try {
+    const result = await run(['--typos'], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(readFileSync(file, 'utf8').includes('text-[12px]'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - explicit reporter overrides defaultCommand reporter', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { defaultCommand: { reporter: "json", targets: ["."] } }',
+    'utf8',
+  );
+  const { sink, out, raw } = captureSink();
+  try {
+    const result = await run(['--reporter', 'text'], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.strictEqual(raw.length, 0);
+    assert.ok(out.some((l) => l.includes('text-[12px] → text-xs')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - --typos flags near-miss colors and exits 1', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(join(dir, 'a.tsx'), '<div className="text-gry-500" />', 'utf8');
@@ -471,6 +581,27 @@ test('run - --merge precheck passes when tailwind-merge is installed', async (_t
       'precheck should not report the peer as missing',
     );
     assert.ok(readFileSync(file, 'utf8').includes('bg-blue-500'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --merge preserves leading next to configured custom text tokens', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const content =
+    '<span className="font-mono leading-none text-2xs text-text-quaternary" />';
+  writeFileSync(file, content, 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { customTextTokens: { 11: "2xs" } }',
+    'utf8',
+  );
+  const { sink } = captureSink();
+  try {
+    const result = await run(['--merge', file], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(readFileSync(file, 'utf8'), content);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
