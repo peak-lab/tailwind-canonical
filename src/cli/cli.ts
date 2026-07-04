@@ -31,7 +31,7 @@ const HELP_TEXT = [
   '  --sort             Sort classes into canonical order',
   '  --analyze          Cross-file consistency analysis (read-only)',
   '  --typos            Flag likely misspelled color names (read-only)',
-  '  --watch            Re-run on every file save (transform/check mode only)',
+  '  --watch            Re-run on every file save (transform/check mode; ignored with --typos)',
   '  --reporter <type>  Output format: text|json|sarif',
   '  --help, -h         Show this help message',
   '  --version, -V      Show the installed version',

@@ -597,6 +597,47 @@ test('run - --fix --typos --watch drops watch and runs the combined pass', async
   }
 });
 
+test('run - --fix --typos --reporter sarif emits the typo document', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="text-[12px] bg-slte-100" />', 'utf8');
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(
+      ['--fix', '--typos', '--reporter', 'sarif', dir],
+      dir,
+      sink,
+    );
+    assert.ok(readFileSync(file, 'utf8').includes('text-xs'));
+    const sarif = JSON.parse(raw.join(''));
+    assert.strictEqual(sarif.runs[0].results.length, 1);
+    assert.strictEqual(sarif.runs[0].results[0].ruleId, 'color-typo');
+    assert.strictEqual(result.exitCode, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - defaultCommand chains transforms with typos', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="p-4 p-2 text-gry-500" />', 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    `export default { defaultCommand: { dedup: true, typos: true, targets: ['${dir}'] } }\n`,
+    'utf8',
+  );
+  const { sink, out } = captureSink();
+  try {
+    const result = await run([], dir, sink);
+    assert.ok(!readFileSync(file, 'utf8').includes('p-4 p-2'));
+    assert.ok(out.some((l) => l.includes('text-gry-500 → text-gray-500')));
+    assert.strictEqual(result.exitCode, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - --fix --reporter json emits a transform summary', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
