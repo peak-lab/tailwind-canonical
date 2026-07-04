@@ -28,7 +28,7 @@ export type ScaleInconsistency = {
   values: ScaleValue[];
 };
 
-export type RareScaleValue = {
+type RareScaleValue = {
   property: string;
   value: string;
   className: string;

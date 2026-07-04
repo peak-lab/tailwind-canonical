@@ -6,7 +6,7 @@ export type Suggestion = {
   isCustomToken: boolean;
 };
 
-export type AnalyzeConfig = {
+type AnalyzeConfig = {
   minRareScalePropertyOccurrences?: number;
   rareScaleMaxFiles?: number;
   rareScaleMaxCount?: number;

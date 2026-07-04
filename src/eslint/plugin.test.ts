@@ -410,4 +410,11 @@ test('plugin exports', async (t) => {
       assert.ok(!('tailwind-canonical/no-conflicting-classes' in rules));
     },
   );
+
+  await t.test('recommended config uses flat-config plugin shape', () => {
+    assert.strictEqual(
+      plugin.configs.recommended.plugins['tailwind-canonical'],
+      plugin,
+    );
+  });
 });
