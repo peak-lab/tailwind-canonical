@@ -31,12 +31,13 @@ const HELP_TEXT = [
   '  --sort             Sort classes into canonical order',
   '  --analyze          Cross-file consistency analysis (read-only)',
   '  --typos            Flag likely misspelled color names (read-only)',
-  '  --watch            Re-run on every file save (transform/check mode only)',
+  '  --watch            Re-run on every file save (transform/check mode; ignored with --typos)',
   '  --reporter <type>  Output format: text|json|sarif',
   '  --help, -h         Show this help message',
   '  --version, -V      Show the installed version',
   '',
-  'Mode precedence: --analyze > --typos > transform/check (only one runs).',
+  'Mode precedence: --analyze runs alone (other modes ignored). --typos chains',
+  'after transforms (fix → dedup → merge → sort → typo scan); alone it only scans.',
 ].join('\n');
 
 export type Sink = {
@@ -92,6 +93,8 @@ type JsonTransformReport = {
   deduped: number;
   merged: number;
   sorted: number;
+  typoTotal?: number;
+  typos?: TypoFinding[];
 };
 
 type JsonFinding = {
@@ -333,10 +336,11 @@ const TRANSFORM_FLAGS: ReadonlyArray<{ key: keyof Flags; flag: string }> = [
 ];
 
 /**
- * Modes are mutually exclusive with a fixed precedence: analyze > typos >
- * transform/check. `--watch` is only honored in transform/check mode. This
- * computes warnings for every flag that the active mode will ignore. Pure and
- * order-stable so it can be unit-tested via the injectable sink.
+ * `--analyze` is exclusive: it suppresses transforms, `--typos`, and
+ * `--watch`. `--typos` chains after transforms (fix → dedup → merge → sort →
+ * typo scan) but does not support `--watch`. This computes warnings for every
+ * flag the active mode will ignore. Pure and order-stable so it can be
+ * unit-tested via the injectable sink.
  */
 export function flagWarnings(flags: Flags): string[] {
   const warnings: string[] = [];
@@ -352,24 +356,18 @@ export function flagWarnings(flags: Flags): string[] {
     return warnings;
   }
 
-  if (flags.typos) {
-    for (const { key, flag } of TRANSFORM_FLAGS) {
-      if (flags[key]) warnings.push(`${flag} ignored: --typos takes priority`);
-    }
-    if (flags.watch)
-      warnings.push('--watch ignored: not supported with --typos');
-    return warnings;
+  if (flags.typos && flags.watch) {
+    warnings.push('--watch ignored: not supported with --typos');
   }
 
   return warnings;
 }
 
-function runTypos(
+function collectTypos(
   files: string[],
   config: Config,
-  reporter: Reporter,
   sink: Sink,
-): RunResult {
+): { findings: TypoFinding[]; hadError: boolean } {
   let hadError = false;
   const findings: TypoFinding[] = [];
   for (const file of files) {
@@ -380,6 +378,55 @@ function runTypos(
       sink.error(`${file}: ${errMsg(err)}`);
     }
   }
+  return { findings, hadError };
+}
+
+function logTyposText(findings: TypoFinding[], sink: Sink): void {
+  for (const f of findings) {
+    sink.log(
+      `  ${f.file}:${f.line}:${f.col}  ${f.original} → ${f.suggestion} [typo]`,
+    );
+  }
+  if (findings.length === 0) {
+    sink.log('✓ No likely typos found');
+  } else {
+    sink.log(`\n✖ Found ${pluralize(findings.length, 'likely typo')}`);
+  }
+}
+
+function typoSarifDocument(findings: TypoFinding[]): SarifReport {
+  return sarifDocument(
+    [
+      {
+        id: 'color-typo',
+        name: 'ColorTypo',
+        shortDescription: {
+          text: 'Class color name is a likely typo of a Tailwind color',
+        },
+      },
+    ],
+    findings.map((f) => ({
+      ruleId: 'color-typo',
+      message: { text: `${f.original} → ${f.suggestion}` },
+      locations: [
+        {
+          physicalLocation: {
+            artifactLocation: { uri: f.file },
+            region: { startLine: f.line, startColumn: f.col },
+          },
+        },
+      ],
+    })),
+  );
+}
+
+function runTypos(
+  files: string[],
+  config: Config,
+  reporter: Reporter,
+  sink: Sink,
+): RunResult {
+  const { findings, hadError } = collectTypos(files, config, sink);
 
   if (reporter === 'json') {
     const report: JsonTyposReport = {
@@ -391,43 +438,11 @@ function runTypos(
   }
 
   if (reporter === 'sarif') {
-    const sarifOutput = sarifDocument(
-      [
-        {
-          id: 'color-typo',
-          name: 'ColorTypo',
-          shortDescription: {
-            text: 'Class color name is a likely typo of a Tailwind color',
-          },
-        },
-      ],
-      findings.map((f) => ({
-        ruleId: 'color-typo',
-        message: { text: `${f.original} → ${f.suggestion}` },
-        locations: [
-          {
-            physicalLocation: {
-              artifactLocation: { uri: f.file },
-              region: { startLine: f.line, startColumn: f.col },
-            },
-          },
-        ],
-      })),
-    );
-    sink.write(`${JSON.stringify(sarifOutput, null, 2)}\n`);
+    sink.write(`${JSON.stringify(typoSarifDocument(findings), null, 2)}\n`);
     return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
   }
 
-  for (const f of findings) {
-    sink.log(
-      `  ${f.file}:${f.line}:${f.col}  ${f.original} → ${f.suggestion} [typo]`,
-    );
-  }
-  if (findings.length === 0) {
-    sink.log('✓ No likely typos found');
-  } else {
-    sink.log(`\n✖ Found ${pluralize(findings.length, 'likely typo')}`);
-  }
+  logTyposText(findings, sink);
   return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
 }
 
@@ -864,15 +879,19 @@ export async function run(
 
   if (flags.analyze) return runAnalyze(files, config, flags.reporter, sink);
 
-  if (flags.typos) return runTypos(files, config, flags.reporter, sink);
-
   const transforming = flags.fix || flags.dedup || flags.merge || flags.sort;
+
+  if (flags.typos && !transforming) {
+    return runTypos(files, config, flags.reporter, sink);
+  }
+
+  const watching = flags.watch && !flags.typos;
   const totals: FileCounts = { fixed: 0, deduped: 0, merged: 0, sorted: 0 };
   const allFindings: Finding[] = [];
   const changedFiles: string[] = [];
   let hadError = false;
 
-  if (!flags.watch) {
+  if (!watching) {
     for (const file of files) {
       try {
         if (transforming) {
@@ -919,9 +938,18 @@ export async function run(
     }
   }
 
-  if (flags.watch) return startWatch(files, flags, config, sink);
+  if (watching) return startWatch(files, flags, config, sink);
 
   if (transforming) {
+    const typoResult = flags.typos
+      ? collectTypos(files, config, sink)
+      : undefined;
+    const exitCode =
+      hadError ||
+      (typoResult && (typoResult.findings.length > 0 || typoResult.hadError))
+        ? 1
+        : 0;
+
     if (flags.reporter === 'json') {
       const report: JsonTransformReport = {
         files: files.length,
@@ -931,9 +959,21 @@ export async function run(
         merged: totals.merged,
         sorted: totals.sorted,
       };
+      if (typoResult) {
+        report.typoTotal = typoResult.findings.length;
+        report.typos = typoResult.findings;
+      }
       sink.write(`${JSON.stringify(report, null, 2)}\n`);
-      return { exitCode: hadError ? 1 : 0 };
+      return { exitCode };
     }
+
+    if (flags.reporter === 'sarif' && typoResult) {
+      sink.write(
+        `${JSON.stringify(typoSarifDocument(typoResult.findings), null, 2)}\n`,
+      );
+      return { exitCode };
+    }
+
     const parts: string[] = [];
     if (flags.fix) parts.push(pluralize(totals.fixed, 'replacement'));
     if (flags.dedup) parts.push(pluralize(totals.deduped, 'dedup'));
@@ -943,7 +983,8 @@ export async function run(
     sink.log(
       `\n✓ Fixed ${parts.join(', ')} across ${pluralize(files.length, 'file')}`,
     );
-    return { exitCode: hadError ? 1 : 0 };
+    if (typoResult) logTyposText(typoResult.findings, sink);
+    return { exitCode };
   }
 
   const totalFindings = allFindings.length;

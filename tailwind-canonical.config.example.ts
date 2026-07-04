@@ -1,4 +1,5 @@
-/** @type {import('tailwind-canonical').Config} */
+import type { Config } from 'tailwind-canonical'
+
 export default {
   customTextTokens: {
     10: '3xs',
@@ -7,4 +8,4 @@ export default {
   },
   customSpacingTokens: {},
   ignorePatterns: [],
-}
+} satisfies Config
