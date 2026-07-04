@@ -443,12 +443,10 @@ test('flagWarnings - analyze suppresses transform/typos/watch flags', (_t: TestC
   ]);
 });
 
-test('flagWarnings - typos suppresses transform flags and watch', (_t: TestContext) => {
+test('flagWarnings - typos chains with transforms, only watch is warned', (_t: TestContext) => {
   const w = flagWarnings(parseArgs(['--sort', '--watch', '--typos', 'src']));
-  assert.deepEqual(w, [
-    '--sort ignored: --typos takes priority',
-    '--watch ignored: not supported with --typos',
-  ]);
+  assert.deepEqual(w, ['--watch ignored: not supported with --typos']);
+  assert.deepEqual(flagWarnings(parseArgs(['--fix', '--typos', 'src'])), []);
 });
 
 test('flagWarnings - transform/check mode emits no warnings (watch honored)', (_t: TestContext) => {
@@ -492,6 +490,108 @@ test('run - --typos --watch warns about ignored watch and does not watch', async
     );
     assert.strictEqual(result.watching, undefined);
     assert.strictEqual(result.exitCode, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - transforms chain with --typos and report the typo (issue #96)', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(
+    file,
+    '<div className="p-4 p-2 flex flex text-gry-500" />',
+    'utf8',
+  );
+  const { sink, out, err } = captureSink();
+  try {
+    const result = await run(
+      ['--fix', '--dedup', '--sort', '--typos', dir],
+      dir,
+      sink,
+    );
+    const content = readFileSync(file, 'utf8');
+    assert.ok(!content.includes('flex flex'));
+    assert.ok(!err.some((l) => l.includes('takes priority')));
+    assert.ok(out.some((l) => l.includes('✓ Fixed')));
+    assert.ok(out.some((l) => l.includes('text-gry-500 → text-gray-500')));
+    assert.strictEqual(result.exitCode, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - transforms chain with --typos and exit 0 when clean', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="p-4 p-2 flex flex" />', 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--dedup', '--typos', dir], dir, sink);
+    assert.ok(!readFileSync(file, 'utf8').includes('flex flex'));
+    assert.ok(out.some((l) => l.includes('No likely typos found')));
+    assert.strictEqual(result.exitCode, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --fix --typos --reporter json merges typos into the transform report', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="text-[12px] bg-slte-100" />', 'utf8');
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(
+      ['--fix', '--typos', '--reporter', 'json', dir],
+      dir,
+      sink,
+    );
+    const parsed = JSON.parse(raw.join(''));
+    assert.strictEqual(parsed.fixed, 1);
+    assert.strictEqual(parsed.typoTotal, 1);
+    assert.strictEqual(parsed.typos[0].suggestion, 'bg-slate-100');
+    assert.strictEqual(result.exitCode, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze still suppresses --typos and transforms', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="p-4 p-2 text-gry-500" />', 'utf8');
+  const { sink, err, out } = captureSink();
+  try {
+    await run(['--analyze', '--typos', '--dedup', dir], dir, sink);
+    assert.ok(
+      err.some((l) => l.includes('--typos ignored: --analyze takes priority')),
+    );
+    assert.ok(
+      err.some((l) => l.includes('--dedup ignored: --analyze takes priority')),
+    );
+    assert.ok(readFileSync(file, 'utf8').includes('p-4 p-2'));
+    assert.ok(!out.some((l) => l.includes('[typo]')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --fix --typos --watch drops watch and runs the combined pass', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="p-4 p-2" />', 'utf8');
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['--dedup', '--typos', '--watch', dir], dir, sink);
+    assert.ok(
+      err.some((l) =>
+        l.includes('--watch ignored: not supported with --typos'),
+      ),
+    );
+    assert.strictEqual(result.watching, undefined);
+    assert.ok(!readFileSync(file, 'utf8').includes('p-4 p-2'));
+    assert.strictEqual(result.exitCode, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

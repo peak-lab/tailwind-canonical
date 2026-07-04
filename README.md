@@ -65,7 +65,7 @@ An unmatched target exits `1` with `No files matched: <targets>`.
 | `--merge` | tailwind-merge conflict resolution | `bg-red-500 bg-blue-500` → `bg-blue-500` |
 | `--analyze` | Cross-file consistency (color variants, scale drift, repeated patterns) | `Warning: 3 red color variants used for text: text-red-500, text-rose-500, text-red-600` |
 | `--watch` | Re-run on every file save (debounced 50ms) | `[12:34:01] src/Button.tsx — 2 changes applied` |
-| `--typos` | Likely misspelled color names (read-only) | `text-gry-500` → `text-gray-500` [typo] |
+| `--typos` | Likely misspelled color names (read-only; chains after transforms) | `text-gry-500` → `text-gray-500` [typo] |
 | `--reporter json` | JSON output (check mode) or fix summary | machine-readable for CI pipelines |
 | `--reporter sarif` | SARIF 2.1.0 output (check mode) | GitHub Code Scanning / VS Code |
 
@@ -109,6 +109,20 @@ npx tailwind-canonical --typos ./src
 ```
 
 Only color-property classes (`text-`, `bg-`, `border-`, …) are checked. Valid colors, non-color utilities (`text-center`), custom colors (`bg-brand-500`), and arbitrary values are never flagged. Pairs with `--reporter json`; exits `1` on findings.
+
+### Chaining with transforms
+
+`--typos` combines with `--fix`/`--dedup`/`--merge`/`--sort`: the mutating pass runs first, then the typo scan — one command for lint-staged/CI:
+
+```bash
+npx tailwind-canonical --fix --dedup --sort --typos ./src
+#   fixed  src/Button.tsx (1 replacement)
+#   ✓ Fixed 1 replacement, 2 dedups, 3 sorted across 12 files
+#   src/Card.tsx:3:17  text-gry-500 → text-gray-500 [typo]
+#   ✖ Found 1 likely typo
+```
+
+Exit code follows the typo scan (`1` on findings). With `--reporter json` the transform summary gains `typoTotal` and `typos` fields. `--analyze` remains exclusive: combining it with any other mode runs analyze only and warns. `--watch` is not supported with `--typos` (warned, single pass runs instead).
 
 ## Suppression comments
 
