@@ -44,7 +44,7 @@ npx tailwind-canonical --analyze ./src
 # Watch mode: re-run on every file save
 npx tailwind-canonical --watch --fix --sort ./src
 
-# Structured output for CI (check mode only)
+# Structured output for CI (findings in check mode, summary in fix mode)
 npx tailwind-canonical --reporter json ./src
 npx tailwind-canonical --reporter sarif ./src
 

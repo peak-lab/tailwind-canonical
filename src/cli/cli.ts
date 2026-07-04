@@ -219,7 +219,7 @@ export function parseArgs(argv: string[]): Flags {
     const arg = argv[i];
     if (arg === '--reporter') {
       consumed.add(i);
-      if (i + 1 < argv.length) {
+      if (i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
         reporterRaw = argv[i + 1];
         consumed.add(i + 1);
       } else {
@@ -757,11 +757,16 @@ export async function run(
   }
 
   if (flags.version) {
-    const pkg = JSON.parse(
-      readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
-    ) as { version: string };
-    sink.log(pkg.version);
-    return { exitCode: 0 };
+    try {
+      const pkg = JSON.parse(
+        readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+      ) as { version: string };
+      sink.log(pkg.version);
+      return { exitCode: 0 };
+    } catch (err) {
+      sink.error(`tailwind-canonical: could not read version: ${errMsg(err)}`);
+      return { exitCode: 1 };
+    }
   }
 
   if (flags.error) {
@@ -774,7 +779,7 @@ export async function run(
     return { exitCode: 1 };
   }
 
-  if (flags.merge) {
+  if (flags.merge && !flags.analyze && !flags.typos) {
     try {
       await import('tailwind-merge');
     } catch {
