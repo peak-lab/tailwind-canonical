@@ -967,10 +967,11 @@ export async function run(
       return { exitCode };
     }
 
-    if (flags.reporter === 'sarif' && typoResult) {
-      sink.write(
-        `${JSON.stringify(typoSarifDocument(typoResult.findings), null, 2)}\n`,
-      );
+    if (flags.reporter === 'sarif') {
+      const doc = typoResult
+        ? typoSarifDocument(typoResult.findings)
+        : sarifDocument([], []);
+      sink.write(`${JSON.stringify(doc, null, 2)}\n`);
       return { exitCode };
     }
 

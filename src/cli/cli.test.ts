@@ -597,6 +597,23 @@ test('run - --fix --typos --watch drops watch and runs the combined pass', async
   }
 });
 
+test('run - --fix --reporter sarif emits an empty SARIF document', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(['--fix', '--reporter', 'sarif', dir], dir, sink);
+    assert.ok(readFileSync(file, 'utf8').includes('text-xs'));
+    const sarif = JSON.parse(raw.join(''));
+    assert.strictEqual(sarif.version, '2.1.0');
+    assert.strictEqual(sarif.runs[0].results.length, 0);
+    assert.strictEqual(result.exitCode, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - --fix --typos --reporter sarif emits the typo document', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
