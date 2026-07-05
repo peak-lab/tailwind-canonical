@@ -67,7 +67,7 @@ An unmatched target exits `1` with `No files matched: <targets>`.
 | `--watch` | Re-run on every file save (debounced 50ms) | `[12:34:01] src/Button.tsx — 2 changes applied` |
 | `--typos` | Likely misspelled color names (read-only; chains after transforms) | `text-gry-500` → `text-gray-500` [typo] |
 | `--reporter json` | JSON output (check mode) or fix summary | machine-readable for CI pipelines |
-| `--reporter sarif` | SARIF 2.1.0 output (findings in check/typos modes; transform mode emits an empty document) | GitHub Code Scanning / VS Code |
+| `--reporter sarif` | SARIF 2.1.0 output (findings in check/typos modes; transform mode emits an empty document unless `--typos` is chained) | GitHub Code Scanning / VS Code |
 
 ## Structured output (`--reporter`)
 
