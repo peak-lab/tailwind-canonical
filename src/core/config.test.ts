@@ -287,19 +287,23 @@ test(
   },
 );
 
-test('loadConfig - falls back to JavaScript config file', async (_t: TestContext) => {
-  const dir = freshDir();
-  writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
-    'export default { sortOrder: ["spacing"] }',
-    'utf8',
-  );
-  try {
-    assert.deepEqual(await loadConfig(dir), { sortOrder: ['spacing'] });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+test(
+  'loadConfig - falls back to JavaScript config file',
+  skipTsConfig,
+  async (_t: TestContext) => {
+    const dir = freshDir();
+    writeFileSync(
+      join(dir, 'tailwind-canonical.config.js'),
+      'export default { sortOrder: ["spacing"] }',
+      'utf8',
+    );
+    try {
+      assert.deepEqual(await loadConfig(dir), { sortOrder: ['spacing'] });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test('loadConfig - rejects when the config file has a syntax error', async (_t: TestContext) => {
   const dir = freshDir();
@@ -315,19 +319,23 @@ test('loadConfig - rejects when the config file has a syntax error', async (_t: 
   }
 });
 
-test('loadConfig - surfaces validation errors from a present file', async (_t: TestContext) => {
-  const dir = freshDir();
-  writeFileSync(
-    join(dir, 'tailwind-canonical.config.ts'),
-    'export default { sortOrder: ["nope"] }',
-    'utf8',
-  );
-  try {
-    await assert.rejects(
-      loadConfig(dir),
-      /Invalid tailwind-canonical\.config\.ts: .*invalid category "nope"/,
+test(
+  'loadConfig - surfaces validation errors from a present file',
+  skipTsConfig,
+  async (_t: TestContext) => {
+    const dir = freshDir();
+    writeFileSync(
+      join(dir, 'tailwind-canonical.config.ts'),
+      'export default { sortOrder: ["nope"] }',
+      'utf8',
     );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+    try {
+      await assert.rejects(
+        loadConfig(dir),
+        /Invalid tailwind-canonical\.config\.ts: .*invalid category "nope"/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
