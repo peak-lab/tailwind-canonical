@@ -449,6 +449,16 @@ test('flagWarnings - typos chains with transforms, only watch is warned', (_t: T
   assert.deepEqual(flagWarnings(parseArgs(['--fix', '--typos', 'src'])), []);
 });
 
+test('flagWarnings - check with watch warns', (_t: TestContext) => {
+  const w = flagWarnings(parseArgs(['--check', '--fix', '--watch', 'src']));
+  assert.deepEqual(w, ['--watch ignored: not supported with --check']);
+});
+
+test('flagWarnings - check and typos both with watch consolidate warning', (_t: TestContext) => {
+  const w = flagWarnings(parseArgs(['--check', '--typos', '--watch', 'src']));
+  assert.deepEqual(w, ['--watch ignored: not supported with --typos/--check']);
+});
+
 test('flagWarnings - transform/check mode emits no warnings (watch honored)', (_t: TestContext) => {
   assert.deepEqual(flagWarnings(parseArgs(['--fix', '--watch', 'src'])), []);
   assert.deepEqual(flagWarnings(parseArgs(['src'])), []);
@@ -1151,6 +1161,63 @@ test('flagWarnings - analyze and check both set warns check ignored', (_t: TestC
     '--fix ignored: --analyze takes priority',
     '--check ignored: --analyze takes priority',
   ]);
+});
+
+test('run - --check --merge on conflicting classes reports and leaves file untouched', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const original = '<div className="bg-red-500 bg-blue-500" />';
+  writeFileSync(file, original, 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--check', '--merge', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('would merge')));
+    assert.ok(out.some((l) => l.includes('pending change')));
+    assert.strictEqual(readFileSync(file, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --check --merge --typos on conflicting bg + typo reports both and leaves file untouched', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const original = '<div className="bg-red-500 bg-blue-500 text-gry-500" />';
+  writeFileSync(file, original, 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--check', '--merge', '--typos', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('would merge')));
+    assert.ok(out.some((l) => l.includes('pending change')));
+    assert.ok(out.some((l) => l.includes('text-gry-500 → text-gray-500')));
+    assert.strictEqual(readFileSync(file, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - defaultCommand with check:true and fix:true applies check behavior', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const original = '<div className="text-[12px]" />';
+  writeFileSync(file, original, 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default { defaultCommand: { check: true, fix: true, targets: ["."] } }',
+    'utf8',
+  );
+  const { sink, out } = captureSink();
+  try {
+    const result = await run([], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('would fix')));
+    assert.ok(out.some((l) => l.includes('pending change')));
+    assert.strictEqual(readFileSync(file, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('run - surfaces invalid config and exits 1', async (_t: TestContext) => {

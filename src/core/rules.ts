@@ -21,6 +21,7 @@ type DefaultCommandConfig = {
   merge?: boolean;
   dedup?: boolean;
   sort?: boolean;
+  check?: boolean;
   analyze?: boolean;
   typos?: boolean;
   watch?: boolean;

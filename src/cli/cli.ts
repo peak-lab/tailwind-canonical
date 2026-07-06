@@ -74,6 +74,7 @@ type Flags = {
   hasExplicitMode: boolean;
   hasExplicitReporter: boolean;
   hasExplicitWatch: boolean;
+  hasExplicitCheck: boolean;
 };
 
 type FileCounts = {
@@ -294,6 +295,7 @@ export function parseArgs(argv: string[]): Flags {
     hasExplicitMode: MODE_FLAGS.some((flag) => argv.includes(flag)),
     hasExplicitReporter: reporterRaw !== undefined,
     hasExplicitWatch: argv.includes('--watch'),
+    hasExplicitCheck: argv.includes('--check'),
   };
 }
 
@@ -320,6 +322,9 @@ function applyDefaultCommand(flags: Flags, config: Config): Flags {
     watch: flags.hasExplicitWatch
       ? flags.watch
       : (defaults.watch ?? flags.watch),
+    check: flags.hasExplicitCheck
+      ? flags.check
+      : (defaults.check ?? flags.check),
     reporter: flags.hasExplicitReporter
       ? flags.reporter
       : (defaults.reporter ?? flags.reporter),
@@ -362,12 +367,13 @@ export function flagWarnings(flags: Flags): string[] {
     return warnings;
   }
 
-  if (flags.typos && flags.watch) {
-    warnings.push('--watch ignored: not supported with --typos');
-  }
-
-  if (flags.check && flags.watch) {
-    warnings.push('--watch ignored: not supported with --check');
+  if (flags.watch && (flags.typos || flags.check)) {
+    const unsupported: string[] = [];
+    if (flags.typos) unsupported.push('--typos');
+    if (flags.check) unsupported.push('--check');
+    warnings.push(
+      `--watch ignored: not supported with ${unsupported.join('/')}`,
+    );
   }
 
   return warnings;
@@ -914,7 +920,7 @@ export async function run(
   }
 
   let twMerge: ((classes: string) => string) | undefined;
-  if (flags.merge && !flags.analyze && !flags.typos) {
+  if (flags.merge && !flags.analyze) {
     try {
       ({ twMerge } = await import('tailwind-merge'));
     } catch {

@@ -332,6 +332,7 @@ export default {
     dedup: true,
     merge: true,
     sort: true,
+    check: false, // dry-run mode: report changes without writing (useful for CI)
     targets: ['./src'],
   },
   // Tune --analyze reporting
@@ -359,7 +360,7 @@ export default {
 above, running `tailwind-canonical` is equivalent to
 `tailwind-canonical --fix --dedup --merge --sort ./src`. Explicit CLI flags and
 targets still override the config, so `tailwind-canonical --typos ./app` runs
-only typo detection on `./app`.
+only typo detection on `./app`. Supported keys: `fix`, `dedup`, `merge`, `sort`, `check`, `analyze`, `typos`, `watch`, `reporter`, `targets`.
 
 `analyze` controls project-scale consistency reporting. `maxScaleGroups`,
 `maxScaleValues`, `maxRareValues`, and `maxPatterns` keep terminal output
