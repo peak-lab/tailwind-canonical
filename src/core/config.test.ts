@@ -339,3 +339,76 @@ test(
     }
   },
 );
+
+test('loadConfig - walks up to a config at the tmp root', async (_t: TestContext) => {
+  const root = freshDir();
+  const child = join(root, 'child');
+  mkdirSync(child, { recursive: true });
+  writeFileSync(
+    join(root, 'tailwind-canonical.config.js'),
+    'export default { sortOrder: ["display"] }',
+    'utf8',
+  );
+  try {
+    assert.deepEqual(await loadConfig(child), { sortOrder: ['display'] });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig - a closer config wins over one higher up', async (_t: TestContext) => {
+  const root = freshDir();
+  const child = join(root, 'child');
+  mkdirSync(child, { recursive: true });
+  writeFileSync(
+    join(root, 'tailwind-canonical.config.js'),
+    'export default { sortOrder: ["display"] }',
+    'utf8',
+  );
+  writeFileSync(
+    join(child, 'tailwind-canonical.config.js'),
+    'export default { sortOrder: ["spacing"] }',
+    'utf8',
+  );
+  try {
+    assert.deepEqual(await loadConfig(child), { sortOrder: ['spacing'] });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig - stops at a .git directory, ignoring configs above it', async (_t: TestContext) => {
+  const root = freshDir();
+  const repo = join(root, 'repo');
+  const child = join(repo, 'child');
+  mkdirSync(join(repo, '.git'), { recursive: true });
+  mkdirSync(child, { recursive: true });
+  writeFileSync(
+    join(root, 'tailwind-canonical.config.js'),
+    'export default { sortOrder: ["display"] }',
+    'utf8',
+  );
+  try {
+    assert.deepEqual(await loadConfig(child), {});
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig - a config alongside .git in the same directory still loads', async (_t: TestContext) => {
+  const root = freshDir();
+  const repo = join(root, 'repo');
+  const child = join(repo, 'child');
+  mkdirSync(join(repo, '.git'), { recursive: true });
+  mkdirSync(child, { recursive: true });
+  writeFileSync(
+    join(repo, 'tailwind-canonical.config.js'),
+    'export default { sortOrder: ["spacing"] }',
+    'utf8',
+  );
+  try {
+    assert.deepEqual(await loadConfig(child), { sortOrder: ['spacing'] });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

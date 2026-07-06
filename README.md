@@ -354,6 +354,12 @@ new configs should prefer `analyze`.
 `tailwind-canonical.config.js` is still loaded as a fallback when no TypeScript
 config exists.
 
+The config is resolved upward from the current directory: if no config file is
+found in `cwd`, tailwind-canonical checks each parent directory in turn, until
+it finds one, reaches a `.git` directory, or reaches the filesystem root. This
+makes the CLI monorepo-friendly — a single config at the repo root applies to
+every package.
+
 On Node 22.6–23.5, loading a `.ts` config requires `--experimental-strip-types`;
 from Node 23.6 onward it works natively; the `.js` fallback works on every
 supported Node version.
