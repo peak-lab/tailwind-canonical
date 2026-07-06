@@ -38,6 +38,9 @@ npx tailwind-canonical --merge ./src
 # Combine: fix → dedup → merge → sort
 npx tailwind-canonical --fix --dedup --merge --sort ./src
 
+# Dry-run: report what the transforms would change, write nothing
+npx tailwind-canonical --check --fix --dedup --sort ./src
+
 # Cross-file consistency analysis
 npx tailwind-canonical --analyze ./src
 
@@ -63,6 +66,7 @@ An unmatched target exits `1` with `No files matched: <targets>`.
 | `--dedup` | Redundant classes, conflicts, shorthand collapse | `flex block` → `block`, `px-4 py-4` → `p-4`, `border-t-2 border-b-2` → `border-y-2` |
 | `--sort` | Canonical class order | `text-sm flex p-4` → `flex p-4 text-sm` |
 | `--merge` | tailwind-merge conflict resolution | `bg-red-500 bg-blue-500` → `bg-blue-500` |
+| `--check` | Dry-run: report what the combined transforms would change, write nothing (exit 1 on pending changes) | `would fix src/Button.tsx (1 replacement)` |
 | `--analyze` | Cross-file consistency (color variants, scale drift, repeated patterns) | `Warning: 3 red color variants used for text: text-red-500, text-rose-500, text-red-600` |
 | `--watch` | Re-run on every file save (debounced 50ms) | `[12:34:01] src/Button.tsx — 2 changes applied` |
 | `--typos` | Likely misspelled color names (read-only; chains after transforms) | `text-gry-500` → `text-gray-500` [typo] |
@@ -123,6 +127,23 @@ npx tailwind-canonical --fix --dedup --sort --typos ./src
 ```
 
 Exit code follows the typo scan (`1` on findings). With `--reporter json` the transform summary gains `typoTotal` and `typos` fields. `--analyze` remains exclusive: combining it with any other mode runs analyze only and warns. `--watch` is not supported with `--typos` (warned, single pass runs instead).
+
+## Dry-run mode (`--check`)
+
+Combine `--check` with any of `--fix`/`--dedup`/`--merge`/`--sort` to report what those transforms would change without writing anything to disk. Useful as a CI gate:
+
+```yaml
+# CI
+- run: npx tailwind-canonical --check --fix --dedup --sort ./src
+```
+
+```bash
+npx tailwind-canonical --check --fix --dedup --sort ./src
+#   would fix src/Button.tsx (1 replacement)
+#   ✖ 1 pending change across 1 file (run without --check to apply)
+```
+
+Exits `1` when any file would change (blocking the pipeline), `0` when the tree is already canonical. `--check` requires at least one transform flag; `--check` alone errors. `--analyze` takes priority over `--check` (warned, ignored). `--watch` is not supported with `--check` (warned, single pass runs instead). `--typos` still chains after the check pass since it's read-only. With `--reporter json` the transform report gains `"check": true`.
 
 ## Suppression comments
 

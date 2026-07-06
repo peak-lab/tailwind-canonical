@@ -8,19 +8,19 @@ import {
   type ConsistencyReport,
   toConsistencyOptions,
 } from '../core/consistency.js';
-import { dedupeFile } from '../core/deduplicator.js';
-import { fixFile } from '../core/fixer.js';
-import { mergeFile } from '../core/merger.js';
+import { dedupeContent, dedupeFile } from '../core/deduplicator.js';
+import { fixContent, fixFile } from '../core/fixer.js';
+import { mergeContent, mergeFile } from '../core/merger.js';
 import type { Config } from '../core/rules.js';
 import { resolveTargets } from '../core/scanner.js';
-import { sortFile } from '../core/sorter.js';
+import { sortContent, sortFile } from '../core/sorter.js';
 import { analyzeTyposFile, type TypoFinding } from '../core/typos.js';
 
 const SARIF_SCHEMA =
   'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json';
 
 const USAGE =
-  'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--analyze] [--typos] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]';
+  'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--check] [--analyze] [--typos] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]';
 
 const HELP_TEXT = [
   USAGE,
@@ -29,6 +29,7 @@ const HELP_TEXT = [
   '  --dedup            Remove redundant classes and collapse shorthands',
   '  --merge            Resolve conflicting classes via tailwind-merge',
   '  --sort             Sort classes into canonical order',
+  '  --check            Dry-run: report what transforms would change, write nothing (exit 1 on pending changes)',
   '  --analyze          Cross-file consistency analysis (read-only)',
   '  --typos            Flag likely misspelled color names (read-only)',
   '  --watch            Re-run on every file save (transform/check mode; ignored with --typos)',
@@ -64,6 +65,7 @@ type Flags = {
   watch: boolean;
   analyze: boolean;
   typos: boolean;
+  check: boolean;
   help: boolean;
   version: boolean;
   reporter: Reporter;
@@ -95,6 +97,7 @@ type JsonTransformReport = {
   sorted: number;
   typoTotal?: number;
   typos?: TypoFinding[];
+  check?: boolean;
 };
 
 type JsonFinding = {
@@ -211,6 +214,7 @@ const KNOWN_FLAGS = new Set([
   '--merge',
   '--dedup',
   '--sort',
+  '--check',
   '--watch',
   '--analyze',
   '--typos',
@@ -281,6 +285,7 @@ export function parseArgs(argv: string[]): Flags {
     watch: argv.includes('--watch'),
     analyze: argv.includes('--analyze'),
     typos: argv.includes('--typos'),
+    check: argv.includes('--check'),
     help: argv.includes('--help') || argv.includes('-h'),
     version: argv.includes('--version') || argv.includes('-V'),
     reporter,
@@ -351,6 +356,7 @@ export function flagWarnings(flags: Flags): string[] {
         warnings.push(`${flag} ignored: --analyze takes priority`);
     }
     if (flags.typos) warnings.push('--typos ignored: --analyze takes priority');
+    if (flags.check) warnings.push('--check ignored: --analyze takes priority');
     if (flags.watch)
       warnings.push('--watch ignored: not supported with --analyze');
     return warnings;
@@ -358,6 +364,10 @@ export function flagWarnings(flags: Flags): string[] {
 
   if (flags.typos && flags.watch) {
     warnings.push('--watch ignored: not supported with --typos');
+  }
+
+  if (flags.check && flags.watch) {
+    warnings.push('--watch ignored: not supported with --check');
   }
 
   return warnings;
@@ -457,6 +467,39 @@ async function processFile(
   if (flags.dedup) counts.deduped = dedupeFile(file, opts);
   if (flags.merge) counts.merged = await mergeFile(file, opts);
   if (flags.sort) counts.sorted = sortFile(file, opts, config.sortOrder);
+  return counts;
+}
+
+async function checkFile(
+  file: string,
+  flags: Flags,
+  config: Config,
+  twMerge?: (classes: string) => string,
+): Promise<FileCounts> {
+  const opts = toClassStringOpts(config);
+  const counts: FileCounts = { fixed: 0, deduped: 0, merged: 0, sorted: 0 };
+  let content = readFileSync(file, 'utf8');
+
+  if (flags.fix) {
+    const { result, count } = fixContent(content, config);
+    counts.fixed = count;
+    content = result;
+  }
+  if (flags.dedup) {
+    const { result, count } = dedupeContent(content, opts);
+    counts.deduped = count;
+    content = result;
+  }
+  if (flags.merge && twMerge) {
+    const { result, count } = mergeContent(content, twMerge, opts);
+    counts.merged = count;
+    content = result;
+  }
+  if (flags.sort) {
+    const { result, count } = sortContent(content, opts, config.sortOrder);
+    counts.sorted = count;
+    content = result;
+  }
   return counts;
 }
 
@@ -856,9 +899,24 @@ export async function run(
     return { exitCode: 1 };
   }
 
+  if (
+    flags.check &&
+    !flags.analyze &&
+    !flags.fix &&
+    !flags.dedup &&
+    !flags.merge &&
+    !flags.sort
+  ) {
+    sink.error(
+      '--check requires at least one of --fix, --dedup, --merge, --sort',
+    );
+    return { exitCode: 1 };
+  }
+
+  let twMerge: ((classes: string) => string) | undefined;
   if (flags.merge && !flags.analyze && !flags.typos) {
     try {
-      await import('tailwind-merge');
+      ({ twMerge } = await import('tailwind-merge'));
     } catch {
       sink.error('--merge requires tailwind-merge: pnpm add -D tailwind-merge');
       return { exitCode: 1 };
@@ -885,7 +943,7 @@ export async function run(
     return runTypos(files, config, flags.reporter, sink);
   }
 
-  const watching = flags.watch && !flags.typos;
+  const watching = flags.watch && !flags.typos && !flags.check;
   const totals: FileCounts = { fixed: 0, deduped: 0, merged: 0, sorted: 0 };
   const allFindings: Finding[] = [];
   const changedFiles: string[] = [];
@@ -895,7 +953,9 @@ export async function run(
     for (const file of files) {
       try {
         if (transforming) {
-          const counts = await processFile(file, flags, config);
+          const counts = flags.check
+            ? await checkFile(file, flags, config, twMerge)
+            : await processFile(file, flags, config);
           totals.fixed += counts.fixed;
           totals.deduped += counts.deduped;
           totals.merged += counts.merged;
@@ -904,19 +964,19 @@ export async function run(
           if (flags.reporter === 'text') {
             if (counts.fixed > 0)
               sink.log(
-                `  fixed  ${file} (${pluralize(counts.fixed, 'replacement')})`,
+                `  ${flags.check ? 'would fix' : 'fixed '} ${file} (${pluralize(counts.fixed, 'replacement')})`,
               );
             if (counts.deduped > 0)
               sink.log(
-                `  deduped ${file} (${pluralize(counts.deduped, 'class string')})`,
+                `  ${flags.check ? 'would dedup' : 'deduped'} ${file} (${pluralize(counts.deduped, 'class string')})`,
               );
             if (counts.merged > 0)
               sink.log(
-                `  merged ${file} (${pluralize(counts.merged, 'conflict')})`,
+                `  ${flags.check ? 'would merge' : 'merged '} ${file} (${pluralize(counts.merged, 'conflict')})`,
               );
             if (counts.sorted > 0)
               sink.log(
-                `  sorted ${file} (${pluralize(counts.sorted, 'class string')})`,
+                `  ${flags.check ? 'would sort' : 'sorted '} ${file} (${pluralize(counts.sorted, 'class string')})`,
               );
           }
         } else {
@@ -944,8 +1004,10 @@ export async function run(
     const typoResult = flags.typos
       ? collectTypos(files, config, sink)
       : undefined;
+    const totalChanges = totalOf(totals);
     const exitCode =
       hadError ||
+      (flags.check && totalChanges > 0) ||
       (typoResult && (typoResult.findings.length > 0 || typoResult.hadError))
         ? 1
         : 0;
@@ -959,6 +1021,7 @@ export async function run(
         merged: totals.merged,
         sorted: totals.sorted,
       };
+      if (flags.check) report.check = true;
       if (typoResult) {
         report.typoTotal = typoResult.findings.length;
         report.typos = typoResult.findings;
@@ -975,15 +1038,25 @@ export async function run(
       return { exitCode };
     }
 
-    const parts: string[] = [];
-    if (flags.fix) parts.push(pluralize(totals.fixed, 'replacement'));
-    if (flags.dedup) parts.push(pluralize(totals.deduped, 'dedup'));
-    if (flags.merge)
-      parts.push(`${pluralize(totals.merged, 'conflict')} merged`);
-    if (flags.sort) parts.push(`${totals.sorted} sorted`);
-    sink.log(
-      `\n✓ Fixed ${parts.join(', ')} across ${pluralize(files.length, 'file')}`,
-    );
+    if (flags.check) {
+      if (totalChanges > 0) {
+        sink.log(
+          `\n✖ ${pluralize(totalChanges, 'pending change')} across ${pluralize(changedFiles.length, 'file')} (run without --check to apply)`,
+        );
+      } else {
+        sink.log('✓ No pending changes');
+      }
+    } else {
+      const parts: string[] = [];
+      if (flags.fix) parts.push(pluralize(totals.fixed, 'replacement'));
+      if (flags.dedup) parts.push(pluralize(totals.deduped, 'dedup'));
+      if (flags.merge)
+        parts.push(`${pluralize(totals.merged, 'conflict')} merged`);
+      if (flags.sort) parts.push(`${totals.sorted} sorted`);
+      sink.log(
+        `\n✓ Fixed ${parts.join(', ')} across ${pluralize(files.length, 'file')}`,
+      );
+    }
     if (typoResult) logTyposText(typoResult.findings, sink);
     return { exitCode };
   }
