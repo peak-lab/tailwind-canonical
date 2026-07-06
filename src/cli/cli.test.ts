@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   rmSync,
@@ -1397,3 +1398,16 @@ test(
     }
   },
 );
+
+test('run - init with an unknown flag errors and writes nothing', async (_t: TestContext) => {
+  const dir = freshDir();
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['init', '--nope'], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(err.some((l) => l.includes('init takes no flags')));
+    assert.ok(!existsSync(join(dir, 'tailwind-canonical.config.ts')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -921,6 +921,7 @@ export async function run(
 
   if (flags.targets[0] === 'init') {
     if (
+      flags.error ||
       flags.hasExplicitMode ||
       flags.hasExplicitWatch ||
       flags.hasExplicitCheck ||
