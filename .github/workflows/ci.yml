@@ -13,6 +13,8 @@ jobs:
     strategy:
       matrix:
         node: [22, 24]
+    env:
+      NODE_OPTIONS: ${{ matrix.node == 22 && '--experimental-strip-types' || '' }}
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: pnpm/action-setup@v6.0.8
