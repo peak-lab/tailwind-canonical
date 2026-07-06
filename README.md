@@ -354,6 +354,10 @@ new configs should prefer `analyze`.
 `tailwind-canonical.config.js` is still loaded as a fallback when no TypeScript
 config exists.
 
+On Node 22.6–23.5, loading a `.ts` config requires `--experimental-strip-types`;
+from Node 23.6 onward it works natively; the `.js` fallback works on every
+supported Node version.
+
 ## ESLint plugin
 
 ```js

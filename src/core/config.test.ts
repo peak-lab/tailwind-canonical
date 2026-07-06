@@ -280,7 +280,7 @@ test('loadConfig - rejects when the config file has a syntax error', async (_t: 
     'utf8',
   );
   try {
-    await assert.rejects(loadConfig(dir));
+    await assert.rejects(loadConfig(dir), /tailwind-canonical\.config\.ts/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
