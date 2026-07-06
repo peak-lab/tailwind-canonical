@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   rmSync,
@@ -1289,6 +1290,93 @@ test(
   },
 );
 
+test('run - init creates a config scaffold in an empty dir', async (_t: TestContext) => {
+  const dir = freshDir();
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['init'], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    const content = readFileSync(
+      join(dir, 'tailwind-canonical.config.ts'),
+      'utf8',
+    );
+    assert.ok(content.includes('satisfies Config'));
+    assert.ok(out.some((l) => l.includes('Created')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - init errors when tailwind-canonical.config.ts already exists', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'export default {}\n',
+    'utf8',
+  );
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['init'], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(
+      err.some((l) =>
+        l.includes('tailwind-canonical.config.ts already exists'),
+      ),
+    );
+    assert.strictEqual(
+      readFileSync(join(dir, 'tailwind-canonical.config.ts'), 'utf8'),
+      'export default {}\n',
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - init errors when tailwind-canonical.config.js already exists', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.js'),
+    'export default {}\n',
+    'utf8',
+  );
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['init'], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(
+      err.some((l) =>
+        l.includes('tailwind-canonical.config.js already exists'),
+      ),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - init combined with a flag errors', async (_t: TestContext) => {
+  const dir = freshDir();
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['init', '--fix'], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(err.some((l) => l.includes('init takes no flags')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - init with an extra argument errors', async (_t: TestContext) => {
+  const dir = freshDir();
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['init', 'something'], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(err.some((l) => l.includes('init takes no extra arguments')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test(
   'run - surfaces invalid config and exits 1',
   skipTsConfig,
@@ -1310,3 +1398,16 @@ test(
     }
   },
 );
+
+test('run - init with an unknown flag errors and writes nothing', async (_t: TestContext) => {
+  const dir = freshDir();
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['init', '--nope'], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(err.some((l) => l.includes('init takes no flags')));
+    assert.ok(!existsSync(join(dir, 'tailwind-canonical.config.ts')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
