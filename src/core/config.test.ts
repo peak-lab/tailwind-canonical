@@ -3,7 +3,28 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type TestContext, test } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import { loadConfig, validateConfig } from './config.js';
+
+const canImportTsConfig = await (async () => {
+  const dir = join(tmpdir(), `twc-probe-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, 'probe.config.ts');
+  writeFileSync(file, 'export default {}\n', 'utf8');
+  try {
+    await import(pathToFileURL(file).href);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
+const skipTsConfig = {
+  skip: canImportTsConfig
+    ? false
+    : 'runtime .ts config import unsupported under this loader (tsx on Node 22)',
+};
 
 let dirCounter = 0;
 function freshDir(): string {
@@ -225,38 +246,46 @@ test('loadConfig - missing file returns empty config', async (_t: TestContext) =
   assert.deepEqual(await loadConfig(freshDir()), {});
 });
 
-test('loadConfig - reads and validates a TypeScript config file', async (_t: TestContext) => {
-  const dir = freshDir();
-  writeFileSync(
-    join(dir, 'tailwind-canonical.config.ts'),
-    'export default { sortOrder: ["display"] satisfies string[] }',
-    'utf8',
-  );
-  try {
-    assert.deepEqual(await loadConfig(dir), { sortOrder: ['display'] });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+test(
+  'loadConfig - reads and validates a TypeScript config file',
+  skipTsConfig,
+  async (_t: TestContext) => {
+    const dir = freshDir();
+    writeFileSync(
+      join(dir, 'tailwind-canonical.config.ts'),
+      'export default { sortOrder: ["display"] satisfies string[] }',
+      'utf8',
+    );
+    try {
+      assert.deepEqual(await loadConfig(dir), { sortOrder: ['display'] });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
-test('loadConfig - prefers TypeScript config over JavaScript fallback', async (_t: TestContext) => {
-  const dir = freshDir();
-  writeFileSync(
-    join(dir, 'tailwind-canonical.config.ts'),
-    'export default { sortOrder: ["display"] }',
-    'utf8',
-  );
-  writeFileSync(
-    join(dir, 'tailwind-canonical.config.js'),
-    'export default { sortOrder: ["spacing"] }',
-    'utf8',
-  );
-  try {
-    assert.deepEqual(await loadConfig(dir), { sortOrder: ['display'] });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+test(
+  'loadConfig - prefers TypeScript config over JavaScript fallback',
+  skipTsConfig,
+  async (_t: TestContext) => {
+    const dir = freshDir();
+    writeFileSync(
+      join(dir, 'tailwind-canonical.config.ts'),
+      'export default { sortOrder: ["display"] }',
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'tailwind-canonical.config.js'),
+      'export default { sortOrder: ["spacing"] }',
+      'utf8',
+    );
+    try {
+      assert.deepEqual(await loadConfig(dir), { sortOrder: ['display'] });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test('loadConfig - falls back to JavaScript config file', async (_t: TestContext) => {
   const dir = freshDir();
