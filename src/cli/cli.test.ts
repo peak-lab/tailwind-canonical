@@ -498,6 +498,16 @@ test('flagWarnings - typos chains with transforms, only watch is warned', (_t: T
   assert.deepEqual(flagWarnings(parseArgs(['--fix', '--typos', 'src'])), []);
 });
 
+test('flagWarnings - check with watch warns', (_t: TestContext) => {
+  const w = flagWarnings(parseArgs(['--check', '--fix', '--watch', 'src']));
+  assert.deepEqual(w, ['--watch ignored: not supported with --check']);
+});
+
+test('flagWarnings - check and typos both with watch consolidate warning', (_t: TestContext) => {
+  const w = flagWarnings(parseArgs(['--check', '--typos', '--watch', 'src']));
+  assert.deepEqual(w, ['--watch ignored: not supported with --typos/--check']);
+});
+
 test('flagWarnings - transform/check mode emits no warnings (watch honored)', (_t: TestContext) => {
   assert.deepEqual(flagWarnings(parseArgs(['--fix', '--watch', 'src'])), []);
   assert.deepEqual(flagWarnings(parseArgs(['src'])), []);
@@ -1118,6 +1128,166 @@ test('run - dangling --reporter exits 1 with the missing-value error', async (_t
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('run - --check --fix reports pending changes without writing the file', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const original = '<div className="text-[12px]" />';
+  writeFileSync(file, original, 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--check', '--fix', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('would fix')));
+    assert.ok(out.some((l) => l.includes('pending change')));
+    assert.strictEqual(readFileSync(file, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --check --dedup --sort on a clean file exits 0 with no pending changes', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const original = '<div className="flex p-4 text-xs" />';
+  writeFileSync(file, original, 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--check', '--dedup', '--sort', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(out.some((l) => l.includes('No pending changes')));
+    assert.strictEqual(readFileSync(file, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --check --fix --reporter json reports check:true and leaves file untouched', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const original = '<div className="text-[12px]" />';
+  writeFileSync(file, original, 'utf8');
+  const { sink, raw } = captureSink();
+  try {
+    const result = await run(
+      ['--check', '--fix', '--reporter', 'json', dir],
+      dir,
+      sink,
+    );
+    assert.strictEqual(result.exitCode, 1);
+    const parsed = JSON.parse(raw.join(''));
+    assert.strictEqual(parsed.check, true);
+    assert.strictEqual(parsed.fixed, 1);
+    assert.deepEqual(parsed.changedFiles, [file]);
+    assert.strictEqual(readFileSync(file, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --check alone exits 1 requiring a transform flag', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'a.tsx'), '<div className="flex" />', 'utf8');
+  const { sink, err } = captureSink();
+  try {
+    const result = await run(['--check', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(
+      err.some((l) =>
+        l.includes(
+          '--check requires at least one of --fix, --dedup, --merge, --sort',
+        ),
+      ),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --check --fix --typos reports the typo and leaves the file untouched', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const original = '<div className="text-gry-500" />';
+  writeFileSync(file, original, 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--check', '--fix', '--typos', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('text-gry-500 → text-gray-500')));
+    assert.strictEqual(readFileSync(file, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('flagWarnings - analyze and check both set warns check ignored', (_t: TestContext) => {
+  const w = flagWarnings(parseArgs(['--check', '--fix', '--analyze', 'src']));
+  assert.deepEqual(w, [
+    '--fix ignored: --analyze takes priority',
+    '--check ignored: --analyze takes priority',
+  ]);
+});
+
+test('run - --check --merge on conflicting classes reports and leaves file untouched', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const original = '<div className="bg-red-500 bg-blue-500" />';
+  writeFileSync(file, original, 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--check', '--merge', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('would merge')));
+    assert.ok(out.some((l) => l.includes('pending change')));
+    assert.strictEqual(readFileSync(file, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --check --merge --typos on conflicting bg + typo reports both and leaves file untouched', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const original = '<div className="bg-red-500 bg-blue-500 text-gry-500" />';
+  writeFileSync(file, original, 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--check', '--merge', '--typos', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.ok(out.some((l) => l.includes('would merge')));
+    assert.ok(out.some((l) => l.includes('pending change')));
+    assert.ok(out.some((l) => l.includes('text-gry-500 → text-gray-500')));
+    assert.strictEqual(readFileSync(file, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test(
+  'run - defaultCommand with check:true and fix:true applies check behavior',
+  skipTsConfig,
+  async (_t: TestContext) => {
+    const dir = freshDir();
+    const file = join(dir, 'a.tsx');
+    const original = '<div className="text-[12px]" />';
+    writeFileSync(file, original, 'utf8');
+    writeFileSync(
+      join(dir, 'tailwind-canonical.config.ts'),
+      'export default { defaultCommand: { check: true, fix: true, targets: ["."] } }',
+      'utf8',
+    );
+    const { sink, out } = captureSink();
+    try {
+      const result = await run([], dir, sink);
+      assert.strictEqual(result.exitCode, 1);
+      assert.ok(out.some((l) => l.includes('would fix')));
+      assert.ok(out.some((l) => l.includes('pending change')));
+      assert.strictEqual(readFileSync(file, 'utf8'), original);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test(
   'run - surfaces invalid config and exits 1',
