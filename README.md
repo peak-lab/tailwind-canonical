@@ -12,6 +12,41 @@ npm install -D tailwind-canonical
 yarn add -D tailwind-canonical
 ```
 
+## Quick start
+
+First scan to see what needs fixing:
+```bash
+npx tailwind-canonical ./src
+```
+
+Create a config file to make the full pipeline re-runnable:
+```ts
+// tailwind-canonical.config.ts
+export default {
+  defaultCommand: {
+    fix: true,
+    dedup: true,
+    sort: true,
+    typos: true,
+    targets: ['./src'],
+  },
+}
+```
+
+Now run the whole pipeline with a single command:
+```bash
+npx tailwind-canonical
+```
+
+For ESLint integration, add to your flat config:
+```js
+import tailwindCanonical from 'tailwind-canonical/eslint'
+
+export default [tailwindCanonical.configs.recommended]
+```
+
+For pre-commit automation, see the [Pre-commit hook](#pre-commit-hook-husky--lefthook) section below.
+
 ## CLI
 
 ```bash
@@ -100,6 +135,15 @@ npx tailwind-canonical --fix --reporter json ./src
 ```bash
 # SARIF — compatible with GitHub Code Scanning and VS Code Problem Matcher
 npx tailwind-canonical --reporter sarif ./src > results.sarif
+```
+
+**GitHub Actions integration:**
+```yaml
+- run: npx tailwind-canonical --reporter sarif ./src > results.sarif
+  continue-on-error: true
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: results.sarif
 ```
 
 ## Typo detection (`--typos`)
@@ -433,6 +477,12 @@ It **accepts but ignores**: `functionNames`, `attributeNames`, `sortOrder`.
 These are CLI-only options, allowed in the schema purely so a single shared
 config object can be passed without errors.
 
+## Known limits
+
+- **`--watch` does not pick up files created after start** — the watcher initializes a file list once and monitors only existing files for changes. New files in the target directories are not detected until the watcher is restarted.
+- **`--typos` covers Tailwind color names only** — color-name detection uses Levenshtein distance 1 against the built-in Tailwind color palette. Custom colors from your config are supported via `extraColors` in the config, but typo detection does not extend to properties, function names, or arbitrary modifiers.
+- **`--merge` requires `tailwind-merge` as a peer dependency** — the plugin is optional, so the CLI will error if you use `--merge` without installing `tailwind-merge`. Install with `pnpm add -D tailwind-merge`.
+
 ## Pre-commit hook (Husky / Lefthook)
 
 ```yaml
@@ -453,6 +503,17 @@ pre-commit:
 ```bash
 # Husky: .husky/pre-commit
 npx tailwind-canonical --fix --dedup --sort ./src ./app
+```
+
+### lint-staged
+
+```jsonc
+// package.json
+{
+  "lint-staged": {
+    "*.{jsx,tsx}": ["tailwind-canonical --fix --dedup --sort --typos"]
+  }
+}
 ```
 
 ## Dead code detection (knip)
