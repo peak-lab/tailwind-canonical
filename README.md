@@ -15,6 +15,9 @@ yarn add -D tailwind-canonical
 ## CLI
 
 ```bash
+# Scaffold a tailwind-canonical.config.ts in the current directory
+npx tailwind-canonical init
+
 # Check for non-canonical arbitrary values
 npx tailwind-canonical ./src
 

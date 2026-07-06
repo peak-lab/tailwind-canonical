@@ -1,8 +1,13 @@
-import { watch as fsWatch, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import {
+  existsSync,
+  watch as fsWatch,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
 import { toClassStringOpts } from '../core/class-strings.js';
-import { loadConfig } from '../core/config.js';
+import { CONFIG_FILENAMES, loadConfig } from '../core/config.js';
 import {
   analyzeConsistencyFiles,
   type ConsistencyReport,
@@ -20,11 +25,27 @@ const SARIF_SCHEMA =
   'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json';
 
 const USAGE =
-  'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--check] [--analyze] [--typos] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]';
+  'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--check] [--analyze] [--typos] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]\n       tailwind-canonical init';
+
+const INIT_CONFIG_CONTENT = [
+  "import type { Config } from 'tailwind-canonical'",
+  '',
+  'export default {',
+  '  // Run `tailwind-canonical` with no flags using these defaults:',
+  "  // defaultCommand: { fix: true, dedup: true, sort: true, typos: true, targets: ['./src'] },",
+  '  // px → token additions/overrides:',
+  "  // customTextTokens: { 11: '2xs' },",
+  "  // customSpacingTokens: { 14: '3.5' },",
+  '  // Never suggest replacements for classes matching:',
+  '  // ignorePatterns: [/^font-/],',
+  '} satisfies Config',
+  '',
+].join('\n');
 
 const HELP_TEXT = [
   USAGE,
   '',
+  '  init               Create a tailwind-canonical.config.ts scaffold in the current directory',
   '  --fix              Auto-replace arbitrary values with canonical Tailwind classes',
   '  --dedup            Remove redundant classes and collapse shorthands',
   '  --merge            Resolve conflicting classes via tailwind-merge',
@@ -858,6 +879,21 @@ function startWatch(
   return { exitCode: 0, watching: true };
 }
 
+function runInit(cwd: string, sink: Sink): RunResult {
+  const existing = CONFIG_FILENAMES.find((name) => existsSync(join(cwd, name)));
+  if (existing) {
+    sink.error(`${existing} already exists`);
+    return { exitCode: 1 };
+  }
+
+  const filename = CONFIG_FILENAMES[0];
+  writeFileSync(join(cwd, filename), INIT_CONFIG_CONTENT, 'utf8');
+  sink.log(`Created ${filename}`);
+  sink.log('Uncomment defaultCommand to set your CLI defaults.');
+  sink.log('Then run `npx tailwind-canonical` to lint your project.');
+  return { exitCode: 0 };
+}
+
 export async function run(
   argv: string[],
   cwd: string,
@@ -881,6 +917,23 @@ export async function run(
       sink.error(`tailwind-canonical: could not read version: ${errMsg(err)}`);
       return { exitCode: 1 };
     }
+  }
+
+  if (flags.targets[0] === 'init') {
+    if (
+      flags.hasExplicitMode ||
+      flags.hasExplicitWatch ||
+      flags.hasExplicitCheck ||
+      flags.hasExplicitReporter
+    ) {
+      sink.error('init takes no flags');
+      return { exitCode: 1 };
+    }
+    if (flags.targets.length > 1) {
+      sink.error('init takes no extra arguments');
+      return { exitCode: 1 };
+    }
+    return runInit(cwd, sink);
   }
 
   if (flags.error) {
