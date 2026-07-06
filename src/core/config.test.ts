@@ -26,6 +26,26 @@ const skipTsConfig = {
     : 'runtime .ts config import unsupported under this loader (tsx on Node 22)',
 };
 
+const canImportJsConfig = await (async () => {
+  const dir = join(tmpdir(), `twc-probe-js-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, 'probe.config.js');
+  writeFileSync(file, 'export default {}\n', 'utf8');
+  try {
+    await import(pathToFileURL(file).href);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
+const skipJsConfig = {
+  skip: canImportJsConfig
+    ? false
+    : 'runtime .js config import unsupported under this loader (tsx on Node 22)',
+};
+
 let dirCounter = 0;
 function freshDir(): string {
   dirCounter += 1;
@@ -340,42 +360,50 @@ test(
   },
 );
 
-test('loadConfig - walks up to a config at the tmp root', async (_t: TestContext) => {
-  const root = freshDir();
-  const child = join(root, 'child');
-  mkdirSync(child, { recursive: true });
-  writeFileSync(
-    join(root, 'tailwind-canonical.config.js'),
-    'export default { sortOrder: ["display"] }',
-    'utf8',
-  );
-  try {
-    assert.deepEqual(await loadConfig(child), { sortOrder: ['display'] });
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+test(
+  'loadConfig - walks up to a config at the tmp root',
+  skipJsConfig,
+  async (_t: TestContext) => {
+    const root = freshDir();
+    const child = join(root, 'child');
+    mkdirSync(child, { recursive: true });
+    writeFileSync(
+      join(root, 'tailwind-canonical.config.js'),
+      'export default { sortOrder: ["display"] }',
+      'utf8',
+    );
+    try {
+      assert.deepEqual(await loadConfig(child), { sortOrder: ['display'] });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
-test('loadConfig - a closer config wins over one higher up', async (_t: TestContext) => {
-  const root = freshDir();
-  const child = join(root, 'child');
-  mkdirSync(child, { recursive: true });
-  writeFileSync(
-    join(root, 'tailwind-canonical.config.js'),
-    'export default { sortOrder: ["display"] }',
-    'utf8',
-  );
-  writeFileSync(
-    join(child, 'tailwind-canonical.config.js'),
-    'export default { sortOrder: ["spacing"] }',
-    'utf8',
-  );
-  try {
-    assert.deepEqual(await loadConfig(child), { sortOrder: ['spacing'] });
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+test(
+  'loadConfig - a closer config wins over one higher up',
+  skipJsConfig,
+  async (_t: TestContext) => {
+    const root = freshDir();
+    const child = join(root, 'child');
+    mkdirSync(child, { recursive: true });
+    writeFileSync(
+      join(root, 'tailwind-canonical.config.js'),
+      'export default { sortOrder: ["display"] }',
+      'utf8',
+    );
+    writeFileSync(
+      join(child, 'tailwind-canonical.config.js'),
+      'export default { sortOrder: ["spacing"] }',
+      'utf8',
+    );
+    try {
+      assert.deepEqual(await loadConfig(child), { sortOrder: ['spacing'] });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test('loadConfig - stops at a .git directory, ignoring configs above it', async (_t: TestContext) => {
   const root = freshDir();
@@ -395,20 +423,24 @@ test('loadConfig - stops at a .git directory, ignoring configs above it', async 
   }
 });
 
-test('loadConfig - a config alongside .git in the same directory still loads', async (_t: TestContext) => {
-  const root = freshDir();
-  const repo = join(root, 'repo');
-  const child = join(repo, 'child');
-  mkdirSync(join(repo, '.git'), { recursive: true });
-  mkdirSync(child, { recursive: true });
-  writeFileSync(
-    join(repo, 'tailwind-canonical.config.js'),
-    'export default { sortOrder: ["spacing"] }',
-    'utf8',
-  );
-  try {
-    assert.deepEqual(await loadConfig(child), { sortOrder: ['spacing'] });
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+test(
+  'loadConfig - a config alongside .git in the same directory still loads',
+  skipJsConfig,
+  async (_t: TestContext) => {
+    const root = freshDir();
+    const repo = join(root, 'repo');
+    const child = join(repo, 'child');
+    mkdirSync(join(repo, '.git'), { recursive: true });
+    mkdirSync(child, { recursive: true });
+    writeFileSync(
+      join(repo, 'tailwind-canonical.config.js'),
+      'export default { sortOrder: ["spacing"] }',
+      'utf8',
+    );
+    try {
+      assert.deepEqual(await loadConfig(child), { sortOrder: ['spacing'] });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
