@@ -73,7 +73,7 @@ export const COLOR_FAMILIES: Record<string, string> = {
   stone: 'gray',
 };
 
-function stripVariants(cls: string): string {
+export function stripVariants(cls: string): string {
   const idx = cls.lastIndexOf(':');
   return idx === -1 ? cls : cls.slice(idx + 1);
 }

@@ -13,12 +13,13 @@ Ships three artifacts from one codebase:
 
 ## Tech Stack
 
-- Node 24, ESM-only (`"type": "module"`)
-- TypeScript `^6.0.0`, target ES2022, module NodeNext
+- Node `>=22.6`, ESM-only (`"type": "module"`) — CI runs Node 22 and 24
+- TypeScript `^6.0.3`, target ES2022, module NodeNext
 - pnpm `11.4.0` (pinned via `packageManager` field)
-- Biome `^2.4.16` — internal linter/formatter
-- `node:test` + `tsx` — test runner (no Jest, no Vitest)
-- Lefthook `^2.1.8` — git hook manager (pre-commit: biome + typecheck, pre-push: test)
+- Biome `^2.5.11` — internal linter/formatter
+- `node:test` + `tsx` `^4.23.13` — test runner (no Jest, no Vitest)
+- Lefthook `^2.1.12` — git hook manager (pre-commit: biome + typecheck, pre-push: test + knip)
+- knip `^6.34.0` — dead code/dependency detection (`pnpm knip`; enforced in CI and the pre-push hook)
 - ESLint `>=8.0.0` — peer dep only, for plugin consumers
 
 ## Commands
@@ -30,6 +31,7 @@ pnpm test         # node --import=tsx/esm --test "src/**/*.test.ts"
 pnpm typecheck    # tsc --noEmit
 pnpm lint         # biome check src/
 pnpm lint:fix     # biome check --write src/
+pnpm knip         # dead code/dependency detection
 ```
 
 Run a single test file:
@@ -42,18 +44,35 @@ node --import=tsx/esm --test src/core/rules.test.ts
 
 ```
 src/
-  cli/index.ts         # CLI entry: loads cwd config, drives analyzer/fixer
-  eslint/plugin.ts     # Flat-config ESLint plugin — wraps suggestCanonical
-  core/
-    rules.ts           # Pure logic: suggestCanonical(cls, config) → Suggestion | null
-    analyzer.ts        # File → Finding[] (regex-based className extraction)
-    fixer.ts           # File → in-place rewrite using suggestCanonical
-    scanner.ts         # Recursive directory walker (extension filter)
-  index.ts             # Public library exports
+  cli/index.ts         # bin entry: run(process.argv, process.cwd()), sets exit code
+  cli/cli.ts           # arg parsing, config defaults, transform pipeline, reporters, watch
+  eslint/plugin.ts     # Flat-config ESLint plugin — calls suggestCanonical on AST nodes
+  core/                # Pure logic — zero node:fs
+    rules.ts           # suggestCanonical(cls, config) → Suggestion | null
+    lexicon.ts         # Tailwind color/property vocabulary
+    class-strings.ts   # extract class strings from className/clsx/cva calls
+    suppressions.ts    # tailwind-canonical-disable pragma handling
+    config.ts          # config schema/merge logic
+    analyzer.ts        # content → Finding[]
+    fixer.ts           # arbitrary → canonical rewrite logic
+    deduplicator.ts    # dedup + shorthand-collapse logic
+    merger.ts          # tailwind-merge integration
+    sorter.ts          # canonical class ordering
+    consistency.ts     # cross-file consistency analysis
+    typos.ts           # color-name typo detection
+    scanner.ts         # target resolution helpers
+  io/                  # Thin node:fs wrappers — one per side-effecting core/ module
+    analyzer.ts config.ts consistency.ts deduplicator.ts fixer.ts
+    merger.ts scanner.ts sorter.ts typos.ts
+  index.ts             # Public library exports (barrel over core/)
 ```
 
-**Key invariant**: `rules.ts` has zero I/O. `analyzer.ts`, `fixer.ts`, `scanner.ts` do all the I/O.
-Every consumer (CLI, ESLint plugin, future integrations) routes through `suggestCanonical`.
+**Key invariant**: `core/` is pure — no file under `src/core/` imports `node:fs`.
+All file I/O lives in `src/io/` (9 wrappers, one per side-effecting `core/` module).
+Each of those `core/X.ts` files re-exports its `io/X.ts` wrapper as its last line
+(e.g. `fixer.ts` ends with `export { fixFile } from '../io/fixer.js';`), so the
+public import path stays `core/` — consumers, and `src/index.ts`, never import
+from `src/io/` directly.
 
 ## Patterns
 
@@ -76,9 +95,9 @@ or a non-built-in mapping. CLI appends `[custom token]` to the output line.
 
 ### ESLint plugin path
 
-The plugin (`src/eslint/plugin.ts`) does NOT go through `analyzer.ts` / `fixer.ts`.
-It calls `suggestCanonical` directly on AST `Literal` and `TemplateLiteral` nodes.
-Don't refactor it to share I/O code — there is no I/O on the ESLint path.
+The plugin (`src/eslint/plugin.ts`) calls `suggestCanonical` directly on AST
+`Literal` / `TemplateLiteral` nodes — there is no I/O on this path, so there is
+nothing to share with `src/io/`. Don't refactor it to route through `src/io/`.
 
 ## Publishing
 

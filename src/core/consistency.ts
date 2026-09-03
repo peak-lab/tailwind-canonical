@@ -7,6 +7,7 @@ import {
   COLOR_FAMILIES,
   parseColorClass,
   SCALE_PROPERTIES,
+  stripVariants,
   TAILWIND_COLORS,
 } from './lexicon.js';
 import type { Config } from './rules.js';
@@ -64,11 +65,6 @@ export type ConsistencyOptions = {
   /** Extra scale property prefixes (e.g. 'scroll-p') added to the defaults. */
   extraScaleProperties?: string[];
 };
-
-function stripVariants(cls: string): string {
-  const idx = cls.lastIndexOf(':');
-  return idx === -1 ? cls : cls.slice(idx + 1);
-}
 
 function parseColor(
   cls: string,

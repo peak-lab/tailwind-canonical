@@ -65,14 +65,14 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
+    "@biomejs/biome": "^2.5.11",
     "@types/estree": "^1.0.9",
-    "@types/node": "^22.0.0",
-    "knip": "^6.14.2",
-    "lefthook": "^2.1.8",
+    "@types/node": "^22.20.1",
+    "knip": "^6.34.0",
+    "lefthook": "^2.1.12",
     "tailwind-merge": "^3.6.0",
-    "tsx": "^4.0.0",
-    "typescript": "^6.0.0"
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "eslint": ">=8.0.0",
