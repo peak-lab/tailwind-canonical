@@ -178,6 +178,31 @@ test('mergeFile - preserves leading with text sizes that have no bundled line-he
       }
     },
   );
+
+  await t.test(
+    'restores the last leading declared before the text size, not the first',
+    async () => {
+      const file = join(tmpdir(), `merger-test-${Date.now()}.tsx`);
+      // twMerge drops both leadings here, so none survives to keep the text
+      // size safe. CSS is last-wins, so leading-8 is the one that applied.
+      writeFileSync(
+        file,
+        '<span className="leading-6 leading-8 text-[13px]" />',
+        'utf8',
+      );
+      try {
+        const count = await mergeFile(file);
+        assert.strictEqual(count, 1);
+        assert.ok(
+          readFileSync(file, 'utf8').includes(
+            'className="leading-8 text-[13px]"',
+          ),
+        );
+      } finally {
+        unlinkSync(file);
+      }
+    },
+  );
 });
 
 test('mergeFile - quote styles', async (t: TestContext) => {

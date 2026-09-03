@@ -502,7 +502,7 @@ function applyTransforms(
   if (flags.merge) {
     if (!twMerge) {
       throw new Error(
-        'merge requires the optional peer dependency "tailwind-merge"',
+        '--merge requires the optional peer dependency "tailwind-merge". Install it with: pnpm add -D tailwind-merge',
       );
     }
     const merged = mergeContent(result, twMerge, opts);
