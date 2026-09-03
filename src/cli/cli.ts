@@ -521,7 +521,10 @@ function processFile(
 ): FileCounts {
   const content = readFileSync(file, 'utf8');
   const { counts, result } = applyTransforms(content, flags, config, twMerge);
-  if (result !== content) writeFileSync(file, result, 'utf8');
+  // Counts, not text equality: replaceClassStrings also normalizes attribute
+  // spacing, which no transform counts. Writing on any textual difference
+  // would rewrite files that --check truthfully reports as clean.
+  if (totalOf(counts) > 0) writeFileSync(file, result, 'utf8');
   return counts;
 }
 

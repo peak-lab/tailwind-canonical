@@ -1163,6 +1163,31 @@ test('run - --check --dedup --sort on a clean file exits 0 with no pending chang
   }
 });
 
+test('run - a transform run writes nothing when --check reported no pending changes', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  // Spaces around the JSX `=` are normalized by class-string extraction but
+  // counted by no transform: applying must agree with --check and not rewrite.
+  const original = '<div className = "flex p-4" />';
+  writeFileSync(file, original, 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const checked = await run(
+      ['--check', '--fix', '--dedup', '--sort', dir],
+      dir,
+      sink,
+    );
+    assert.strictEqual(checked.exitCode, 0);
+    assert.ok(out.some((l) => l.includes('No pending changes')));
+
+    const applied = await run(['--fix', '--dedup', '--sort', dir], dir, sink);
+    assert.strictEqual(applied.exitCode, 0);
+    assert.strictEqual(readFileSync(file, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - --check --fix --reporter json reports check:true and leaves file untouched', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');

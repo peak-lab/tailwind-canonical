@@ -31,6 +31,7 @@ pnpm test         # node --import=tsx/esm --test "src/**/*.test.ts"
 pnpm typecheck    # tsc --noEmit
 pnpm lint         # biome check src/
 pnpm lint:fix     # biome check --write src/
+pnpm knip         # dead code/dependency detection
 ```
 
 Run a single test file:
@@ -43,7 +44,8 @@ node --import=tsx/esm --test src/core/rules.test.ts
 
 ```
 src/
-  cli/index.ts         # CLI entry: loads cwd config, drives analyzer/fixer
+  cli/index.ts         # bin entry: run(process.argv, process.cwd()), sets exit code
+  cli/cli.ts           # arg parsing, config defaults, transform pipeline, reporters, watch
   eslint/plugin.ts     # Flat-config ESLint plugin — calls suggestCanonical on AST nodes
   core/                # Pure logic — zero node:fs
     rules.ts           # suggestCanonical(cls, config) → Suggestion | null
