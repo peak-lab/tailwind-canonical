@@ -13,12 +13,12 @@ import {
   type ConsistencyReport,
   toConsistencyOptions,
 } from '../core/consistency.js';
-import { dedupeContent, dedupeFile } from '../core/deduplicator.js';
-import { fixContent, fixFile } from '../core/fixer.js';
-import { mergeContent, mergeFile } from '../core/merger.js';
+import { dedupeContent } from '../core/deduplicator.js';
+import { fixContent } from '../core/fixer.js';
+import { mergeContent } from '../core/merger.js';
 import type { Config } from '../core/rules.js';
 import { resolveTargets } from '../core/scanner.js';
-import { sortContent, sortFile } from '../core/sorter.js';
+import { sortContent } from '../core/sorter.js';
 import { analyzeTyposFile, type TypoFinding } from '../core/typos.js';
 
 const SARIF_SCHEMA =
@@ -320,35 +320,31 @@ export function parseArgs(argv: string[]): Flags {
   };
 }
 
+/** Explicit CLI flags win; otherwise `defaultCommand` fills the gap. */
+function fallback<T>(explicit: boolean, flag: T, configured: T | undefined): T {
+  return explicit ? flag : (configured ?? flag);
+}
+
 function applyDefaultCommand(flags: Flags, config: Config): Flags {
   const defaults = config.defaultCommand;
   if (!defaults) return flags;
 
+  const mode = flags.hasExplicitMode;
   return {
     ...flags,
-    fix: flags.hasExplicitMode ? flags.fix : (defaults.fix ?? flags.fix),
-    merge: flags.hasExplicitMode
-      ? flags.merge
-      : (defaults.merge ?? flags.merge),
-    dedup: flags.hasExplicitMode
-      ? flags.dedup
-      : (defaults.dedup ?? flags.dedup),
-    sort: flags.hasExplicitMode ? flags.sort : (defaults.sort ?? flags.sort),
-    analyze: flags.hasExplicitMode
-      ? flags.analyze
-      : (defaults.analyze ?? flags.analyze),
-    typos: flags.hasExplicitMode
-      ? flags.typos
-      : (defaults.typos ?? flags.typos),
-    watch: flags.hasExplicitWatch
-      ? flags.watch
-      : (defaults.watch ?? flags.watch),
-    check: flags.hasExplicitCheck
-      ? flags.check
-      : (defaults.check ?? flags.check),
-    reporter: flags.hasExplicitReporter
-      ? flags.reporter
-      : (defaults.reporter ?? flags.reporter),
+    fix: fallback(mode, flags.fix, defaults.fix),
+    merge: fallback(mode, flags.merge, defaults.merge),
+    dedup: fallback(mode, flags.dedup, defaults.dedup),
+    sort: fallback(mode, flags.sort, defaults.sort),
+    analyze: fallback(mode, flags.analyze, defaults.analyze),
+    typos: fallback(mode, flags.typos, defaults.typos),
+    watch: fallback(flags.hasExplicitWatch, flags.watch, defaults.watch),
+    check: fallback(flags.hasExplicitCheck, flags.check, defaults.check),
+    reporter: fallback(
+      flags.hasExplicitReporter,
+      flags.reporter,
+      defaults.reporter,
+    ),
     targets:
       flags.targets.length > 0 ? flags.targets : (defaults.targets ?? []),
   };
@@ -483,51 +479,98 @@ function runTypos(
   return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
 }
 
-async function processFile(
-  file: string,
+function applyTransforms(
+  content: string,
   flags: Flags,
   config: Config,
-): Promise<FileCounts> {
+  twMerge?: (classes: string) => string,
+): { counts: FileCounts; result: string } {
   const opts = toClassStringOpts(config);
   const counts: FileCounts = { fixed: 0, deduped: 0, merged: 0, sorted: 0 };
-  if (flags.fix) counts.fixed = fixFile(file, config);
-  if (flags.dedup) counts.deduped = dedupeFile(file, opts);
-  if (flags.merge) counts.merged = await mergeFile(file, opts);
-  if (flags.sort) counts.sorted = sortFile(file, opts, config.sortOrder);
-  return counts;
+  let result = content;
+
+  if (flags.fix) {
+    const fixed = fixContent(result, config);
+    counts.fixed = fixed.count;
+    result = fixed.result;
+  }
+  if (flags.dedup) {
+    const deduped = dedupeContent(result, opts);
+    counts.deduped = deduped.count;
+    result = deduped.result;
+  }
+  if (flags.merge && twMerge) {
+    const merged = mergeContent(result, twMerge, opts);
+    counts.merged = merged.count;
+    result = merged.result;
+  }
+  if (flags.sort) {
+    const sorted = sortContent(result, opts, config.sortOrder);
+    counts.sorted = sorted.count;
+    result = sorted.result;
+  }
+
+  return { counts, result };
 }
 
-async function checkFile(
+function processFile(
   file: string,
   flags: Flags,
   config: Config,
   twMerge?: (classes: string) => string,
-): Promise<FileCounts> {
-  const opts = toClassStringOpts(config);
-  const counts: FileCounts = { fixed: 0, deduped: 0, merged: 0, sorted: 0 };
-  let content = readFileSync(file, 'utf8');
-
-  if (flags.fix) {
-    const { result, count } = fixContent(content, config);
-    counts.fixed = count;
-    content = result;
-  }
-  if (flags.dedup) {
-    const { result, count } = dedupeContent(content, opts);
-    counts.deduped = count;
-    content = result;
-  }
-  if (flags.merge && twMerge) {
-    const { result, count } = mergeContent(content, twMerge, opts);
-    counts.merged = count;
-    content = result;
-  }
-  if (flags.sort) {
-    const { result, count } = sortContent(content, opts, config.sortOrder);
-    counts.sorted = count;
-    content = result;
-  }
+): FileCounts {
+  const content = readFileSync(file, 'utf8');
+  const { counts, result } = applyTransforms(content, flags, config, twMerge);
+  if (result !== content) writeFileSync(file, result, 'utf8');
   return counts;
+}
+
+const TRANSFORM_LABELS: ReadonlyArray<{
+  key: keyof FileCounts;
+  applied: string;
+  pending: string;
+  unit: string;
+}> = [
+  {
+    key: 'fixed',
+    applied: 'fixed ',
+    pending: 'would fix',
+    unit: 'replacement',
+  },
+  {
+    key: 'deduped',
+    applied: 'deduped',
+    pending: 'would dedup',
+    unit: 'class string',
+  },
+  {
+    key: 'merged',
+    applied: 'merged ',
+    pending: 'would merge',
+    unit: 'conflict',
+  },
+  {
+    key: 'sorted',
+    applied: 'sorted ',
+    pending: 'would sort',
+    unit: 'class string',
+  },
+];
+
+function logTransformCounts(
+  counts: FileCounts,
+  file: string,
+  check: boolean,
+  sink: Sink,
+): void {
+  for (const { key, applied, pending, unit } of TRANSFORM_LABELS) {
+    const count = counts[key];
+    if (count > 0) {
+      sink.log(
+        `  ${check ? pending : applied} ${file} (${pluralize(count, unit)})`,
+      );
+    }
+  }
 }
 
 function totalOf(c: FileCounts): number {
@@ -816,11 +859,11 @@ function startWatch(
   files: string[],
   flags: Flags,
   config: Config,
+  twMerge: ((classes: string) => string) | undefined,
   sink: Sink,
 ): RunResult {
   const transforming = flags.fix || flags.dedup || flags.merge || flags.sort;
   const fileSet = new Set(files);
-  const inFlight = new Set<string>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const dirs = new Set<string>(files.map((f) => dirname(f)));
 
@@ -830,28 +873,22 @@ function startWatch(
     fsWatch(dir, { recursive: true }, (_, filename) => {
       if (!filename) return;
       const full = resolve(dir, filename);
-      if (!fileSet.has(full) || inFlight.has(full)) return;
+      if (!fileSet.has(full)) return;
       clearTimeout(timers.get(full));
       timers.set(
         full,
         setTimeout(() => {
           if (transforming) {
-            inFlight.add(full);
-            processFile(full, flags, config)
-              .then((counts) => {
-                const total = totalOf(counts);
-                if (total > 0) {
-                  sink.log(
-                    `${timestamp()} ${full} — ${pluralize(total, 'change')} applied`,
-                  );
-                }
-              })
-              .catch((err: unknown) => {
-                sink.error(
-                  `${timestamp()} ${full} — error: ${err instanceof Error ? err.message : String(err)}`,
+            try {
+              const total = totalOf(processFile(full, flags, config, twMerge));
+              if (total > 0) {
+                sink.log(
+                  `${timestamp()} ${full} — ${pluralize(total, 'change')} applied`,
                 );
-              })
-              .finally(() => inFlight.delete(full));
+              }
+            } catch (err) {
+              sink.error(`${timestamp()} ${full} — error: ${errMsg(err)}`);
+            }
           } else {
             const findings = analyzeFile(full, config);
             if (findings.length > 0) {
@@ -1014,30 +1051,20 @@ export async function run(
       try {
         if (transforming) {
           const counts = flags.check
-            ? await checkFile(file, flags, config, twMerge)
-            : await processFile(file, flags, config);
+            ? applyTransforms(
+                readFileSync(file, 'utf8'),
+                flags,
+                config,
+                twMerge,
+              ).counts
+            : processFile(file, flags, config, twMerge);
           totals.fixed += counts.fixed;
           totals.deduped += counts.deduped;
           totals.merged += counts.merged;
           totals.sorted += counts.sorted;
           if (totalOf(counts) > 0) changedFiles.push(file);
           if (flags.reporter === 'text') {
-            if (counts.fixed > 0)
-              sink.log(
-                `  ${flags.check ? 'would fix' : 'fixed '} ${file} (${pluralize(counts.fixed, 'replacement')})`,
-              );
-            if (counts.deduped > 0)
-              sink.log(
-                `  ${flags.check ? 'would dedup' : 'deduped'} ${file} (${pluralize(counts.deduped, 'class string')})`,
-              );
-            if (counts.merged > 0)
-              sink.log(
-                `  ${flags.check ? 'would merge' : 'merged '} ${file} (${pluralize(counts.merged, 'conflict')})`,
-              );
-            if (counts.sorted > 0)
-              sink.log(
-                `  ${flags.check ? 'would sort' : 'sorted '} ${file} (${pluralize(counts.sorted, 'class string')})`,
-              );
+            logTransformCounts(counts, file, flags.check, sink);
           }
         } else {
           const findings = analyzeFile(file, config);
@@ -1058,7 +1085,7 @@ export async function run(
     }
   }
 
-  if (watching) return startWatch(files, flags, config, sink);
+  if (watching) return startWatch(files, flags, config, twMerge, sink);
 
   if (transforming) {
     const typoResult = flags.typos

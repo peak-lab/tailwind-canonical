@@ -35,36 +35,50 @@ function parseClassToken(token: string): ParsedClass {
   };
 }
 
-function isLeadingClass(base: string): boolean {
-  return /^!?leading-/.test(base);
-}
+const RE_LEADING = /^!?leading-/;
 
-function isArbitraryTextSize(base: string): boolean {
-  return /^!?text-\[-?(?:\d+(?:\.\d+)?|\.\d+)(?:px|rem|em|ch|ex|lh|rlh|vw|vh|vmin|vmax|vi|vb|svw|lvw|dvw|svh|lvh|dvh)\]$/.test(
-    base,
-  );
-}
-
-function customTextClassSet(
-  customTextTokens?: Record<number, string>,
-): Set<string> {
-  return new Set(
-    Object.values(customTextTokens ?? {}).map((token) => `text-${token}`),
-  );
-}
+const RE_ARBITRARY_TEXT_SIZE =
+  /^!?text-\[-?(?:\d+(?:\.\d+)?|\.\d+)(?:px|rem|em|ch|ex|lh|rlh|vw|vh|vmin|vmax|vi|vb|svw|lvw|dvw|svh|lvh|dvh)\]$/;
 
 function isUnsafeTextSize(
   base: string,
   customTextClasses: Set<string>,
 ): boolean {
   const normalized = base.startsWith('!') ? base.slice(1) : base;
-  return customTextClasses.has(normalized) || isArbitraryTextSize(normalized);
+  return (
+    customTextClasses.has(normalized) || RE_ARBITRARY_TEXT_SIZE.test(normalized)
+  );
+}
+
+/**
+ * Last `leading-*` class declared before `cls` in the original string that
+ * twMerge dropped, matching `cls`'s variant modifiers. Scans backwards from
+ * `cls`'s own position — a leading declared after it never applied to it.
+ */
+function lastLeadingBefore(
+  originalClasses: ParsedClass[],
+  cls: ParsedClass,
+  mergedTokens: Set<string>,
+): ParsedClass | undefined {
+  const at = originalClasses.findIndex(({ token }) => token === cls.token);
+  const from = (at === -1 ? originalClasses.length : at) - 1;
+  for (let i = from; i >= 0; i -= 1) {
+    const candidate = originalClasses[i];
+    if (
+      RE_LEADING.test(candidate.base) &&
+      candidate.modifiers === cls.modifiers &&
+      !mergedTokens.has(candidate.token)
+    ) {
+      return candidate;
+    }
+  }
+  return undefined;
 }
 
 function restoreLeadingForUnsafeTextSizes(
   original: string,
   merged: string,
-  opts: ClassStringOpts,
+  customTextClasses: Set<string>,
 ): string {
   const originalClasses = original
     .split(/\s+/)
@@ -75,34 +89,23 @@ function restoreLeadingForUnsafeTextSizes(
     .filter(Boolean)
     .map(parseClassToken);
   const mergedTokens = new Set(mergedClasses.map(({ token }) => token));
-  const customTextClasses = customTextClassSet(opts.customTextTokens);
+  const keptLeadingModifiers = new Set(
+    mergedClasses
+      .filter(({ base }) => RE_LEADING.test(base))
+      .map(({ modifiers }) => modifiers),
+  );
   const restored: string[] = [];
 
   for (const cls of mergedClasses) {
-    const leading = originalClasses
-      .slice(
-        0,
-        originalClasses.findIndex(({ token }) => token === cls.token),
-      )
-      .filter(
-        (candidate) =>
-          isLeadingClass(candidate.base) &&
-          candidate.modifiers === cls.modifiers &&
-          !mergedTokens.has(candidate.token),
-      )
-      .at(-1);
-
     if (
-      leading &&
       isUnsafeTextSize(cls.base, customTextClasses) &&
-      !mergedClasses.some(
-        (candidate) =>
-          isLeadingClass(candidate.base) &&
-          candidate.modifiers === cls.modifiers,
-      )
+      !keptLeadingModifiers.has(cls.modifiers)
     ) {
-      restored.push(leading.token);
-      mergedTokens.add(leading.token);
+      const leading = lastLeadingBefore(originalClasses, cls, mergedTokens);
+      if (leading) {
+        restored.push(leading.token);
+        mergedTokens.add(leading.token);
+      }
     }
 
     restored.push(cls.token);
@@ -116,12 +119,17 @@ export function mergeContent(
   twMerge: (classes: string) => string,
   opts: ClassStringOpts = {},
 ): { result: string; count: number } {
+  const customTextClasses = new Set(
+    Object.values(opts.customTextTokens ?? {}).map((token) => `text-${token}`),
+  );
   return replaceClassStrings(
     content,
-    (classes) => {
-      const merged = twMerge(classes);
-      return restoreLeadingForUnsafeTextSizes(classes, merged, opts);
-    },
+    (classes) =>
+      restoreLeadingForUnsafeTextSizes(
+        classes,
+        twMerge(classes),
+        customTextClasses,
+      ),
     {
       ...opts,
       isSuppressed: makeLineSuppressor(content),

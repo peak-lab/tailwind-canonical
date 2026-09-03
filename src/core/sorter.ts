@@ -41,6 +41,8 @@ const TYPOGRAPHY_KEYWORDS = new Set([
   'subpixel-antialiased',
 ]);
 
+const RE_DARK_PRINT = /^(dark|print)$/;
+
 const TEXT_SIZES =
   /^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl|left|center|right|justify|start|end)$/;
 
@@ -137,7 +139,9 @@ function getCategory(cls: string): SortCategory | null {
   if (
     base === 'shadow' ||
     base === 'blur' ||
-    ['grayscale', 'invert', 'sepia'].includes(base) ||
+    base === 'grayscale' ||
+    base === 'invert' ||
+    base === 'sepia' ||
     RE_EFFECTS.test(base)
   )
     return 'effects';
@@ -171,7 +175,7 @@ function getVariantOrder(cls: string): number {
   if (!cls.includes(':')) return 0;
   const segments = cls.slice(0, cls.lastIndexOf(':')).split(':');
   if (segments.some((s) => RE_BREAKPOINTS.test(s))) return 1;
-  if (segments.some((s) => /^(dark|print)$/.test(s))) return 2;
+  if (segments.some((s) => RE_DARK_PRINT.test(s))) return 2;
   return 3;
 }
 

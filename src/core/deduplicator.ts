@@ -325,14 +325,22 @@ function collapseCorners(c: Corners): string {
 // ─── Responsive cascade collapse ─────────────────────────────────────────────
 
 const RESPONSIVE_BREAKPOINTS = ['sm', 'md', 'lg', 'xl', '2xl'] as const;
-const BP_ORDER: Array<(typeof RESPONSIVE_BREAKPOINTS)[number] | ''> = [
-  '',
-  ...RESPONSIVE_BREAKPOINTS,
-];
+
+type Breakpoint = (typeof RESPONSIVE_BREAKPOINTS)[number] | '';
+
+// Exhaustive by type: adding a breakpoint above fails the build until ranked.
+const BP_RANK: Record<Breakpoint, number> = {
+  '': 0,
+  sm: 1,
+  md: 2,
+  lg: 3,
+  xl: 4,
+  '2xl': 5,
+};
 
 function collapseResponsiveCascade(classes: string[]): string[] {
   interface Entry {
-    bp: (typeof RESPONSIVE_BREAKPOINTS)[number] | '';
+    bp: Breakpoint;
     base: string;
     key: string;
     idx: number;
@@ -372,9 +380,7 @@ function collapseResponsiveCascade(classes: string[]): string[] {
   for (const group of groups.values()) {
     if (group.length < 2 || !group.some((e) => e.bp !== '')) continue;
 
-    const sorted = [...group].sort(
-      (a, b) => BP_ORDER.indexOf(a.bp) - BP_ORDER.indexOf(b.bp),
-    );
+    const sorted = [...group].sort((a, b) => BP_RANK[a.bp] - BP_RANK[b.bp]);
 
     let prev: string | null = null;
     for (const entry of sorted) {
