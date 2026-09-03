@@ -499,7 +499,12 @@ function applyTransforms(
     counts.deduped = deduped.count;
     result = deduped.result;
   }
-  if (flags.merge && twMerge) {
+  if (flags.merge) {
+    if (!twMerge) {
+      throw new Error(
+        '--merge requires the optional peer dependency "tailwind-merge". Install it with: pnpm add -D tailwind-merge',
+      );
+    }
     const merged = mergeContent(result, twMerge, opts);
     counts.merged = merged.count;
     result = merged.result;

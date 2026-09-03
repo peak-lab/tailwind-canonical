@@ -60,9 +60,10 @@ function lastLeadingBefore(
   cls: ParsedClass,
   mergedTokens: Set<string>,
 ): ParsedClass | undefined {
+  // twMerge only filters tokens, never synthesises one, so `cls` is always
+  // present in the original — `findIndex` cannot return -1 here.
   const at = originalClasses.findIndex(({ token }) => token === cls.token);
-  const from = (at === -1 ? originalClasses.length : at) - 1;
-  for (let i = from; i >= 0; i -= 1) {
+  for (let i = at - 1; i >= 0; i -= 1) {
     const candidate = originalClasses[i];
     if (
       RE_LEADING.test(candidate.base) &&
