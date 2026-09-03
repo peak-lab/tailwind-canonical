@@ -531,15 +531,37 @@ Detects unused exports, files, and dependencies. Config in `knip.json`. Enforced
 
 ```ts
 import {
-  suggestCanonical,   // pure: class string → suggestion or null
-  analyzeFile,        // find non-canonical classes in a file
-  fixFile,            // apply --fix in-place
-  deduplicateClasses, // pure: deduplicate a class string
-  dedupeFile,         // apply --dedup in-place
-  sortClasses,        // pure: sort a class string
-  sortFile,           // apply --sort in-place
-  mergeFile,          // apply --merge in-place (requires tailwind-merge)
-  scanFiles,          // recursive file scanner (sync, dir/file targets)
-  resolveTargets,     // async glob resolver with negation + brace expansion
+  suggestCanonical,    // pure: class string → suggestion or null
+  analyzeFile,         // find non-canonical classes in a file
+  fixFile,             // apply --fix in-place
+  deduplicateClasses,  // pure: deduplicate a class string
+  dedupeFile,          // apply --dedup in-place
+  sortClasses,         // pure: sort a class string
+  sortFile,            // apply --sort in-place
+  DEFAULT_SORT_ORDER,  // default sort category order (override via config sortOrder)
+  mergeFile,           // apply --merge in-place (requires tailwind-merge)
+  scanFiles,           // recursive file scanner (sync, dir/file targets)
+  resolveTargets,      // async glob resolver with negation + brace expansion
+  loadConfig,          // load + validate tailwind-canonical.config.{ts,js} for a cwd
+  analyzeConsistency,  // pure: cross-file consistency analysis (--analyze)
+  analyzeTyposFile,    // find likely color-name typos in a file
+  detectTypo,          // pure: check one class for a likely color-name typo
+} from 'tailwind-canonical'
+
+import type {
+  Config,             // shared config object accepted across the API
+  Suggestion,         // suggestCanonical's non-null return shape
+  Finding,            // one entry returned by analyzeFile
+  ScanOptions,        // extensions/ignore options for scanFiles/resolveTargets
+  SortCategory,       // one entry of DEFAULT_SORT_ORDER / config.sortOrder
+  TypoFinding,        // one entry returned by analyzeTyposFile
+  ConsistencyOptions, // options accepted by analyzeConsistency
+  ConsistencyReport,  // analyzeConsistency's return shape
+  FileClasses,        // per-file input shape for analyzeConsistency
+  ColorVariant,       // one variant inside a ConsistencyReport color group
+  ColorVariantGroup,  // one color-family group in ConsistencyReport.colorVariants
+  ScaleInconsistency, // one entry in ConsistencyReport.scaleInconsistencies
+  ScaleValue,         // one value inside a ScaleInconsistency
+  ClassCombination,   // one repeated-pattern entry in ConsistencyReport.combinations
 } from 'tailwind-canonical'
 ```
