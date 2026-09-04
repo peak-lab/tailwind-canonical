@@ -7,7 +7,11 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
 import { toClassStringOpts } from '../core/class-strings.js';
-import { CONFIG_FILENAMES, loadConfig } from '../core/config.js';
+import {
+  CONFIG_FILENAMES,
+  loadConfig,
+  resolveInitFilename,
+} from '../core/config.js';
 import {
   analyzeConsistencyFiles,
   type ConsistencyReport,
@@ -931,7 +935,7 @@ function runInit(cwd: string, sink: Sink): RunResult {
     return { exitCode: 1 };
   }
 
-  const filename = CONFIG_FILENAMES[0];
+  const filename = resolveInitFilename(cwd);
   writeFileSync(join(cwd, filename), INIT_CONFIG_CONTENT, 'utf8');
   sink.log(`Created ${filename}`);
   sink.log('Uncomment defaultCommand to set your CLI defaults.');

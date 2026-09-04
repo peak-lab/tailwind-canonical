@@ -50,7 +50,7 @@ For pre-commit automation, see the [Pre-commit hook](#pre-commit-hook-husky--lef
 ## CLI
 
 ```bash
-# Scaffold a tailwind-canonical.config.ts in the current directory
+# Scaffold a config in the current directory (.ts, or .mts in a CommonJS project)
 npx tailwind-canonical init
 
 # Check for non-canonical arbitrary values
@@ -468,8 +468,14 @@ files and at most 3 times.
 The older top-level rare-value keys are still accepted for compatibility, but
 new configs should prefer `analyze`.
 
-`tailwind-canonical.config.js` is still loaded as a fallback when no TypeScript
-config exists.
+Accepted filenames, in resolution order: `tailwind-canonical.config.ts`,
+`.mts`, `.js`, `.mjs`.
+
+A `.ts` or `.js` config inherits the `type` of your nearest `package.json`, so
+`export default` only parses when that is `"type": "module"`. In a CommonJS
+project use the explicit `.mts` (or `.mjs`) extension — `tailwind-canonical
+init` picks the right one for you, and loading a `.ts` config in a CommonJS
+project reports exactly what to rename.
 
 The config is resolved upward from the current directory: if no config file is
 found in `cwd`, tailwind-canonical checks each parent directory in turn, until
@@ -590,7 +596,7 @@ import {
   mergeFile,           // apply --merge in-place (requires tailwind-merge)
   scanFiles,           // recursive file scanner (sync, dir/file targets)
   resolveTargets,      // async glob resolver with negation + brace expansion
-  loadConfig,          // load + validate tailwind-canonical.config.{ts,js} for a cwd
+  loadConfig,          // load + validate tailwind-canonical.config.{ts,mts,js,mjs} for a cwd
   analyzeConsistency,  // pure: cross-file consistency analysis (--analyze)
   analyzeTyposFile,    // find likely color-name typos in a file
   detectTypo,          // pure: check one class for a likely color-name typo

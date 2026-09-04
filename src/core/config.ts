@@ -4,7 +4,9 @@ import { DEFAULT_SORT_ORDER } from './sorter.js';
 const CONFIG_FILENAME = 'tailwind-canonical.config.ts';
 export const CONFIG_FILENAMES = [
   CONFIG_FILENAME,
+  'tailwind-canonical.config.mts',
   'tailwind-canonical.config.js',
+  'tailwind-canonical.config.mjs',
 ] as const;
 
 const KNOWN_KEYS = [
@@ -254,4 +256,4 @@ export function validateConfig(
   return cfg as Config;
 }
 
-export { loadConfig } from '../io/config.js';
+export { loadConfig, resolveInitFilename } from '../io/config.js';

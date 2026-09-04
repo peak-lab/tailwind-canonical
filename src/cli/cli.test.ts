@@ -1315,9 +1315,32 @@ test(
   },
 );
 
-test('run - init creates a config scaffold in an empty dir', async (_t: TestContext) => {
+test('run - init scaffolds .mts in a CommonJS project', async (_t: TestContext) => {
   const dir = freshDir();
+  writeFileSync(join(dir, 'package.json'), '{"name":"x"}\n', 'utf8');
   const { sink, out } = captureSink();
+  try {
+    const result = await run(['init'], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    const content = readFileSync(
+      join(dir, 'tailwind-canonical.config.mts'),
+      'utf8',
+    );
+    assert.ok(content.includes('satisfies Config'));
+    assert.ok(out.some((l) => l.includes('Created')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - init scaffolds .ts in an ESM project', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'package.json'),
+    '{"name":"x","type":"module"}\n',
+    'utf8',
+  );
+  const { sink } = captureSink();
   try {
     const result = await run(['init'], dir, sink);
     assert.strictEqual(result.exitCode, 0);
@@ -1326,7 +1349,6 @@ test('run - init creates a config scaffold in an empty dir', async (_t: TestCont
       'utf8',
     );
     assert.ok(content.includes('satisfies Config'));
-    assert.ok(out.some((l) => l.includes('Created')));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
