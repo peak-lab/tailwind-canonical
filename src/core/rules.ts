@@ -149,6 +149,32 @@ const OPACITY_SCALE = new Set([
   0, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95, 100,
 ]);
 
+/**
+ * Numeric spacing steps that exist in Tailwind v3. v4 derives every step from
+ * `calc(var(--spacing) * n)`, so any integer works there; v3 ships a discrete
+ * scale and a class outside it generates no CSS at all.
+ */
+const V3_SPACING_STEPS = new Set([
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 20, 24, 28, 32, 36, 40, 44,
+  48, 52, 56, 60, 64, 72, 80, 96,
+]);
+
+/** Utilities with no numeric spacing scale in v3.3, the documented floor. */
+const V3_UNSCALED_SPACING_PREFIXES = new Set([
+  'size',
+  'min-w',
+  'max-w',
+  'min-h',
+]);
+
+/** Utilities with no fraction scale in v3.3. */
+const V3_UNSCALED_FRACTION_PREFIXES = new Set([
+  'min-w',
+  'max-w',
+  'min-h',
+  'max-h',
+]);
+
 export type Config = {
   customTextTokens?: Record<number, string>;
   customSpacingTokens?: Record<number, string>;
@@ -164,6 +190,8 @@ export type Config = {
   rareScaleMaxFiles?: number;
   rareScaleMaxCount?: number;
   defaultCommand?: DefaultCommandConfig;
+  /** Target Tailwind major. v3 restricts suggestions to its discrete scale. */
+  tailwindVersion?: 3 | 4;
 };
 
 function remToPx(rem: number): number | null {
@@ -179,6 +207,13 @@ function isIgnored(cls: string, patterns?: RegExp[]): boolean {
   });
 }
 
+/** True when the ÷4 result would be a class v3 never generates. */
+function isMissingInV3(prefix: string, step: number): boolean {
+  return (
+    V3_UNSCALED_SPACING_PREFIXES.has(prefix) || !V3_SPACING_STEPS.has(step)
+  );
+}
+
 export function suggestCanonical(
   cls: string,
   config: Config = {},
@@ -187,6 +222,7 @@ export function suggestCanonical(
 
   const textTokens = { ...TEXT_SIZE_MAP, ...config.customTextTokens };
   const spacingTokens = config.customSpacingTokens ?? {};
+  const v3 = config.tailwindVersion === 3;
 
   // text-[Npx]
   const textPxMatch = cls.match(/^text-\[(\d+)px\]$/);
@@ -228,6 +264,7 @@ export function suggestCanonical(
       };
     }
     if (px % 4 === 0) {
+      if (v3 && isMissingInV3(prefix, px / 4)) return null;
       return {
         original: cls,
         canonical: `${prefix}-${px / 4}`,
@@ -251,6 +288,7 @@ export function suggestCanonical(
       };
     }
     if (px % 4 === 0) {
+      if (v3 && isMissingInV3(prefix, px / 4)) return null;
       return {
         original: cls,
         canonical: `${prefix}-${px / 4}`,
@@ -267,6 +305,7 @@ export function suggestCanonical(
     const pct = fractionMatch[2];
     const fraction = FRACTION_MAP[pct];
     if (!fraction) return null;
+    if (v3 && V3_UNSCALED_FRACTION_PREFIXES.has(prefix)) return null;
     return {
       original: cls,
       canonical: `${prefix}-${fraction}`,

@@ -22,6 +22,7 @@ const KNOWN_KEYS = [
   'rareScaleMaxFiles',
   'rareScaleMaxCount',
   'defaultCommand',
+  'tailwindVersion',
 ] as const;
 
 const ANALYZE_KEYS = [
@@ -242,6 +243,13 @@ export function validateConfig(
     assertPositiveInteger(cfg.rareScaleMaxCount, 'rareScaleMaxCount', filename);
   if ('defaultCommand' in cfg)
     assertDefaultCommandConfig(cfg.defaultCommand, filename);
+  if (
+    'tailwindVersion' in cfg &&
+    cfg.tailwindVersion !== 3 &&
+    cfg.tailwindVersion !== 4
+  ) {
+    fail(filename, 'tailwindVersion must be 3 or 4');
+  }
 
   return cfg as Config;
 }

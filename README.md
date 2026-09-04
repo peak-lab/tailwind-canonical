@@ -356,6 +356,35 @@ left-2 right-2                  → inset-x-2
 
 Non-divisible values (`h-[22px]`, `px-[7px]`) are left untouched.
 
+### Tailwind v3 vs v4 (`tailwindVersion`)
+
+The ÷4 spacing rule assumes the **v4** scale, where every step is derived from
+`calc(var(--spacing) * n)` and any integer works. v3 ships a discrete scale, so
+`p-[52px]` → `p-13` compiles to nothing at all on v3 and the padding silently
+disappears. Set `tailwindVersion: 3` on a v3 project:
+
+```ts
+export default {
+  tailwindVersion: 3, // default: 4
+}
+```
+
+In v3 mode, suggestions are restricted to what v3.3 actually generates:
+
+| Class | `tailwindVersion: 4` | `tailwindVersion: 3` |
+|---|---|---|
+| `p-[16px]` | `p-4` | `p-4` |
+| `p-[52px]` | `p-13` | untouched — not on the v3 scale |
+| `max-w-[16px]` | `max-w-4` | untouched — no numeric scale in v3.3 |
+| `max-h-[16px]` | `max-h-4` | `max-h-4` |
+| `max-w-[50%]` | `max-w-1/2` | untouched — no fractions in v3.3 |
+| `w-[50%]` | `w-1/2` | `w-1/2` |
+
+`size-*`, `min-w-*`, `min-h-*` and `max-w-*` gained their numeric spacing scale
+after v3.3, so v3 mode leaves them alone. `text-*`, `rounded-*` and `opacity-*`
+are identical in both majors and are never gated. `customSpacingTokens` stays
+your decision and is applied in both modes.
+
 ## Config
 
 Create `tailwind-canonical.config.ts` at the root:
@@ -369,6 +398,8 @@ export default {
   customSpacingTokens: {
     14: '3.5',
   },
+  // Target Tailwind major: 3 restricts suggestions to the v3 scale (default: 4)
+  tailwindVersion: 4,
   // Support non-React attribute patterns (default: ['className'])
   attributeNames: ['className', 'class', ':class', 'tw'],
   // Support utility function wrappers

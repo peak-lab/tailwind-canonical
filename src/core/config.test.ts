@@ -444,3 +444,18 @@ test(
     }
   },
 );
+
+test('validateConfig - tailwindVersion', (_t: TestContext) => {
+  assert.deepEqual(validateConfig({ tailwindVersion: 3 }), {
+    tailwindVersion: 3,
+  });
+  assert.deepEqual(validateConfig({ tailwindVersion: 4 }), {
+    tailwindVersion: 4,
+  });
+  assert.throws(() => validateConfig({ tailwindVersion: 5 }), {
+    message: /tailwindVersion must be 3 or 4/,
+  });
+  assert.throws(() => validateConfig({ tailwindVersion: '3' }), {
+    message: /tailwindVersion must be 3 or 4/,
+  });
+});
