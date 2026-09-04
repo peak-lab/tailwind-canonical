@@ -460,22 +460,95 @@ test('validateConfig - tailwindVersion', (_t: TestContext) => {
   });
 });
 
-test('resolveInitFilename - follows the nearest package.json type', (_t: TestContext) => {
+function withTypeStripping<T>(
+  supported: boolean,
+  fn: () => T,
+  flag?: 'execArgv' | 'nodeOptions',
+): T {
+  const original = Object.getOwnPropertyDescriptor(
+    process.features,
+    'typescript',
+  );
+  const execArgv = process.execArgv;
+  const nodeOptions = process.env.NODE_OPTIONS;
+  Object.defineProperty(process.features, 'typescript', {
+    value: supported ? 'strip' : false,
+    configurable: true,
+  });
+  // CI runs Node 22 with --experimental-strip-types, so neutralise the
+  // ambient flag: every case here states its own flag state explicitly
+  process.execArgv = flag === 'execArgv' ? ['--experimental-strip-types'] : [];
+  if (flag === 'nodeOptions') {
+    process.env.NODE_OPTIONS = '--experimental-strip-types';
+  } else {
+    delete process.env.NODE_OPTIONS;
+  }
+  try {
+    return fn();
+  } finally {
+    // absent below Node 22.10, which engines.node still allows: restoring
+    // nothing there would leak the stub for the rest of the process
+    if (original) {
+      Object.defineProperty(process.features, 'typescript', original);
+    } else {
+      Reflect.deleteProperty(process.features, 'typescript');
+    }
+    process.execArgv = execArgv;
+    if (nodeOptions === undefined) delete process.env.NODE_OPTIONS;
+    else process.env.NODE_OPTIONS = nodeOptions;
+  }
+}
+
+test('resolveInitFilename - scaffolds .ts when Node can strip types', (_t: TestContext) => {
   const root = freshDir();
-  const esm = join(root, 'esm');
-  const cjs = join(esm, 'cjs');
+  const cjs = join(root, 'cjs');
   mkdirSync(cjs, { recursive: true });
-  writeFileSync(join(esm, 'package.json'), '{"type":"module"}', 'utf8');
+  writeFileSync(join(root, 'package.json'), '{"type":"module"}', 'utf8');
+  writeFileSync(join(cjs, 'package.json'), '{"name":"leaf"}', 'utf8');
+  try {
+    // the package type is irrelevant here: a stripped .ts loads under either
+    for (const dir of [root, cjs]) {
+      assert.strictEqual(
+        withTypeStripping(true, () => resolveInitFilename(dir)),
+        'tailwind-canonical.config.ts',
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('resolveInitFilename - ignores flag-derived type stripping', (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'package.json'), '{"name":"x"}', 'utf8');
+  try {
+    // a .ts scaffolded under the flag would fail on every later bare `node`
+    for (const flag of ['execArgv', 'nodeOptions'] as const) {
+      assert.strictEqual(
+        withTypeStripping(true, () => resolveInitFilename(dir), flag),
+        'tailwind-canonical.config.mjs',
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('resolveInitFilename - falls back to plain ESM without type stripping', (_t: TestContext) => {
+  const root = freshDir();
+  const cjs = join(root, 'cjs');
+  mkdirSync(cjs, { recursive: true });
+  writeFileSync(join(root, 'package.json'), '{"type":"module"}', 'utf8');
   writeFileSync(join(cjs, 'package.json'), '{"name":"leaf"}', 'utf8');
   try {
     assert.strictEqual(
-      resolveInitFilename(esm),
-      'tailwind-canonical.config.ts',
+      withTypeStripping(false, () => resolveInitFilename(root)),
+      'tailwind-canonical.config.js',
     );
     // the leaf manifest wins over the ESM parent, exactly as Node resolves
     assert.strictEqual(
-      resolveInitFilename(cjs),
-      'tailwind-canonical.config.mts',
+      withTypeStripping(false, () => resolveInitFilename(cjs)),
+      'tailwind-canonical.config.mjs',
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -487,8 +560,8 @@ test('resolveInitFilename - a malformed manifest is treated as CommonJS', (_t: T
   writeFileSync(join(dir, 'package.json'), '{ not json', 'utf8');
   try {
     assert.strictEqual(
-      resolveInitFilename(dir),
-      'tailwind-canonical.config.mts',
+      withTypeStripping(false, () => resolveInitFilename(dir)),
+      'tailwind-canonical.config.mjs',
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });

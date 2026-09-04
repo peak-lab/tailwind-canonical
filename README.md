@@ -50,7 +50,7 @@ For pre-commit automation, see the [Pre-commit hook](#pre-commit-hook-husky--lef
 ## CLI
 
 ```bash
-# Scaffold a config in the current directory (.ts, or .mts in a CommonJS project)
+# Scaffold a config in the current directory (.ts, or .js/.mjs on older Node)
 npx tailwind-canonical init
 
 # Check for non-canonical arbitrary values
@@ -471,21 +471,18 @@ new configs should prefer `analyze`.
 Accepted filenames, in resolution order: `tailwind-canonical.config.ts`,
 `.mts`, `.js`, `.mjs`.
 
-A `.ts` or `.js` config inherits the `type` of your nearest `package.json`, so
-`export default` only parses when that is `"type": "module"`. In a CommonJS
-project use the explicit `.mts` (or `.mjs`) extension — `tailwind-canonical
-init` picks the right one for you, and loading a `.ts` config in a CommonJS
-project reports exactly what to rename.
+A `.ts` or `.mts` config needs Node's type stripping, which is on by default
+from Node 22.18 and 23.6, and available behind `--experimental-strip-types`
+from 22.6. Short of that use `.mjs`, or `.js` when your nearest `package.json`
+declares `"type": "module"`; both load on every supported Node. `tailwind-
+canonical init` scaffolds a filename that loads on a bare `node` — it will not
+write `.ts` just because the process it runs in happens to carry the flag.
 
 The config is resolved upward from the current directory: if no config file is
 found in `cwd`, tailwind-canonical checks each parent directory in turn, until
 it finds one, reaches a `.git` directory, or reaches the filesystem root. This
 makes the CLI monorepo-friendly — a single config at the repo root applies to
 every package.
-
-On Node 22.6–23.5, loading a `.ts` config requires `--experimental-strip-types`;
-from Node 23.6 onward it works natively; the `.js` fallback works on every
-supported Node version.
 
 ## ESLint plugin
 
