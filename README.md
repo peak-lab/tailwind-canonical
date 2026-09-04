@@ -369,21 +369,33 @@ export default {
 }
 ```
 
-In v3 mode, suggestions are restricted to what v3.3 actually generates:
+In v3 mode, suggestions are restricted to what v3.3 actually generates — the
+scale differs per utility, not just per family:
 
 | Class | `tailwindVersion: 4` | `tailwindVersion: 3` |
 |---|---|---|
 | `p-[16px]` | `p-4` | `p-4` |
 | `p-[52px]` | `p-13` | untouched — not on the v3 scale |
-| `max-w-[16px]` | `max-w-4` | untouched — no numeric scale in v3.3 |
+| `max-w-[16px]` | `max-w-4` | untouched — scale arrived after v3.3 |
+| `max-w-[0px]` | `max-w-0` | `max-w-0` — the zero step does exist |
+| `size-[16px]` | `size-4` | untouched — no scale at all in v3.3 |
 | `max-h-[16px]` | `max-h-4` | `max-h-4` |
 | `max-w-[50%]` | `max-w-1/2` | untouched — no fractions in v3.3 |
-| `w-[50%]` | `w-1/2` | `w-1/2` |
+| `top-[20%]` | `top-1/5` | untouched — v3.3 stops at quarters here |
+| `top-[25%]` | `top-1/4` | `top-1/4` |
+| `w-[8.333333%]` | `w-1/12` | `w-1/12` — `w` carries the full set |
 
-`size-*`, `min-w-*`, `min-h-*` and `max-w-*` gained their numeric spacing scale
-after v3.3, so v3 mode leaves them alone. `text-*`, `rounded-*` and `opacity-*`
-are identical in both majors and are never gated. `customSpacingTokens` stays
-your decision and is applied in both modes.
+Spacing steps: `size-*` has no numeric scale in v3.3, and `min-w-*`, `max-w-*`
+and `min-h-*` only ship the zero step — they gained the scale afterwards.
+Fractions: `w` carries all thirteen, `h` stops at sixths, `inset`/`top`/`left`/
+`right`/`bottom`/`translate-x`/`translate-y` only have halves, thirds and
+quarters, and `min-w`/`max-w`/`min-h`/`max-h` have none.
+
+`text-*`, `rounded-*` and `opacity-*` are identical in both majors and are
+never gated. `customSpacingTokens` stays your decision and is applied in both
+modes. All of the above was measured by compiling `tailwindcss@3.3.7`, the
+advertised floor; a v3.4 project may pass `tailwindVersion: 4` for the wider
+scale it ships.
 
 ## Config
 

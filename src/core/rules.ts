@@ -150,30 +150,50 @@ const OPACITY_SCALE = new Set([
 ]);
 
 /**
- * Numeric spacing steps that exist in Tailwind v3. v4 derives every step from
- * `calc(var(--spacing) * n)`, so any integer works there; v3 ships a discrete
- * scale and a class outside it generates no CSS at all.
+ * Numeric spacing steps the ÷4 rule may emit that Tailwind v3 actually ships.
+ * v4 derives every step from `calc(var(--spacing) * n)`, so any integer works
+ * there; v3 ships a discrete scale and a class outside it generates no CSS.
+ * The ÷4 rule only ever yields integers, so v3's half steps are unreachable
+ * and absent here. Measured by compiling tailwindcss@3.3.7.
  */
 const V3_SPACING_STEPS = new Set([
   0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 20, 24, 28, 32, 36, 40, 44,
   48, 52, 56, 60, 64, 72, 80, 96,
 ]);
 
-/** Utilities with no numeric spacing scale in v3.3, the documented floor. */
-const V3_UNSCALED_SPACING_PREFIXES = new Set([
-  'size',
-  'min-w',
-  'max-w',
-  'min-h',
-]);
+/** No numeric spacing scale at all in v3.3, the documented floor. */
+const V3_UNSCALED_SPACING_PREFIXES = new Set(['size']);
 
-/** Utilities with no fraction scale in v3.3. */
-const V3_UNSCALED_FRACTION_PREFIXES = new Set([
-  'min-w',
-  'max-w',
-  'min-h',
-  'max-h',
-]);
+/** Only the zero step exists in v3.3; the scale itself arrived after 3.3. */
+const V3_ZERO_ONLY_SPACING_PREFIXES = new Set(['min-w', 'max-w', 'min-h']);
+
+const V3_INSET_FRACTIONS = ['1/2', '1/3', '2/3', '1/4', '3/4'];
+const V3_HEIGHT_FRACTIONS = [
+  ...V3_INSET_FRACTIONS,
+  '1/5',
+  '2/5',
+  '3/5',
+  '4/5',
+  '1/6',
+  '5/6',
+];
+
+/**
+ * Fractions each utility ships in v3.3 — the scale differs per utility, not
+ * just per family, so this is keyed on both. A prefix absent from this table
+ * has no fraction scale at all (`min-w`, `max-w`, `min-h`, `max-h`).
+ */
+const V3_FRACTIONS_BY_PREFIX: Record<string, Set<string>> = {
+  w: new Set([...V3_HEIGHT_FRACTIONS, '1/12', '11/12']),
+  h: new Set(V3_HEIGHT_FRACTIONS),
+  inset: new Set(V3_INSET_FRACTIONS),
+  top: new Set(V3_INSET_FRACTIONS),
+  left: new Set(V3_INSET_FRACTIONS),
+  right: new Set(V3_INSET_FRACTIONS),
+  bottom: new Set(V3_INSET_FRACTIONS),
+  'translate-x': new Set(V3_INSET_FRACTIONS),
+  'translate-y': new Set(V3_INSET_FRACTIONS),
+};
 
 export type Config = {
   customTextTokens?: Record<number, string>;
@@ -209,9 +229,9 @@ function isIgnored(cls: string, patterns?: RegExp[]): boolean {
 
 /** True when the ÷4 result would be a class v3 never generates. */
 function isMissingInV3(prefix: string, step: number): boolean {
-  return (
-    V3_UNSCALED_SPACING_PREFIXES.has(prefix) || !V3_SPACING_STEPS.has(step)
-  );
+  if (V3_UNSCALED_SPACING_PREFIXES.has(prefix)) return true;
+  if (V3_ZERO_ONLY_SPACING_PREFIXES.has(prefix)) return step !== 0;
+  return !V3_SPACING_STEPS.has(step);
 }
 
 export function suggestCanonical(
@@ -305,7 +325,7 @@ export function suggestCanonical(
     const pct = fractionMatch[2];
     const fraction = FRACTION_MAP[pct];
     if (!fraction) return null;
-    if (v3 && V3_UNSCALED_FRACTION_PREFIXES.has(prefix)) return null;
+    if (v3 && !V3_FRACTIONS_BY_PREFIX[prefix]?.has(fraction)) return null;
     return {
       original: cls,
       canonical: `${prefix}-${fraction}`,

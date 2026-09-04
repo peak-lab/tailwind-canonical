@@ -643,6 +643,39 @@ test('suggestCanonical - tailwindVersion: 3', async (t: TestContext) => {
     assert.strictEqual(suggestCanonical('top-[50%]', v3)?.canonical, 'top-1/2');
   });
 
+  await t.test('gates fractions per utility, not per family', () => {
+    // v3.3 gives inset/translate only halves, thirds and quarters; the
+    // fifths, sixths and twelfths below compile to nothing there.
+    assert.strictEqual(suggestCanonical('top-[20%]', v3), null);
+    assert.strictEqual(suggestCanonical('translate-x-[40%]', v3), null);
+    assert.strictEqual(suggestCanonical('inset-[16.666667%]', v3), null);
+    assert.strictEqual(suggestCanonical('h-[8.333333%]', v3), null);
+    // ...while w carries the full set and h stops at sixths
+    assert.strictEqual(
+      suggestCanonical('w-[8.333333%]', v3)?.canonical,
+      'w-1/12',
+    );
+    assert.strictEqual(suggestCanonical('h-[20%]', v3)?.canonical, 'h-1/5');
+    assert.strictEqual(suggestCanonical('top-[25%]', v3)?.canonical, 'top-1/4');
+  });
+
+  await t.test('keeps the zero step on utilities that only ship zero', () => {
+    for (const prefix of ['min-w', 'max-w', 'min-h']) {
+      assert.strictEqual(
+        suggestCanonical(`${prefix}-[0px]`, v3)?.canonical,
+        `${prefix}-0`,
+        prefix,
+      );
+      assert.strictEqual(
+        suggestCanonical(`${prefix}-[16px]`, v3),
+        null,
+        prefix,
+      );
+    }
+    // size has no numeric scale at all in v3.3, not even zero
+    assert.strictEqual(suggestCanonical('size-[0px]', v3), null);
+  });
+
   await t.test('leaves dimensions that are identical in both majors', () => {
     assert.strictEqual(
       suggestCanonical('rounded-[8px]', v3)?.canonical,
