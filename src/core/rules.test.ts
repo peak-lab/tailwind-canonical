@@ -588,3 +588,131 @@ test('suggestCanonical - opacity values', async (t: TestContext) => {
     assert.strictEqual(suggestCanonical('opacity-[100]'), null);
   });
 });
+
+test('suggestCanonical - tailwindVersion: 3', async (t: TestContext) => {
+  const v3 = { tailwindVersion: 3 } as const;
+
+  await t.test('drops steps outside the v3 discrete scale', () => {
+    // p-13 is calc(var(--spacing) * 13) in v4 and generates no CSS in v3.
+    assert.deepEqual(suggestCanonical('p-[52px]'), {
+      original: 'p-[52px]',
+      canonical: 'p-13',
+      isCustomToken: false,
+    });
+    assert.strictEqual(suggestCanonical('p-[52px]', v3), null);
+    assert.strictEqual(suggestCanonical('p-[60px]', v3), null);
+    assert.strictEqual(suggestCanonical('p-[3.25rem]', v3), null);
+  });
+
+  await t.test('keeps steps the v3 scale does ship', () => {
+    assert.deepEqual(suggestCanonical('p-[16px]', v3), {
+      original: 'p-[16px]',
+      canonical: 'p-4',
+      isCustomToken: false,
+    });
+    assert.strictEqual(suggestCanonical('gap-[8px]', v3)?.canonical, 'gap-2');
+    assert.strictEqual(suggestCanonical('m-[384px]', v3)?.canonical, 'm-96');
+  });
+
+  await t.test('drops utilities with no numeric scale in v3.3', () => {
+    for (const cls of [
+      'max-w-[16px]',
+      'min-w-[16px]',
+      'min-h-[16px]',
+      'size-[16px]',
+    ]) {
+      assert.strictEqual(suggestCanonical(cls, v3), null, cls);
+    }
+    // max-h is the one that does ship a spacing scale in v3.3
+    assert.strictEqual(
+      suggestCanonical('max-h-[16px]', v3)?.canonical,
+      'max-h-4',
+    );
+  });
+
+  await t.test('drops fractions on utilities that have none in v3.3', () => {
+    for (const cls of [
+      'max-w-[50%]',
+      'min-w-[50%]',
+      'min-h-[50%]',
+      'max-h-[50%]',
+    ]) {
+      assert.strictEqual(suggestCanonical(cls, v3), null, cls);
+    }
+    assert.strictEqual(suggestCanonical('w-[50%]', v3)?.canonical, 'w-1/2');
+    assert.strictEqual(suggestCanonical('top-[50%]', v3)?.canonical, 'top-1/2');
+  });
+
+  await t.test('gates fractions per utility, not per family', () => {
+    // v3.3 gives inset/translate only halves, thirds and quarters; the
+    // fifths, sixths and twelfths below compile to nothing there.
+    assert.strictEqual(suggestCanonical('top-[20%]', v3), null);
+    assert.strictEqual(suggestCanonical('translate-x-[40%]', v3), null);
+    assert.strictEqual(suggestCanonical('inset-[16.666667%]', v3), null);
+    assert.strictEqual(suggestCanonical('h-[8.333333%]', v3), null);
+    // ...while w carries the full set and h stops at sixths
+    assert.strictEqual(
+      suggestCanonical('w-[8.333333%]', v3)?.canonical,
+      'w-1/12',
+    );
+    assert.strictEqual(suggestCanonical('h-[20%]', v3)?.canonical, 'h-1/5');
+    assert.strictEqual(suggestCanonical('top-[25%]', v3)?.canonical, 'top-1/4');
+  });
+
+  await t.test('keeps the zero step on utilities that only ship zero', () => {
+    for (const prefix of ['min-w', 'max-w', 'min-h']) {
+      assert.strictEqual(
+        suggestCanonical(`${prefix}-[0px]`, v3)?.canonical,
+        `${prefix}-0`,
+        prefix,
+      );
+      assert.strictEqual(
+        suggestCanonical(`${prefix}-[16px]`, v3),
+        null,
+        prefix,
+      );
+    }
+    // size has no numeric scale at all in v3.3, not even zero
+    assert.strictEqual(suggestCanonical('size-[0px]', v3), null);
+  });
+
+  await t.test('leaves dimensions that are identical in both majors', () => {
+    assert.strictEqual(
+      suggestCanonical('rounded-[8px]', v3)?.canonical,
+      'rounded-lg',
+    );
+    assert.strictEqual(
+      suggestCanonical('opacity-[0.5]', v3)?.canonical,
+      'opacity-50',
+    );
+    assert.strictEqual(
+      suggestCanonical('text-[12px]', v3)?.canonical,
+      'text-xs',
+    );
+  });
+
+  await t.test('custom spacing tokens stay the user decision', () => {
+    assert.deepEqual(
+      suggestCanonical('p-[52px]', {
+        ...v3,
+        customSpacingTokens: { 52: 'gutter' },
+      }),
+      { original: 'p-[52px]', canonical: 'p-gutter', isCustomToken: true },
+    );
+  });
+
+  await t.test('tailwindVersion: 4 is the default behaviour', () => {
+    for (const cls of [
+      'p-[52px]',
+      'max-w-[16px]',
+      'size-[16px]',
+      'max-w-[50%]',
+    ]) {
+      assert.deepEqual(
+        suggestCanonical(cls, { tailwindVersion: 4 }),
+        suggestCanonical(cls),
+        cls,
+      );
+    }
+  });
+});

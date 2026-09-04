@@ -2,7 +2,7 @@
 
 Lint and auto-fix Tailwind CSS classes: arbitrary values → canonical, deduplication, shorthand collapsing, and class sorting.
 
-> Compatible with Tailwind CSS v3.3+ and v4 — zero `tailwindcss` dependency (conventions are built in). Custom theme tokens are supported via config.
+> Compatible with Tailwind CSS v4 out of the box, and with v3.3+ via [`tailwindVersion: 3`](#tailwind-v3-vs-v4-tailwindversion) — the ÷4 spacing rule assumes v4's dynamic scale, so v3 projects must set it. Zero `tailwindcss` dependency (conventions are built in). Custom theme tokens are supported via config.
 
 ## Install
 
@@ -356,6 +356,52 @@ left-2 right-2                  → inset-x-2
 
 Non-divisible values (`h-[22px]`, `px-[7px]`) are left untouched.
 
+### Tailwind v3 vs v4 (`tailwindVersion`)
+
+The ÷4 spacing rule assumes the **v4** scale, where every step is derived from
+`calc(var(--spacing) * n)` and any integer works. v3 ships a discrete scale, so
+`p-[52px]` → `p-13` compiles to nothing at all on v3 and the padding silently
+disappears. Set `tailwindVersion: 3` on a v3 project:
+
+```ts
+export default {
+  tailwindVersion: 3, // default: 4
+}
+```
+
+In v3 mode, suggestions are restricted to what v3.3 actually generates — the
+scale differs per utility, not just per family:
+
+| Class | `tailwindVersion: 4` | `tailwindVersion: 3` |
+|---|---|---|
+| `p-[16px]` | `p-4` | `p-4` |
+| `p-[52px]` | `p-13` | untouched — not on the v3 scale |
+| `max-w-[16px]` | `max-w-4` | untouched — scale arrived after v3.3 |
+| `max-w-[0px]` | `max-w-0` | `max-w-0` — the zero step does exist |
+| `size-[16px]` | `size-4` | untouched — no scale at all in v3.3 |
+| `max-h-[16px]` | `max-h-4` | `max-h-4` |
+| `max-w-[50%]` | `max-w-1/2` | untouched — no fractions in v3.3 |
+| `top-[20%]` | `top-1/5` | untouched — v3.3 stops at quarters here |
+| `top-[25%]` | `top-1/4` | `top-1/4` |
+| `w-[8.333333%]` | `w-1/12` | `w-1/12` — `w` carries the full set |
+
+Spacing steps: `size-*` has no numeric scale in v3.3, and `min-w-*`, `max-w-*`
+and `min-h-*` only ship the zero step — they gained the scale afterwards.
+Fractions: `w` carries all thirteen, `h` stops at sixths, `inset`/`top`/`left`/
+`right`/`bottom`/`translate-x`/`translate-y` only have halves, thirds and
+quarters, and `min-w`/`max-w`/`min-h`/`max-h` have none.
+
+`text-*`, `rounded-*` and `opacity-*` are identical in both majors and are
+never gated. `customSpacingTokens` stays your decision and is applied in both
+modes. All of the above was measured against `tailwindcss@3.3.7`, the
+advertised floor.
+
+**On v3.4**, keep `tailwindVersion: 3`. v3.4 added the numeric scale to
+`size-*`, `min-w-*`, `max-w-*` and `min-h-*`, but its spacing scale is still
+discrete — `p-13` does not exist there either. So v3 mode is the safe setting
+and merely leaves a few v3.4-valid suggestions on the table; `tailwindVersion:
+4` would emit steps v3.4 cannot generate.
+
 ## Config
 
 Create `tailwind-canonical.config.ts` at the root:
@@ -369,6 +415,8 @@ export default {
   customSpacingTokens: {
     14: '3.5',
   },
+  // Target Tailwind major: 3 restricts suggestions to the v3 scale (default: 4)
+  tailwindVersion: 4,
   // Support non-React attribute patterns (default: ['className'])
   attributeNames: ['className', 'class', ':class', 'tw'],
   // Support utility function wrappers

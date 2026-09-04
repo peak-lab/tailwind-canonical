@@ -67,7 +67,7 @@ const noArbitraryCanonical: Rule.RuleModule = {
     // Schema accepts the full tailwind-canonical Config so a single shared
     // config object can be passed as rule options without schema errors (#42).
     // Honored by this rule (via suggestCanonical): customTextTokens,
-    // customSpacingTokens, ignorePatterns.
+    // customSpacingTokens, ignorePatterns, tailwindVersion.
     // Accepted but ignored here (CLI-only): functionNames, attributeNames,
     // sortOrder.
     schema: [
@@ -77,6 +77,7 @@ const noArbitraryCanonical: Rule.RuleModule = {
           customTextTokens: { type: 'object' },
           customSpacingTokens: { type: 'object' },
           ignorePatterns: { type: 'array' },
+          tailwindVersion: { enum: [3, 4] },
           functionNames: { type: 'array', items: { type: 'string' } },
           attributeNames: { type: 'array', items: { type: 'string' } },
           sortOrder: { type: 'array', items: { type: 'string' } },

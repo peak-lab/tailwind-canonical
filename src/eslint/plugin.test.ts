@@ -163,6 +163,7 @@ test('no-arbitrary-canonical rule', async (t) => {
       'functionNames',
       'attributeNames',
       'sortOrder',
+      'tailwindVersion',
     ]) {
       assert.ok(key in props, `schema should declare ${key}`);
     }
@@ -178,6 +179,20 @@ test('no-arbitrary-canonical rule', async (t) => {
       report: () => undefined,
     };
     assert.doesNotThrow(() => noArbitraryCanonical.create(ctx as never));
+  });
+
+  await t.test('honors tailwindVersion from rule options', () => {
+    const reports: unknown[] = [];
+    const ctx = {
+      options: [{ tailwindVersion: 3 }] as [object],
+      report: (d: unknown) => reports.push(d),
+    };
+    const rule = noArbitraryCanonical.create(ctx as never);
+    // p-13 does not exist in v3, so the autofixable rule must stay silent
+    rule.Literal?.(literal('p-[52px]') as never);
+    assert.strictEqual(reports.length, 0);
+    rule.Literal?.(literal('p-[16px]') as never);
+    assert.strictEqual(reports.length, 1);
   });
 
   await t.test(
