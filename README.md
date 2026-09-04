@@ -2,7 +2,7 @@
 
 Lint and auto-fix Tailwind CSS classes: arbitrary values → canonical, deduplication, shorthand collapsing, and class sorting.
 
-> Compatible with Tailwind CSS v3.3+ and v4 — zero `tailwindcss` dependency (conventions are built in). Custom theme tokens are supported via config.
+> Compatible with Tailwind CSS v4 out of the box, and with v3.3+ via [`tailwindVersion: 3`](#tailwind-v3-vs-v4-tailwindversion) — the ÷4 spacing rule assumes v4's dynamic scale, so v3 projects must set it. Zero `tailwindcss` dependency (conventions are built in). Custom theme tokens are supported via config.
 
 ## Install
 
@@ -393,9 +393,14 @@ quarters, and `min-w`/`max-w`/`min-h`/`max-h` have none.
 
 `text-*`, `rounded-*` and `opacity-*` are identical in both majors and are
 never gated. `customSpacingTokens` stays your decision and is applied in both
-modes. All of the above was measured by compiling `tailwindcss@3.3.7`, the
-advertised floor; a v3.4 project may pass `tailwindVersion: 4` for the wider
-scale it ships.
+modes. All of the above was measured against `tailwindcss@3.3.7`, the
+advertised floor.
+
+**On v3.4**, keep `tailwindVersion: 3`. v3.4 added the numeric scale to
+`size-*`, `min-w-*`, `max-w-*` and `min-h-*`, but its spacing scale is still
+discrete — `p-13` does not exist there either. So v3 mode is the safe setting
+and merely leaves a few v3.4-valid suggestions on the table; `tailwindVersion:
+4` would emit steps v3.4 cannot generate.
 
 ## Config
 
