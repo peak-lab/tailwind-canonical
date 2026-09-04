@@ -60,15 +60,25 @@ export async function loadConfig(cwd: string): Promise<Config> {
     mod = await import(pathToFileURL(path).href);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const type = nearestPackageType(dirname(path));
     if (
-      filename.endsWith('.ts') &&
+      /\.m?ts$/.test(filename) &&
       (err as NodeJS.ErrnoException).code === 'ERR_UNKNOWN_FILE_EXTENSION'
     ) {
+      const js =
+        type === 'module'
+          ? 'tailwind-canonical.config.js'
+          : 'tailwind-canonical.config.mjs';
       throw new Error(
-        `Loading ${filename} failed on this Node version (type stripping requires Node >=22.6 with --experimental-strip-types or >=23.6). Rename the config to tailwind-canonical.config.js or upgrade Node. Original error: ${msg}`,
+        `Loading ${filename} failed on this Node version (type stripping requires Node >=22.6 with --experimental-strip-types or >=23.6). Rename the config to ${js} or upgrade Node. Original error: ${msg}`,
       );
     }
-    if (err instanceof SyntaxError && /\bexport\b|\bimport\b/.test(msg)) {
+    if (
+      err instanceof SyntaxError &&
+      /\bexport\b|\bimport\b/.test(msg) &&
+      !/\.m[tj]s$/.test(filename) &&
+      type !== 'module'
+    ) {
       const esm = filename.endsWith('.ts')
         ? 'tailwind-canonical.config.mts'
         : 'tailwind-canonical.config.mjs';

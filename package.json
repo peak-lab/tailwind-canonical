@@ -41,7 +41,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
     "dev": "tsc --watch",
     "test": "node --import=tsx/esm --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
