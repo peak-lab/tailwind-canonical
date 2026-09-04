@@ -1315,15 +1315,52 @@ test(
   },
 );
 
-test('run - init scaffolds .mts in a CommonJS project', async (_t: TestContext) => {
+async function withTypeStripping<T>(
+  supported: boolean,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const original = Object.getOwnPropertyDescriptor(
+    process.features,
+    'typescript',
+  );
+  const execArgv = process.execArgv;
+  const nodeOptions = process.env.NODE_OPTIONS;
+  Object.defineProperty(process.features, 'typescript', {
+    value: supported ? 'strip' : false,
+    configurable: true,
+  });
+  // CI runs Node 22 with --experimental-strip-types, which resolveInitFilename
+  // treats as flag-derived and ignores; clear it so `supported` is the only
+  // variable under test
+  process.execArgv = [];
+  delete process.env.NODE_OPTIONS;
+  try {
+    // await inside the stub window: restoring on promise creation would race
+    return await fn();
+  } finally {
+    // absent below Node 22.10, which engines.node still allows
+    if (original) {
+      Object.defineProperty(process.features, 'typescript', original);
+    } else {
+      Reflect.deleteProperty(process.features, 'typescript');
+    }
+    process.execArgv = execArgv;
+    if (nodeOptions === undefined) delete process.env.NODE_OPTIONS;
+    else process.env.NODE_OPTIONS = nodeOptions;
+  }
+}
+
+test('run - init scaffolds .ts when Node can strip types', async (_t: TestContext) => {
   const dir = freshDir();
   writeFileSync(join(dir, 'package.json'), '{"name":"x"}\n', 'utf8');
   const { sink, out } = captureSink();
   try {
-    const result = await run(['init'], dir, sink);
+    const result = await withTypeStripping(true, () =>
+      run(['init'], dir, sink),
+    );
     assert.strictEqual(result.exitCode, 0);
     const content = readFileSync(
-      join(dir, 'tailwind-canonical.config.mts'),
+      join(dir, 'tailwind-canonical.config.ts'),
       'utf8',
     );
     assert.ok(content.includes('satisfies Config'));
@@ -1333,22 +1370,23 @@ test('run - init scaffolds .mts in a CommonJS project', async (_t: TestContext) 
   }
 });
 
-test('run - init scaffolds .ts in an ESM project', async (_t: TestContext) => {
+test('run - init scaffolds plain ESM when Node cannot strip types', async (_t: TestContext) => {
   const dir = freshDir();
-  writeFileSync(
-    join(dir, 'package.json'),
-    '{"name":"x","type":"module"}\n',
-    'utf8',
-  );
+  writeFileSync(join(dir, 'package.json'), '{"name":"x"}\n', 'utf8');
   const { sink } = captureSink();
   try {
-    const result = await run(['init'], dir, sink);
+    const result = await withTypeStripping(false, () =>
+      run(['init'], dir, sink),
+    );
     assert.strictEqual(result.exitCode, 0);
     const content = readFileSync(
-      join(dir, 'tailwind-canonical.config.ts'),
+      join(dir, 'tailwind-canonical.config.mjs'),
       'utf8',
     );
-    assert.ok(content.includes('satisfies Config'));
+    // TypeScript-only syntax would make the scaffold unloadable on this Node
+    assert.ok(!content.includes('satisfies Config'));
+    assert.ok(!content.includes('import type'));
+    assert.ok(content.includes("@type {import('tailwind-canonical').Config}"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

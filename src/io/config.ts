@@ -25,16 +25,33 @@ function nearestPackageType(dir: string): 'module' | 'commonjs' {
   }
 }
 
+const STRIP_FLAG = /--experimental-(strip|transform)-types/;
+
 /**
- * The config extension that actually loads in this project. A `.ts`/`.js`
- * config inherits the nearest package.json `type`, so `export default` only
- * parses under `"type": "module"`; elsewhere it needs an explicit ESM
- * extension.
+ * Whether `.ts` loads on a bare `node`, as opposed to only under a flag.
+ * `process.features.typescript` is also `"strip"` when the flag supplied it,
+ * so a config scaffolded in a flagged process would fail on every later
+ * unflagged run — including plain `npx tailwind-canonical`.
+ */
+function stripsTypesUnflagged(): boolean {
+  if (!process.features.typescript) return false;
+  if (process.execArgv.some((arg) => STRIP_FLAG.test(arg))) return false;
+  return !STRIP_FLAG.test(process.env.NODE_OPTIONS ?? '');
+}
+
+/**
+ * The config extension that actually loads here. `.ts`/`.mts` need Node type
+ * stripping (>=22.18, or >=22.6 behind --experimental-strip-types), so short
+ * of that we scaffold plain ESM instead — `.mjs` under CommonJS, `.js` where
+ * the nearest package.json already declares `"type": "module"`. Both load on
+ * every supported Node, so preferring them when a flag is in play costs
+ * nothing.
  */
 export function resolveInitFilename(cwd: string): string {
+  if (stripsTypesUnflagged()) return 'tailwind-canonical.config.ts';
   return nearestPackageType(cwd) === 'module'
-    ? 'tailwind-canonical.config.ts'
-    : 'tailwind-canonical.config.mts';
+    ? 'tailwind-canonical.config.js'
+    : 'tailwind-canonical.config.mjs';
 }
 
 function findConfigPath(cwd: string): string | undefined {
@@ -70,7 +87,7 @@ export async function loadConfig(cwd: string): Promise<Config> {
           ? 'tailwind-canonical.config.js'
           : 'tailwind-canonical.config.mjs';
       throw new Error(
-        `Loading ${filename} failed on this Node version (type stripping requires Node >=22.6 with --experimental-strip-types or >=23.6). Rename the config to ${js} or upgrade Node. Original error: ${msg}`,
+        `Loading ${filename} failed on this Node version (type stripping requires Node >=22.18, or >=22.6 with --experimental-strip-types). Either upgrade Node, or rename the config to ${js} and drop its TypeScript-only syntax — the "import type" line and the trailing "satisfies Config" — since a bare rename leaves it unparseable. Original error: ${msg}`,
       );
     }
     if (

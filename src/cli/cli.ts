@@ -31,10 +31,7 @@ const SARIF_SCHEMA =
 const USAGE =
   'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--check] [--analyze] [--typos] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]\n       tailwind-canonical init';
 
-const INIT_CONFIG_CONTENT = [
-  "import type { Config } from 'tailwind-canonical'",
-  '',
-  'export default {',
+const INIT_CONFIG_BODY = [
   '  // Run `tailwind-canonical` with no flags using these defaults:',
   "  // defaultCommand: { fix: true, dedup: true, sort: true, typos: true, targets: ['./src'] },",
   '  // px → token additions/overrides:',
@@ -42,14 +39,29 @@ const INIT_CONFIG_CONTENT = [
   "  // customSpacingTokens: { 14: '3.5' },",
   '  // Never suggest replacements for classes matching:',
   '  // ignorePatterns: [/^font-/],',
+];
+
+const INIT_CONFIG_TS = [
+  "import type { Config } from 'tailwind-canonical'",
+  '',
+  'export default {',
+  ...INIT_CONFIG_BODY,
   '} satisfies Config',
+  '',
+].join('\n');
+
+const INIT_CONFIG_JS = [
+  "/** @type {import('tailwind-canonical').Config} */",
+  'export default {',
+  ...INIT_CONFIG_BODY,
+  '}',
   '',
 ].join('\n');
 
 const HELP_TEXT = [
   USAGE,
   '',
-  '  init               Create a tailwind-canonical.config.ts scaffold in the current directory',
+  '  init               Create a tailwind-canonical config scaffold in the current directory',
   '  --fix              Auto-replace arbitrary values with canonical Tailwind classes',
   '  --dedup            Remove redundant classes and collapse shorthands',
   '  --merge            Resolve conflicting classes via tailwind-merge',
@@ -936,7 +948,8 @@ function runInit(cwd: string, sink: Sink): RunResult {
   }
 
   const filename = resolveInitFilename(cwd);
-  writeFileSync(join(cwd, filename), INIT_CONFIG_CONTENT, 'utf8');
+  const content = /\.m?ts$/.test(filename) ? INIT_CONFIG_TS : INIT_CONFIG_JS;
+  writeFileSync(join(cwd, filename), content, 'utf8');
   sink.log(`Created ${filename}`);
   sink.log('Uncomment defaultCommand to set your CLI defaults.');
   sink.log('Then run `npx tailwind-canonical` to lint your project.');
