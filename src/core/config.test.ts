@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type TestContext, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { loadConfig, validateConfig } from './config.js';
+import { loadConfig, resolveInitFilename, validateConfig } from './config.js';
 
 const canImportTsConfig = await (async () => {
   const dir = join(tmpdir(), `twc-probe-${process.pid}`);
@@ -458,4 +458,61 @@ test('validateConfig - tailwindVersion', (_t: TestContext) => {
   assert.throws(() => validateConfig({ tailwindVersion: '3' }), {
     message: /tailwindVersion must be 3 or 4/,
   });
+});
+
+test('resolveInitFilename - follows the nearest package.json type', (_t: TestContext) => {
+  const root = freshDir();
+  const esm = join(root, 'esm');
+  const cjs = join(esm, 'cjs');
+  mkdirSync(cjs, { recursive: true });
+  writeFileSync(join(esm, 'package.json'), '{"type":"module"}', 'utf8');
+  writeFileSync(join(cjs, 'package.json'), '{"name":"leaf"}', 'utf8');
+  try {
+    assert.strictEqual(
+      resolveInitFilename(esm),
+      'tailwind-canonical.config.ts',
+    );
+    // the leaf manifest wins over the ESM parent, exactly as Node resolves
+    assert.strictEqual(
+      resolveInitFilename(cjs),
+      'tailwind-canonical.config.mts',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('resolveInitFilename - a malformed manifest is treated as CommonJS', (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'package.json'), '{ not json', 'utf8');
+  try {
+    assert.strictEqual(
+      resolveInitFilename(dir),
+      'tailwind-canonical.config.mts',
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig - a real ESM error is not blamed on CommonJS loading', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(join(dir, 'package.json'), '{"type":"module"}', 'utf8');
+  writeFileSync(join(dir, 'order.ts'), 'export const ORDER = []\n', 'utf8');
+  writeFileSync(
+    join(dir, 'tailwind-canonical.config.ts'),
+    'import { MISSING } from "./order.ts"\nexport default { sortOrder: MISSING }\n',
+    'utf8',
+  );
+  try {
+    await assert.rejects(
+      () => loadConfig(dir),
+      (err: Error) => {
+        assert.doesNotMatch(err.message, /loaded as CommonJS/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
