@@ -7,6 +7,9 @@ on:
 
 jobs:
   publish:
+    # a tag deletion is also a `push` matching `v*`, and would otherwise
+    # publish whatever the default branch resolves to
+    if: github.event.deleted != true
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,6 +26,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      # authenticated by OIDC via the npm trusted publisher for this repo and
+      # workflow filename; renaming this file breaks publishing until npm is
+      # updated, since the trust is pinned to `publish.yml`
       - run: pnpm publish --no-git-checks --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
