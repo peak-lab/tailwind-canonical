@@ -401,6 +401,56 @@ test('deduplicateClasses - responsive cascade collapse', async (t: TestContext) 
     assert.strictEqual(deduplicateClasses(cls), cls);
   });
 
+  await t.test('color restored at a later breakpoint is preserved', () => {
+    const cls = 'text-red-500 md:text-blue-500 lg:text-red-500';
+    assert.strictEqual(deduplicateClasses(cls), cls);
+  });
+
+  await t.test(
+    'negative margin restored at a later breakpoint is preserved',
+    () => {
+      const cls = 'mt-4 md:-mt-6 lg:mt-4';
+      assert.strictEqual(deduplicateClasses(cls), cls);
+    },
+  );
+
+  await t.test(
+    'padding restored after an overlapping axis utility is preserved',
+    () => {
+      const cls = 'p-4 md:px-6 lg:p-4';
+      assert.strictEqual(deduplicateClasses(cls), cls);
+    },
+  );
+
+  await t.test(
+    'padding restored after an inline logical utility is preserved',
+    () => {
+      const cls = 'p-4 md:ps-6 lg:p-4';
+      assert.strictEqual(deduplicateClasses(cls), cls);
+    },
+  );
+
+  await t.test(
+    'margin restored after an inline logical utility is preserved',
+    () => {
+      const cls = 'm-4 md:ms-6 lg:m-4';
+      assert.strictEqual(deduplicateClasses(cls), cls);
+    },
+  );
+
+  await t.test('width restored after size is preserved', () => {
+    const cls = 'w-4 md:size-6 lg:w-4';
+    assert.strictEqual(deduplicateClasses(cls), cls);
+  });
+
+  await t.test(
+    'border width restored after an arbitrary border is preserved',
+    () => {
+      const cls = 'border-2 md:border-[3px] lg:border-2';
+      assert.strictEqual(deduplicateClasses(cls), cls);
+    },
+  );
+
   await t.test('redundant display breakpoint still collapses', () => {
     assert.strictEqual(deduplicateClasses('flex md:flex'), 'flex');
   });
@@ -424,6 +474,17 @@ test('deduplicateClasses - responsive cascade collapse', async (t: TestContext) 
     const cls = 'sm:hover:p-4 md:hover:p-4';
     assert.strictEqual(deduplicateClasses(cls), cls);
   });
+
+  await t.test(
+    'unknown breakpoint order prevents responsive collapsing',
+    () => {
+      const cls = 'min-[900px]:p-6 p-4 lg:p-4';
+      assert.deepStrictEqual(
+        deduplicateClasses(cls).split(' ').sort(),
+        cls.split(' ').sort(),
+      );
+    },
+  );
 
   await t.test('xl and 2xl cascade correctly', () => {
     assert.strictEqual(

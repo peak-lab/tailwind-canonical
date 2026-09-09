@@ -3,7 +3,7 @@ import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type TestContext, test } from 'node:test';
-import { mergeFile } from './merger.js';
+import { mergeContent, mergeFile } from './merger.js';
 
 test('mergeFile - conflicting classes', async (t: TestContext) => {
   await t.test('removes redundant bg color (last wins)', async () => {
@@ -110,6 +110,19 @@ test('mergeFile - no-op cases', async (t: TestContext) => {
 });
 
 test('mergeFile - preserves leading with text sizes that have no bundled line-height', async (t: TestContext) => {
+  await t.test(
+    'restores the leading before the surviving repeated arbitrary text size',
+    () => {
+      const content =
+        '<span className="leading-5 text-[13px] leading-6 text-[13px]" />';
+      const result = mergeContent(content, () => 'text-[13px]');
+      assert.strictEqual(
+        result.result,
+        '<span className="leading-6 text-[13px]" />',
+      );
+    },
+  );
+
   await t.test('customTextTokens do not conflict with leading', async () => {
     const file = join(tmpdir(), `merger-test-${Date.now()}.tsx`);
     const content =

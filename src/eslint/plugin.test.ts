@@ -16,8 +16,34 @@ function makeContext(reports: unknown[]) {
   };
 }
 
-function literal(value: string, raw = `"${value}"`) {
-  return { type: 'Literal' as const, value, raw };
+function literal(value: string, raw = `"${value}"`, parent?: { type: string }) {
+  return { type: 'Literal' as const, value, raw, parent };
+}
+
+function applyLiteralFix(
+  fix:
+    | ((fixer: {
+        replaceText: (node: unknown, text: string) => string;
+      }) => string)
+    | undefined,
+): string {
+  assert.ok(fix);
+  return fix({ replaceText: (_node, text) => text });
+}
+
+function applyQuasiFix(
+  source: string,
+  fix:
+    | ((fixer: {
+        replaceTextRange: (range: [number, number], text: string) => string;
+      }) => string)
+    | undefined,
+): string {
+  assert.ok(fix);
+  return fix({
+    replaceTextRange: ([start, end], text) =>
+      source.slice(0, start) + text + source.slice(end),
+  });
 }
 
 test('no-arbitrary-canonical rule', async (t) => {
@@ -124,6 +150,41 @@ test('no-arbitrary-canonical rule', async (t) => {
     assert.strictEqual(reports.length, 1);
     const result = reports[0].fix?.({ replaceText: (_n, s) => s });
     assert.strictEqual(result, '"text-xs flex h-16"');
+  });
+
+  await t.test('fix preserves escaped quotes in string literals', () => {
+    const reports: Array<{
+      fix?: (f: { replaceText: (n: unknown, s: string) => string }) => string;
+    }> = [];
+    const rule = noArbitraryCanonical.create({
+      options: [{}] as [object],
+      report: (d: unknown) => reports.push(d as never),
+    } as never);
+    const raw = String.raw`'don\'t text-[12px]'`;
+    (rule.Literal as (n: unknown) => void)(literal("don't text-[12px]", raw));
+
+    const output = applyLiteralFix(reports[0]?.fix);
+    assert.strictEqual(output, String.raw`'don\'t text-xs'`);
+    assert.strictEqual(Function(`return ${output}`)(), "don't text-xs");
+  });
+
+  await t.test('fix preserves JSX attribute entity escaping', () => {
+    const reports: Array<{
+      fix?: (f: { replaceText: (n: unknown, s: string) => string }) => string;
+    }> = [];
+    const rule = noArbitraryCanonical.create({
+      options: [{}] as [object],
+      report: (d: unknown) => reports.push(d as never),
+    } as never);
+    const raw = '"before &quot; text-[12px]"';
+    (rule.Literal as (n: unknown) => void)(
+      literal('before " text-[12px]', raw, { type: 'JSXAttribute' }),
+    );
+
+    assert.strictEqual(
+      applyLiteralFix(reports[0]?.fix),
+      '"before &quot; text-xs"',
+    );
   });
 
   await t.test('respects customTextTokens from config', () => {
@@ -266,6 +327,24 @@ test('no-conflicting-classes rule', async (t) => {
     assert.ok((result as string).includes('bg-blue-500'));
     assert.ok(!(result as string).includes('bg-red-500'));
   });
+
+  await t.test('fix preserves escaped quotes in string literals', () => {
+    const reports: Array<{
+      fix?: (f: { replaceText: (n: unknown, s: string) => string }) => string;
+    }> = [];
+    const rule = noConflictingClasses.create({
+      options: [] as [],
+      report: (d: unknown) => reports.push(d as never),
+    } as never);
+    const raw = String.raw`'don\'t bg-red-500 bg-blue-500'`;
+    (rule.Literal as (n: unknown) => void)(
+      literal("don't bg-red-500 bg-blue-500", raw),
+    );
+
+    const output = applyLiteralFix(reports[0]?.fix);
+    assert.strictEqual(output, String.raw`'don\'t bg-blue-500'`);
+    assert.strictEqual(Function(`return ${output}`)(), "don't bg-blue-500");
+  });
 });
 
 // Mirrors espree: a TemplateElement.range spans its delimiters too (leading
@@ -296,6 +375,28 @@ function templateLiteral(...raws: string[]) {
   return {
     type: 'TemplateLiteral' as const,
     quasis,
+    expressions: [],
+    source,
+  };
+}
+
+function taggedTemplateLiteral(raw: string) {
+  const tag = 'String.raw';
+  const source = `${tag}\`${raw}\``;
+  return {
+    type: 'TemplateLiteral' as const,
+    parent: { type: 'TaggedTemplateExpression' },
+    quasis: [
+      {
+        type: 'TemplateElement' as const,
+        value: { raw, cooked: raw.replace(/\\n/g, '\n') },
+        range: [tag.length, source.length] as [number, number],
+        loc: {
+          start: { line: 1, column: tag.length },
+          end: { line: 1, column: source.length },
+        },
+      },
+    ],
     expressions: [],
     source,
   };
@@ -377,6 +478,96 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
       }
     },
   );
+
+  await t.test(
+    'fix escapes template syntax introduced by cooked quasi text',
+    () => {
+      const reports: Array<{
+        fix?: (f: {
+          replaceTextRange: (r: [number, number], s: string) => string;
+        }) => string;
+      }> = [];
+      const rule = noArbitraryCanonical.create({
+        options: [{}] as [object],
+        report: (d: unknown) => reports.push(d as never),
+      } as never);
+      const raw = String.raw`before \` \${ text-[12px]`;
+      const source = `\`${raw}\``;
+      (rule.TemplateLiteral as (n: unknown) => void)({
+        type: 'TemplateLiteral',
+        quasis: [
+          {
+            type: 'TemplateElement',
+            value: { raw, cooked: 'before ` ${ text-[12px]' },
+            range: [0, source.length],
+            loc: {
+              start: { line: 1, column: 0 },
+              end: { line: 1, column: source.length },
+            },
+          },
+        ],
+        expressions: [],
+      });
+
+      const output = applyQuasiFix(source, reports[0]?.fix);
+      assert.strictEqual(output, `\`${String.raw`before \` \${ text-xs`}\``);
+      assert.strictEqual(Function(`return ${output}`)(), 'before ` ${ text-xs');
+    },
+  );
+
+  await t.test('fix preserves a cooked carriage return', () => {
+    const reports: Array<{
+      fix?: (f: {
+        replaceTextRange: (r: [number, number], s: string) => string;
+      }) => string;
+    }> = [];
+    const rule = noArbitraryCanonical.create({
+      options: [{}] as [object],
+      report: (d: unknown) => reports.push(d as never),
+    } as never);
+    const raw = String.raw`before\rtext-[12px]`;
+    const source = `\`${raw}\``;
+    (rule.TemplateLiteral as (n: unknown) => void)({
+      type: 'TemplateLiteral',
+      quasis: [
+        {
+          type: 'TemplateElement',
+          value: { raw, cooked: 'before\rtext-[12px]' },
+          range: [0, source.length],
+          loc: {
+            start: { line: 1, column: 0 },
+            end: { line: 1, column: source.length },
+          },
+        },
+      ],
+      expressions: [],
+    });
+
+    const output = applyQuasiFix(source, reports[0]?.fix);
+    assert.strictEqual(output, '`before\\rtext-xs`');
+    assert.strictEqual(Function(`return ${output}`)(), 'before\rtext-xs');
+  });
+
+  await t.test('fix preserves raw tagged-template semantics', () => {
+    const reports: Array<{
+      fix?: (f: {
+        replaceTextRange: (r: [number, number], s: string) => string;
+      }) => string;
+    }> = [];
+    const rule = noArbitraryCanonical.create({
+      options: [{}] as [object],
+      report: (d: unknown) => reports.push(d as never),
+    } as never);
+    const node = taggedTemplateLiteral(String.raw`path\n text-[12px]`);
+    (rule.TemplateLiteral as (n: unknown) => void)(node);
+
+    const output = applyQuasiFix(node.source, reports[0]?.fix);
+    assert.strictEqual(output, `String.raw\`${String.raw`path\n text-xs`}\``);
+    assert.strictEqual(
+      Function(`return ${output}`)(),
+      String.raw`path\n text-xs`,
+    );
+  });
 });
 
 test('no-conflicting-classes - TemplateLiteral visitor', async (t) => {
@@ -397,6 +588,68 @@ test('no-conflicting-classes - TemplateLiteral visitor', async (t) => {
       templateLiteral('flex items-center'),
     );
     assert.strictEqual(reports.length, 0);
+  });
+
+  await t.test('fix escapes cooked template syntax', () => {
+    const reports: Array<{
+      fix?: (f: {
+        replaceTextRange: (r: [number, number], s: string) => string;
+      }) => string;
+    }> = [];
+    const rule = noConflictingClasses.create({
+      options: [] as [],
+      report: (d: unknown) => reports.push(d as never),
+    } as never);
+    const raw = String.raw`before \` \${ bg-red-500 bg-blue-500`;
+    const source = `\`${raw}\``;
+    (rule.TemplateLiteral as (n: unknown) => void)({
+      type: 'TemplateLiteral',
+      quasis: [
+        {
+          type: 'TemplateElement',
+          value: { raw, cooked: 'before ` ${ bg-red-500 bg-blue-500' },
+          range: [0, source.length],
+          loc: {
+            start: { line: 1, column: 0 },
+            end: { line: 1, column: source.length },
+          },
+        },
+      ],
+      expressions: [],
+    });
+
+    const output = applyQuasiFix(source, reports[0]?.fix);
+    assert.strictEqual(output, `\`${String.raw`before \` \${ bg-blue-500`}\``);
+    assert.strictEqual(
+      Function(`return ${output}`)(),
+      'before ` ${ bg-blue-500',
+    );
+  });
+
+  await t.test('fix preserves raw tagged-template semantics', () => {
+    const reports: Array<{
+      fix?: (f: {
+        replaceTextRange: (r: [number, number], s: string) => string;
+      }) => string;
+    }> = [];
+    const rule = noConflictingClasses.create({
+      options: [] as [],
+      report: (d: unknown) => reports.push(d as never),
+    } as never);
+    const node = taggedTemplateLiteral(
+      String.raw`path\n bg-red-500 bg-blue-500`,
+    );
+    (rule.TemplateLiteral as (n: unknown) => void)(node);
+
+    const output = applyQuasiFix(node.source, reports[0]?.fix);
+    assert.strictEqual(
+      output,
+      `String.raw\`${String.raw`path\n bg-blue-500`}\``,
+    );
+    assert.strictEqual(
+      Function(`return ${output}`)(),
+      String.raw`path\n bg-blue-500`,
+    );
   });
 });
 

@@ -340,8 +340,16 @@ export function suggestCanonical(
     // CSS opacity is a 0..1 fraction; a bare value > 1 clamps to 1 and is not
     // equivalent to opacity-<N> (a percentage), so leave it untouched.
     if (raw > 1) return null;
-    const value = Math.round(raw * 100);
-    if (!OPACITY_SCALE.has(value)) return null;
+    const scaled = raw * 100;
+    const value = Math.round(scaled);
+    if (
+      !(
+        OPACITY_SCALE.has(value) &&
+        Math.abs(scaled - value) <= Number.EPSILON * 100
+      )
+    ) {
+      return null;
+    }
     return {
       original: cls,
       canonical: `opacity-${value}`,

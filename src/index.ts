@@ -3,7 +3,7 @@
 // This barrel is the package's stable surface. Internal plumbing
 // (class-string extraction, suppression predicates, config validation,
 // file-class collection, consistency file readers) is intentionally NOT
-// re-exported here — import it by direct module path if you need it.
+// exposed through package exports.
 
 // Analysis
 export type { Finding } from './core/analyzer.js';
@@ -18,6 +18,7 @@ export type {
   ConsistencyOptions,
   ConsistencyReport,
   FileClasses,
+  RareScaleValue,
   ScaleInconsistency,
   ScaleValue,
 } from './core/consistency.js';

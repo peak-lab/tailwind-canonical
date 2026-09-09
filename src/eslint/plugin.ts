@@ -12,7 +12,11 @@ const _require = createRequire(import.meta.url);
  * backticks / `${`…`}` delimiters) so the fixer can replace it in place without
  * stripping those delimiters and corrupting the template.
  */
-type StringNode = Literal & { quasiRange?: [number, number] };
+type StringNode = Literal & {
+  quasiRange?: [number, number];
+  valueIsRaw?: boolean;
+  parent?: { type?: string };
+};
 
 /**
  * Inner-text range of a `TemplateElement`. In espree, `quasi.range` spans the
@@ -41,14 +45,21 @@ function makeStringRuleVisitor(
   return {
     Literal: (node) => checkLiteral(node as StringNode),
     TemplateLiteral(node: TemplateLiteral) {
+      const isTagged =
+        (node as TemplateLiteral & { parent?: { type?: string } }).parent
+          ?.type === 'TaggedTemplateExpression';
       for (const quasi of node.quasis) {
+        const value = isTagged
+          ? quasi.value.raw
+          : (quasi.value.cooked ?? quasi.value.raw);
         checkLiteral({
           type: 'Literal',
-          value: quasi.value.cooked ?? quasi.value.raw,
+          value,
           raw: quasi.value.raw,
           range: quasi.range,
           loc: quasi.loc,
           quasiRange: quasiTextRange(quasi),
+          valueIsRaw: isTagged || quasi.value.cooked === null,
         } as StringNode);
       }
     },
@@ -57,7 +68,38 @@ function makeStringRuleVisitor(
 
 function quoteReplacement(node: StringNode, value: string): string {
   const quote = node.raw?.startsWith('"') ? '"' : "'";
-  return `${quote}${value}${quote}`;
+  if (node.parent?.type === 'JSXAttribute') {
+    return `${quote}${escapeJsxAttribute(value, quote)}${quote}`;
+  }
+  return `${quote}${escapeString(value, quote)}${quote}`;
+}
+
+function escapeString(value: string, quote: '"' | "'"): string {
+  const escaped = JSON.stringify(value).slice(1, -1);
+  return quote === '"'
+    ? escaped
+    : escaped.replace(/\\"/g, '"').replace(/'/g, "\\'");
+}
+
+function escapeJsxAttribute(value: string, quote: '"' | "'"): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(quote === '"' ? /"/g : /'/g, quote === '"' ? '&quot;' : '&apos;');
+}
+
+function escapeTemplateText(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\$\{/g, '\\${')
+    .replace(/\r/g, '\\r');
+}
+
+function replacementText(node: StringNode, value: string): string {
+  if (node.quasiRange) {
+    return node.valueIsRaw ? value : escapeTemplateText(value);
+  }
+  return quoteReplacement(node, value);
 }
 
 const noArbitraryCanonical: Rule.RuleModule = {
@@ -116,8 +158,11 @@ const noArbitraryCanonical: Rule.RuleModule = {
         message,
         fix(fixer) {
           if (node.quasiRange)
-            return fixer.replaceTextRange(node.quasiRange, corrected);
-          return fixer.replaceText(node, quoteReplacement(node, corrected));
+            return fixer.replaceTextRange(
+              node.quasiRange,
+              replacementText(node, corrected),
+            );
+          return fixer.replaceText(node, replacementText(node, corrected));
         },
       });
     }
@@ -159,8 +204,11 @@ const noConflictingClasses: Rule.RuleModule = {
         message: `Conflicting Tailwind classes detected. Use '${merged}' instead.`,
         fix(fixer) {
           if (node.quasiRange)
-            return fixer.replaceTextRange(node.quasiRange, merged);
-          return fixer.replaceText(node, quoteReplacement(node, merged));
+            return fixer.replaceTextRange(
+              node.quasiRange,
+              replacementText(node, merged),
+            );
+          return fixer.replaceText(node, replacementText(node, merged));
         },
       });
     }

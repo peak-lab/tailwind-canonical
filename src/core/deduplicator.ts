@@ -342,54 +342,32 @@ function collapseResponsiveCascade(classes: string[]): string[] {
   interface Entry {
     bp: Breakpoint;
     base: string;
-    key: string;
     idx: number;
   }
-
-  // Last-wins keyword utilities (display, position) share a single CSS property
-  // even though their class names differ, so they must group by property — not
-  // by class name — or an intermediate override (e.g. md:block between flex and
-  // lg:flex) is missed and the restoring class is wrongly dropped.
-  const propertyKey = (base: string): string => {
-    if (DISPLAY_GROUP.has(base)) return 'display';
-    if (POSITION_GROUP.has(base)) return 'position';
-    const dash = base.lastIndexOf('-');
-    return dash === -1 ? base : base.slice(0, dash);
-  };
 
   const entries: Entry[] = classes.map((cls, idx) => {
     for (const bp of RESPONSIVE_BREAKPOINTS) {
       const prefix = `${bp}:`;
       if (cls.startsWith(prefix) && !cls.slice(prefix.length).includes(':')) {
         const base = cls.slice(prefix.length);
-        return { bp, base, key: propertyKey(base), idx };
+        return { bp, base, idx };
       }
     }
-    return { bp: '', base: cls, key: propertyKey(cls), idx };
+    return { bp: '', base: cls, idx };
   });
 
-  const groups = new Map<string, Entry[]>();
-  for (const e of entries) {
-    const arr = groups.get(e.key);
-    if (arr) arr.push(e);
-    else groups.set(e.key, [e]);
-  }
+  // Unknown variants cannot be ordered against the standard breakpoints safely.
+  if (entries.some((entry) => entry.base.includes(':'))) return classes;
+  if (!entries.some((entry) => entry.bp !== '')) return classes;
 
+  const sorted = [...entries].sort(
+    (a, b) => BP_RANK[a.bp] - BP_RANK[b.bp] || a.idx - b.idx,
+  );
   const toRemove = new Set<number>();
-
-  for (const group of groups.values()) {
-    if (group.length < 2 || !group.some((e) => e.bp !== '')) continue;
-
-    const sorted = [...group].sort((a, b) => BP_RANK[a.bp] - BP_RANK[b.bp]);
-
-    let prev: string | null = null;
-    for (const entry of sorted) {
-      if (entry.base === prev) {
-        toRemove.add(entry.idx);
-      } else {
-        prev = entry.base;
-      }
-    }
+  let prev: string | null = null;
+  for (const entry of sorted) {
+    if (entry.base === prev) toRemove.add(entry.idx);
+    else prev = entry.base;
   }
 
   return classes.filter((_, i) => !toRemove.has(i));

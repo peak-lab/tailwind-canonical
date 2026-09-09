@@ -120,6 +120,37 @@ test('startWatch - check mode reports findings on edit', async (t: TestContext) 
   }
 });
 
+test('startWatch - check mode surfaces removal errors without stopping', async (t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  writeFileSync(file, '<div className="flex" />', 'utf8');
+  const { child, out, err } = spawnWatcher(['--watch', dir]);
+  try {
+    const started = await waitFor(() => out().includes('Watching'));
+    assert.ok(started);
+
+    rmSync(file);
+    const errored = await waitFor(
+      () => err().includes('error:') || child.exitCode !== null,
+    );
+    assert.strictEqual(child.exitCode, null, err());
+    if (!errored) {
+      t.skip('filesystem watch event did not fire in this environment');
+      return;
+    }
+    assert.ok(err().includes(`${file} — error:`));
+
+    writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
+    const resumed = await waitFor(() =>
+      out().includes('text-[12px] → text-xs'),
+    );
+    assert.ok(resumed, 'watcher should process the recreated file');
+  } finally {
+    await stop(child);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('startWatch - transform mode surfaces processing errors', async (t: TestContext) => {
   if (typeof process.getuid === 'function' && process.getuid() === 0) {
     t.skip('chmod is bypassed when running as root');
