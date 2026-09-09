@@ -4,7 +4,7 @@ import {
   toClassStringOpts,
 } from './class-strings.js';
 import { type Config, type Suggestion, suggestCanonical } from './rules.js';
-import { getSuppressedLines, indexToLineCol } from './suppressions.js';
+import { createPositionLookup, getSuppressedLines } from './suppressions.js';
 
 export type Finding = {
   file: string;
@@ -20,6 +20,7 @@ export function analyzeContent(
 ): Finding[] {
   const findings: Finding[] = [];
   const suppressed = getSuppressedLines(content);
+  const positionAt = createPositionLookup(content);
   const opts = toClassStringOpts(config);
 
   for (const { value, start } of extractClassStrings(content, opts)) {
@@ -27,7 +28,7 @@ export function analyzeContent(
       const suggestion = suggestCanonical(clsMatch[0], config);
       if (!suggestion) continue;
       const index = start + (clsMatch.index ?? 0);
-      const { line, col } = indexToLineCol(content, index);
+      const { line, col } = positionAt(index);
       if (suppressed.has(line)) continue;
       findings.push({ file: filePath, line, col, suggestion });
     }

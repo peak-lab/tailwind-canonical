@@ -45,7 +45,11 @@ node --import=tsx/esm --test src/core/rules.test.ts
 ```
 src/
   cli/index.ts         # bin entry: run(process.argv, process.cwd()), sets exit code
-  cli/cli.ts           # arg parsing, config defaults, transform pipeline, reporters, watch
+  cli/cli.ts           # arg parsing, config defaults, transform pipeline, mode orchestration
+  cli/reporters.ts     # text/JSON output and SARIF builders
+  cli/watch.ts         # filesystem events, debouncing, processing errors
+  cli/format.ts        # shared formatting helpers
+  cli/types.ts         # shared CLI types
   eslint/plugin.ts     # Flat-config ESLint plugin — calls suggestCanonical on AST nodes
   core/                # Pure logic — zero node:fs
     rules.ts           # suggestCanonical(cls, config) → Suggestion | null

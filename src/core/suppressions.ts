@@ -30,22 +30,20 @@ export function makeLineSuppressor(content: string): (line: number) => boolean {
   return (line) => suppressed.has(line);
 }
 
-export function indexToLineCol(
-  content: string,
-  index: number,
-): { line: number; col: number } {
-  let line = 1;
-  let lastNewline = -1;
-  const end = Math.min(index, content.length);
-  for (let i = 0; i < end; i++) {
-    if (content[i] === '\n') {
-      line++;
-      lastNewline = i;
-    }
+export function createPositionLookup(content: string) {
+  const lineStarts = [0];
+  for (let i = 0; i < content.length; i++) {
+    if (content[i] === '\n') lineStarts.push(i + 1);
   }
-  return { line, col: index - lastNewline };
-}
 
-export function lineAt(content: string, offset: number): number {
-  return indexToLineCol(content, offset).line;
+  return (index: number): { line: number; col: number } => {
+    let low = 0;
+    let high = lineStarts.length;
+    while (low + 1 < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (lineStarts[mid] <= index) low = mid;
+      else high = mid;
+    }
+    return { line: low + 1, col: index - lineStarts[low] + 1 };
+  };
 }

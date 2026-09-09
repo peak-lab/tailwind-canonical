@@ -1,4 +1,4 @@
-import { lineAt } from './suppressions.js';
+import { createPositionLookup } from './suppressions.js';
 
 export type ClassStringOpts = {
   functionNames?: string[];
@@ -96,7 +96,7 @@ function transformCallContent(
   content: string,
   start: number,
   transform: (s: string) => string,
-  isSuppressed?: (line: number) => boolean,
+  isSuppressedAt?: (offset: number) => boolean,
 ): { processed: string; consumed: number; count: number } {
   const scanned = scanCallStrings(content, start);
   const original = content.slice(start, start + scanned.consumed);
@@ -110,7 +110,7 @@ function transformCallContent(
 
   for (const string of scanned.strings) {
     parts.push(content.slice(pos, string.start));
-    const out = isSuppressed?.(lineAt(content, string.start - 1))
+    const out = isSuppressedAt?.(string.start - 1)
       ? string.value
       : transform(string.value);
     if (out !== string.value) count++;
@@ -120,6 +120,15 @@ function transformCallContent(
   parts.push(content.slice(pos, start + scanned.consumed));
 
   return { processed: parts.join(''), consumed: scanned.consumed, count };
+}
+
+function offsetSuppressor(
+  content: string,
+  isSuppressed?: (line: number) => boolean,
+): ((offset: number) => boolean) | undefined {
+  if (!isSuppressed) return undefined;
+  const positionAt = createPositionLookup(content);
+  return (offset) => isSuppressed(positionAt(offset).line);
 }
 
 export function replaceClassStrings(
@@ -134,6 +143,7 @@ export function replaceClassStrings(
   let count = 0;
 
   const isSuppressed = opts.isSuppressed;
+  const isAttributeSuppressed = offsetSuppressor(content, isSuppressed);
 
   result = result.replace(
     buildAttrRegex(attrNames),
@@ -159,9 +169,7 @@ export function replaceClassStrings(
             ? "'"
             : '`';
       const attrOffset = offset + before.length;
-      const out = isSuppressed?.(lineAt(content, attrOffset))
-        ? raw
-        : transform(raw);
+      const out = isAttributeSuppressed?.(attrOffset) ? raw : transform(raw);
       if (out !== raw) count++;
       return `${before}${attr}=${open ?? ''}${q}${out}${q}${close ?? ''}`;
     },
@@ -176,6 +184,7 @@ export function replaceClassStrings(
   );
   const buf: string[] = [];
   let pos = 0;
+  const isCallSuppressed = offsetSuppressor(result, isSuppressed);
 
   for (const m of result.matchAll(funcRe)) {
     const callStart = (m.index ?? 0) + m[0].length;
@@ -185,7 +194,7 @@ export function replaceClassStrings(
       processed,
       consumed,
       count: c,
-    } = transformCallContent(result, callStart, transform, isSuppressed);
+    } = transformCallContent(result, callStart, transform, isCallSuppressed);
     buf.push(processed);
     pos = callStart + consumed;
     count += c;

@@ -1,10 +1,5 @@
-import {
-  existsSync,
-  watch as fsWatch,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
 import { toClassStringOpts } from '../core/class-strings.js';
 import {
@@ -14,7 +9,6 @@ import {
 } from '../core/config.js';
 import {
   analyzeConsistencyFiles,
-  type ConsistencyReport,
   toConsistencyOptions,
 } from '../core/consistency.js';
 import { dedupeContent } from '../core/deduplicator.js';
@@ -24,9 +18,24 @@ import type { Config } from '../core/rules.js';
 import { resolveTargets } from '../core/scanner.js';
 import { sortContent } from '../core/sorter.js';
 import { analyzeTyposFile, type TypoFinding } from '../core/typos.js';
+import { errMsg, pluralize, timestamp } from './format.js';
+import {
+  fileLocations,
+  logAnalyzeText,
+  logFindings,
+  logTransformCounts,
+  logTyposText,
+  logWatchFindings,
+  type SarifReport,
+  type SarifResult,
+  sarifDocument,
+  scaleClass,
+  writeJson,
+} from './reporters.js';
+import type { FileCounts, Reporter, RunResult, Sink } from './types.js';
+import { startWatch } from './watch.js';
 
-const SARIF_SCHEMA =
-  'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json';
+export type { RunResult, Sink } from './types.js';
 
 const USAGE =
   'Usage: tailwind-canonical [--fix] [--merge] [--dedup] [--sort] [--check] [--analyze] [--typos] [--watch] [--reporter json|sarif] <dir|file> [dir|file...]\n       tailwind-canonical init';
@@ -78,21 +87,11 @@ const HELP_TEXT = [
   'after transforms (fix → dedup → merge → sort → typo scan); alone it only scans.',
 ].join('\n');
 
-export type Sink = {
-  log: (s: string) => void;
-  error: (s: string) => void;
-  write: (s: string) => void;
-};
-
 const defaultSink: Sink = {
   log: (s) => console.log(s),
   error: (s) => console.error(s),
   write: (s) => process.stdout.write(s),
 };
-
-export type RunResult = { exitCode: number; watching?: boolean };
-
-type Reporter = 'text' | 'json' | 'sarif';
 
 type Flags = {
   fix: boolean;
@@ -112,13 +111,6 @@ type Flags = {
   hasExplicitReporter: boolean;
   hasExplicitWatch: boolean;
   hasExplicitCheck: boolean;
-};
-
-type FileCounts = {
-  fixed: number;
-  deduped: number;
-  merged: number;
-  sorted: number;
 };
 
 type JsonTyposReport = {
@@ -153,89 +145,7 @@ type JsonFindingsReport = {
   findings: JsonFinding[];
 };
 
-type SarifReport = {
-  $schema: string;
-  version: string;
-  runs: Array<{
-    tool: {
-      driver: {
-        name: string;
-        informationUri: string;
-        rules: Array<{
-          id: string;
-          name: string;
-          shortDescription: { text: string };
-        }>;
-      };
-    };
-    results: Array<{
-      ruleId: string;
-      message: { text: string };
-      locations: Array<{
-        physicalLocation: {
-          artifactLocation: { uri: string };
-          region: { startLine: number; startColumn: number };
-        };
-      }>;
-    }>;
-  }>;
-};
-
-type SarifRule = SarifReport['runs'][0]['tool']['driver']['rules'][0];
-type SarifResult = SarifReport['runs'][0]['results'][0];
-
 const KNOWN_CLASS_FUNCTIONS = ['cn', 'clsx', 'cva'] as const;
-const DEFAULT_ANALYZE_TEXT_OPTIONS = {
-  maxScaleGroups: 8,
-  maxScaleValues: 5,
-  maxRareValues: 12,
-  maxPatterns: 10,
-};
-
-function sarifDocument(
-  rules: SarifRule[],
-  results: SarifResult[],
-): SarifReport {
-  return {
-    $schema: SARIF_SCHEMA,
-    version: '2.1.0',
-    runs: [
-      {
-        tool: {
-          driver: {
-            name: 'tailwind-canonical',
-            informationUri: 'https://github.com/peak-lab/tailwind-canonical',
-            rules,
-          },
-        },
-        results,
-      },
-    ],
-  };
-}
-
-function fileLocations(files: string[]): SarifResult['locations'] {
-  return files.map((uri) => ({
-    physicalLocation: {
-      artifactLocation: { uri },
-      region: { startLine: 1, startColumn: 1 },
-    },
-  }));
-}
-
-function errMsg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-function pluralize(n: number, word: string): string {
-  return `${n} ${word}${n !== 1 ? 's' : ''}`;
-}
-
-function timestamp(): string {
-  const d = new Date();
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `[${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}]`;
-}
 
 const REPORTERS: readonly Reporter[] = ['text', 'json', 'sarif'];
 const MODE_FLAGS = [
@@ -430,19 +340,6 @@ function collectTypos(
   return { findings, hadError };
 }
 
-function logTyposText(findings: TypoFinding[], sink: Sink): void {
-  for (const f of findings) {
-    sink.log(
-      `  ${f.file}:${f.line}:${f.col}  ${f.original} → ${f.suggestion} [typo]`,
-    );
-  }
-  if (findings.length === 0) {
-    sink.log('✓ No likely typos found');
-  } else {
-    sink.log(`\n✖ Found ${pluralize(findings.length, 'likely typo')}`);
-  }
-}
-
 function typoSarifDocument(findings: TypoFinding[]): SarifReport {
   return sarifDocument(
     [
@@ -482,12 +379,12 @@ function runTypos(
       total: findings.length,
       typos: findings,
     };
-    sink.write(`${JSON.stringify(report, null, 2)}\n`);
+    writeJson(sink, report);
     return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
   }
 
   if (reporter === 'sarif') {
-    sink.write(`${JSON.stringify(typoSarifDocument(findings), null, 2)}\n`);
+    writeJson(sink, typoSarifDocument(findings));
     return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
   }
 
@@ -549,62 +446,8 @@ function processFile(
   return counts;
 }
 
-const TRANSFORM_LABELS: ReadonlyArray<{
-  key: keyof FileCounts;
-  applied: string;
-  pending: string;
-  unit: string;
-}> = [
-  {
-    key: 'fixed',
-    applied: 'fixed ',
-    pending: 'would fix',
-    unit: 'replacement',
-  },
-  {
-    key: 'deduped',
-    applied: 'deduped',
-    pending: 'would dedup',
-    unit: 'class string',
-  },
-  {
-    key: 'merged',
-    applied: 'merged ',
-    pending: 'would merge',
-    unit: 'conflict',
-  },
-  {
-    key: 'sorted',
-    applied: 'sorted ',
-    pending: 'would sort',
-    unit: 'class string',
-  },
-];
-
-function logTransformCounts(
-  counts: FileCounts,
-  file: string,
-  check: boolean,
-  sink: Sink,
-): void {
-  for (const { key, applied, pending, unit } of TRANSFORM_LABELS) {
-    const count = counts[key];
-    if (count > 0) {
-      sink.log(
-        `  ${check ? pending : applied} ${file} (${pluralize(count, unit)})`,
-      );
-    }
-  }
-}
-
 function totalOf(c: FileCounts): number {
   return c.fixed + c.deduped + c.merged + c.sorted;
-}
-
-function scaleClass(property: string, value: string): string {
-  return value.startsWith('-')
-    ? `-${property}-${value.slice(1)}`
-    : `${property}-${value}`;
 }
 
 function findUnconfiguredClassFunctions(
@@ -629,135 +472,6 @@ function findUnconfiguredClassFunctions(
   }
 
   return [...found].sort();
-}
-
-function compactPath(file: string): string {
-  const normalized = file.replace(/\\/g, '/');
-  const parts = normalized.split('/');
-  if (parts.length <= 4) return normalized;
-  return `.../${parts.slice(-4).join('/')}`;
-}
-
-function withMore<T>(
-  values: T[],
-  limit: number,
-  format: (value: T) => string,
-): string {
-  const shown = values.slice(0, limit).map(format);
-  const remaining = values.length - shown.length;
-  if (remaining > 0) shown.push(`+${remaining} more`);
-  return shown.join(', ');
-}
-
-function scaleValueSummary(
-  property: string,
-  value: { value: string; count: number; files: string[] },
-): string {
-  return `${scaleClass(property, value.value)} (${pluralize(value.count, 'use')}, ${pluralize(value.files.length, 'file')})`;
-}
-
-function scaleTotalUses(
-  scale: ConsistencyReport['scaleInconsistencies'][number],
-): number {
-  return scale.values.reduce((sum, value) => sum + value.count, 0);
-}
-
-function logAnalyzeText(
-  report: ConsistencyReport,
-  issueCount: number,
-  config: Config,
-  sink: Sink,
-): void {
-  const textOptions = {
-    maxScaleGroups:
-      config.analyze?.maxScaleGroups ??
-      DEFAULT_ANALYZE_TEXT_OPTIONS.maxScaleGroups,
-    maxScaleValues:
-      config.analyze?.maxScaleValues ??
-      DEFAULT_ANALYZE_TEXT_OPTIONS.maxScaleValues,
-    maxRareValues:
-      config.analyze?.maxRareValues ??
-      DEFAULT_ANALYZE_TEXT_OPTIONS.maxRareValues,
-    maxPatterns:
-      config.analyze?.maxPatterns ?? DEFAULT_ANALYZE_TEXT_OPTIONS.maxPatterns,
-  };
-
-  sink.log('tailwind-canonical analyze');
-  sink.log(`Files analyzed: ${report.filesAnalyzed}`);
-  sink.log(
-    `Issue groups: ${issueCount} (${pluralize(report.colorVariants.length, 'color')}, ${pluralize(report.scaleInconsistencies.length, 'scale')}, ${pluralize(report.combinations.length, 'pattern')})`,
-  );
-  if (report.rareScaleValues.length > 0) {
-    sink.log(`Rare values: ${report.rareScaleValues.length}`);
-  }
-
-  if (issueCount === 0) {
-    sink.log('\nNo cross-file inconsistencies found');
-    return;
-  }
-
-  if (report.colorVariants.length > 0) {
-    sink.log('\nColor variants');
-    for (const group of report.colorVariants) {
-      const tokens = group.variants
-        .map((v) => `${group.property}-${v.token} x${v.count}`)
-        .join(', ');
-      sink.log(`  - ${group.property}/${group.family}: ${tokens}`);
-    }
-  }
-
-  if (report.scaleInconsistencies.length > 0) {
-    sink.log('\nScale inconsistency groups');
-    const scales = [...report.scaleInconsistencies].sort(
-      (a, b) =>
-        scaleTotalUses(b) - scaleTotalUses(a) ||
-        a.property.localeCompare(b.property),
-    );
-    for (const scale of scales.slice(0, textOptions.maxScaleGroups)) {
-      const totalUses = scaleTotalUses(scale);
-      const files = new Set(scale.values.flatMap((value) => value.files));
-      sink.log(
-        `  - ${scale.property}: ${scale.values.length} values, ${totalUses} uses, ${pluralize(files.size, 'file')}`,
-      );
-      sink.log(
-        `    Top: ${withMore(scale.values, textOptions.maxScaleValues, (value) => scaleValueSummary(scale.property, value))}`,
-      );
-    }
-    const remaining = scales.length - textOptions.maxScaleGroups;
-    if (remaining > 0) sink.log(`  - +${remaining} more scale groups`);
-  }
-
-  if (report.rareScaleValues.length > 0) {
-    sink.log('\nRare scale values');
-    for (const rare of report.rareScaleValues.slice(
-      0,
-      textOptions.maxRareValues,
-    )) {
-      const example = rare.files[0]
-        ? `; e.g. ${compactPath(rare.files[0])}`
-        : '';
-      sink.log(
-        `  - ${rare.className}: ${pluralize(rare.count, 'use')} in ${pluralize(rare.files.length, 'file')} (${rare.propertyCount} ${rare.property} uses total)${example}`,
-      );
-    }
-    const remaining = report.rareScaleValues.length - textOptions.maxRareValues;
-    if (remaining > 0) sink.log(`  - +${remaining} more rare values`);
-  }
-
-  if (report.combinations.length > 0) {
-    sink.log('\nRepeated patterns');
-    for (const combo of report.combinations.slice(0, textOptions.maxPatterns)) {
-      sink.log(
-        `  - Pattern: "${combo.classes.join(' ')}" repeated in ${pluralize(combo.files.length, 'file')}`,
-      );
-    }
-    const remaining = report.combinations.length - textOptions.maxPatterns;
-    if (remaining > 0) sink.log(`  - +${remaining} more repeated patterns`);
-  }
-
-  sink.log(
-    `\nFound ${pluralize(issueCount, 'consistency issue')} across ${pluralize(report.filesAnalyzed, 'file')}`,
-  );
 }
 
 function runAnalyze(
@@ -792,7 +506,7 @@ function runAnalyze(
   }
 
   if (reporter === 'json') {
-    sink.write(`${JSON.stringify(report, null, 2)}\n`);
+    writeJson(sink, report);
     return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
   }
 
@@ -871,73 +585,12 @@ function runAnalyze(
       ],
       results,
     );
-    sink.write(`${JSON.stringify(sarifOutput, null, 2)}\n`);
+    writeJson(sink, sarifOutput);
     return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
   }
 
   logAnalyzeText(report, issueCount, config, sink);
   return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
-}
-
-function startWatch(
-  files: string[],
-  flags: Flags,
-  config: Config,
-  twMerge: ((classes: string) => string) | undefined,
-  sink: Sink,
-): RunResult {
-  const transforming = flags.fix || flags.dedup || flags.merge || flags.sort;
-  const fileSet = new Set(files);
-  const timers = new Map<string, ReturnType<typeof setTimeout>>();
-  const dirs = new Set<string>(files.map((f) => dirname(f)));
-
-  sink.log(`Watching ${pluralize(files.length, 'file')}... (Ctrl+C to stop)`);
-
-  for (const dir of dirs) {
-    fsWatch(dir, { recursive: true }, (_, filename) => {
-      if (!filename) return;
-      const full = resolve(dir, filename);
-      if (!fileSet.has(full)) return;
-      clearTimeout(timers.get(full));
-      timers.set(
-        full,
-        setTimeout(() => {
-          if (transforming) {
-            try {
-              const total = totalOf(processFile(full, flags, config, twMerge));
-              if (total > 0) {
-                sink.log(
-                  `${timestamp()} ${full} — ${pluralize(total, 'change')} applied`,
-                );
-              }
-            } catch (err) {
-              sink.error(`${timestamp()} ${full} — error: ${errMsg(err)}`);
-            }
-          } else {
-            const findings = analyzeFile(full, config);
-            if (findings.length > 0) {
-              sink.log(
-                `${timestamp()} ${full} — ${pluralize(findings.length, 'finding')}`,
-              );
-              for (const f of findings) {
-                const tag = f.suggestion.isCustomToken ? ' [custom token]' : '';
-                sink.log(
-                  `  ${f.line}:${f.col}  ${f.suggestion.original} → ${f.suggestion.canonical}${tag}`,
-                );
-              }
-            }
-          }
-        }, 50),
-      );
-    });
-  }
-
-  process.once('SIGINT', () => {
-    sink.log('\nWatcher stopped.');
-    process.exit(0);
-  });
-
-  return { exitCode: 0, watching: true };
 }
 
 function runInit(cwd: string, sink: Sink): RunResult {
@@ -1094,14 +747,7 @@ export async function run(
         } else {
           const findings = analyzeFile(file, config);
           allFindings.push(...findings);
-          if (flags.reporter === 'text') {
-            for (const f of findings) {
-              const tag = f.suggestion.isCustomToken ? ' [custom token]' : '';
-              sink.log(
-                `  ${f.file}:${f.line}:${f.col}  ${f.suggestion.original} → ${f.suggestion.canonical}${tag}`,
-              );
-            }
-          }
+          if (flags.reporter === 'text') logFindings(findings, sink);
         }
       } catch (err) {
         hadError = true;
@@ -1110,7 +756,26 @@ export async function run(
     }
   }
 
-  if (watching) return startWatch(files, flags, config, twMerge, sink);
+  if (watching) {
+    return startWatch({
+      files,
+      sink,
+      processFile: (file) => {
+        if (transforming) {
+          const total = totalOf(processFile(file, flags, config, twMerge));
+          if (total > 0) {
+            sink.log(
+              `${timestamp()} ${file} — ${pluralize(total, 'change')} applied`,
+            );
+          }
+          return;
+        }
+
+        const findings = analyzeFile(file, config);
+        logWatchFindings(file, findings, timestamp(), sink);
+      },
+    });
+  }
 
   if (transforming) {
     const typoResult = flags.typos
@@ -1138,7 +803,7 @@ export async function run(
         report.typoTotal = typoResult.findings.length;
         report.typos = typoResult.findings;
       }
-      sink.write(`${JSON.stringify(report, null, 2)}\n`);
+      writeJson(sink, report);
       return { exitCode };
     }
 
@@ -1146,7 +811,7 @@ export async function run(
       const doc = typoResult
         ? typoSarifDocument(typoResult.findings)
         : sarifDocument([], []);
-      sink.write(`${JSON.stringify(doc, null, 2)}\n`);
+      writeJson(sink, doc);
       return { exitCode };
     }
 
@@ -1188,7 +853,7 @@ export async function run(
         isCustomToken: f.suggestion.isCustomToken,
       })),
     };
-    sink.write(`${JSON.stringify(report, null, 2)}\n`);
+    writeJson(sink, report);
     return { exitCode: totalFindings > 0 || hadError ? 1 : 0 };
   }
 
@@ -1218,7 +883,7 @@ export async function run(
         ],
       })),
     );
-    sink.write(`${JSON.stringify(sarifOutput, null, 2)}\n`);
+    writeJson(sink, sarifOutput);
     return { exitCode: totalFindings > 0 || hadError ? 1 : 0 };
   }
 

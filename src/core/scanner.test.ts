@@ -68,6 +68,35 @@ test('resolveTargets - glob patterns', async (t) => {
     assert.ok(!names.includes('src/generated/schema.ts'));
   });
 
+  await t.test('globstar exclusions match whole path segments', async () => {
+    const directory = join(root, 'src/globstar');
+    mkdirSync(join(directory, 'nested'), { recursive: true });
+    for (const file of [
+      'foo.ts',
+      'afoo.ts',
+      'nested/foo.ts',
+      'nested/afoo.ts',
+    ]) {
+      writeFileSync(join(directory, file), '');
+    }
+
+    const pattern = `${directory}/**/foo.ts`;
+    const included = await resolveTargets([pattern]);
+    const remaining = await resolveTargets([directory, `!${pattern}`]);
+    assert.deepStrictEqual(included, [
+      join(directory, 'foo.ts'),
+      join(directory, 'nested/foo.ts'),
+    ]);
+    assert.deepStrictEqual(remaining, [
+      join(directory, 'afoo.ts'),
+      join(directory, 'nested/afoo.ts'),
+    ]);
+    assert.deepStrictEqual(
+      await resolveTargets([directory, '!**/foo.ts']),
+      remaining,
+    );
+  });
+
   await t.test('ignores node_modules', async () => {
     const files = await resolveTargets([`${root}/**/*.tsx`]);
     const names = files.map(rel);

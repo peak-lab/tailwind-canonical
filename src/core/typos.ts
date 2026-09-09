@@ -5,7 +5,7 @@ import {
 } from './class-strings.js';
 import { parseColorClass, TAILWIND_COLORS } from './lexicon.js';
 import type { Config } from './rules.js';
-import { getSuppressedLines, indexToLineCol } from './suppressions.js';
+import { createPositionLookup, getSuppressedLines } from './suppressions.js';
 
 export type TypoFinding = {
   file: string;
@@ -68,6 +68,7 @@ export function analyzeTyposContent(
 ): TypoFinding[] {
   const findings: TypoFinding[] = [];
   const suppressed = getSuppressedLines(content);
+  const positionAt = createPositionLookup(content);
   const opts = toClassStringOpts(config);
   const extraColors = new Set(config.extraColors ?? []);
 
@@ -76,7 +77,7 @@ export function analyzeTyposContent(
       const typo = detectTypo(clsMatch[0], extraColors);
       if (!typo) continue;
       const index = start + (clsMatch.index ?? 0);
-      const { line, col } = indexToLineCol(content, index);
+      const { line, col } = positionAt(index);
       if (suppressed.has(line)) continue;
       findings.push({
         file: filePath,

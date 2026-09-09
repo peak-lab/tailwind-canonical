@@ -31,9 +31,13 @@ export function globToRegex(pattern: string): RegExp {
   while (i < pattern.length) {
     const c = pattern[i];
     if (c === '*' && pattern[i + 1] === '*') {
-      re += '.*';
       i += 2;
-      if (pattern[i] === '/') i++;
+      if (pattern[i] === '/') {
+        re += '(?:[^/]+/)*';
+        i++;
+      } else {
+        re += '.*';
+      }
     } else if (c === '*') {
       re += '[^/]*';
       i++;

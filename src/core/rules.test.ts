@@ -580,6 +580,24 @@ test('suggestCanonical - opacity values', async (t: TestContext) => {
     });
   });
 
+  await t.test(
+    'opacity-[0.049] returns null rather than rounding to opacity-5',
+    () => {
+      assert.strictEqual(suggestCanonical('opacity-[0.049]'), null);
+    },
+  );
+
+  await t.test(
+    'opacity precision artifacts preserve an exact scale value',
+    () => {
+      assert.deepEqual(suggestCanonical('opacity-[0.7000000000000001]'), {
+        original: 'opacity-[0.7000000000000001]',
+        canonical: 'opacity-70',
+        isCustomToken: false,
+      });
+    },
+  );
+
   await t.test('opacity-[50] returns null (>1 is not a fraction)', () => {
     assert.strictEqual(suggestCanonical('opacity-[50]'), null);
   });
