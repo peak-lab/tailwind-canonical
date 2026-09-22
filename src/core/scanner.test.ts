@@ -97,6 +97,17 @@ test('resolveTargets - glob patterns', async (t) => {
     );
   });
 
+  await t.test('negation with wildcards inside braces', async () => {
+    const files = await resolveTargets([
+      `${root}/src/**/*.ts`,
+      `!${root}/src/{generated/*.ts,utils/f?rmat.ts}`,
+    ]);
+    const names = files.map(rel);
+    assert.ok(names.includes('src/index.ts'));
+    assert.ok(!names.includes('src/utils/format.ts'));
+    assert.ok(!names.includes('src/generated/schema.ts'));
+  });
+
   await t.test('ignores node_modules', async () => {
     const files = await resolveTargets([`${root}/**/*.tsx`]);
     const names = files.map(rel);

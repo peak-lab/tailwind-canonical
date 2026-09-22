@@ -24,6 +24,17 @@ export function isGlob(target: string): boolean {
   return target.includes('*') || target.includes('?') || target.includes('{');
 }
 
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+}
+
+function wildcardToRegex(text: string): string {
+  return text
+    .split('*')
+    .map((part) => part.split('?').map(escapeRegex).join('[^/]'))
+    .join('[^/]*');
+}
+
 export function globToRegex(pattern: string): RegExp {
   let i = 0;
   const anchored = pattern.startsWith('/') || /^[A-Za-z]:/.test(pattern);
@@ -44,24 +55,16 @@ export function globToRegex(pattern: string): RegExp {
     } else if (c === '?') {
       re += '[^/]';
       i++;
-    } else if (c === '{') {
+    } else if (c === '{' && pattern.indexOf('}', i) !== -1) {
       const close = pattern.indexOf('}', i);
-      if (close === -1) {
-        re += '\\{';
-        i++;
-      } else {
-        const alts = pattern
-          .slice(i + 1, close)
-          .split(',')
-          .map((a) => a.replace(/[.+^${}()|[\]\\]/g, '\\$&'));
-        re += `(?:${alts.join('|')})`;
-        i = close + 1;
-      }
-    } else if (/[.+^${}()|[\]\\]/.test(c)) {
-      re += `\\${c}`;
-      i++;
+      const alts = pattern
+        .slice(i + 1, close)
+        .split(',')
+        .map(wildcardToRegex);
+      re += `(?:${alts.join('|')})`;
+      i = close + 1;
     } else {
-      re += c;
+      re += escapeRegex(c);
       i++;
     }
   }
