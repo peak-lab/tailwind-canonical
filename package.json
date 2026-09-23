@@ -73,7 +73,7 @@
     "lefthook": "^2.1.12",
     "tailwind-merge": "^3.6.0",
     "tsx": "^4.23.13",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "eslint": ">=8.0.0",
