@@ -1,7 +1,11 @@
 import { createRequire } from 'node:module';
 import type { Rule } from 'eslint';
 import type { Literal, TemplateLiteral } from 'estree';
-import { type Config, suggestCanonical } from '../core/rules.js';
+import {
+  type Config,
+  type Suggestion,
+  suggestCanonical,
+} from '../core/rules.js';
 
 const _require = createRequire(import.meta.url);
 
@@ -102,6 +106,17 @@ function replacementText(node: StringNode, value: string): string {
   return quoteReplacement(node, value);
 }
 
+function replaceString(
+  fixer: Rule.RuleFixer,
+  node: StringNode,
+  value: string,
+): Rule.Fix {
+  const text = replacementText(node, value);
+  return node.quasiRange
+    ? fixer.replaceTextRange(node.quasiRange, text)
+    : fixer.replaceText(node, text);
+}
+
 const noArbitraryCanonical: Rule.RuleModule = {
   meta: {
     type: 'suggestion' as const,
@@ -137,16 +152,14 @@ const noArbitraryCanonical: Rule.RuleModule = {
 
     function checkLiteral(node: StringNode) {
       if (typeof node.value !== 'string') return;
-      const value = node.value;
-      const suggestions = [...value.matchAll(/\S+/g)]
-        .map((match) => suggestCanonical(match[0], config))
-        .filter((suggestion) => suggestion !== null);
+      const suggestions: Suggestion[] = [];
+      const corrected = node.value.replace(/\S+/g, (token) => {
+        const suggestion = suggestCanonical(token, config);
+        if (!suggestion) return token;
+        suggestions.push(suggestion);
+        return suggestion.canonical;
+      });
       if (suggestions.length === 0) return;
-
-      const corrected = value.replace(
-        /\S+/g,
-        (token) => suggestCanonical(token, config)?.canonical ?? token,
-      );
 
       const message =
         suggestions.length === 1
@@ -156,14 +169,7 @@ const noArbitraryCanonical: Rule.RuleModule = {
       context.report({
         node,
         message,
-        fix(fixer) {
-          if (node.quasiRange)
-            return fixer.replaceTextRange(
-              node.quasiRange,
-              replacementText(node, corrected),
-            );
-          return fixer.replaceText(node, replacementText(node, corrected));
-        },
+        fix: (fixer) => replaceString(fixer, node, corrected),
       });
     }
 
@@ -172,6 +178,14 @@ const noArbitraryCanonical: Rule.RuleModule = {
 };
 
 type TwMerge = (classes: string) => string;
+
+function loadTwMerge(): TwMerge | null {
+  try {
+    return (_require('tailwind-merge') as { twMerge: TwMerge }).twMerge;
+  } catch {
+    return null;
+  }
+}
 
 const noConflictingClasses: Rule.RuleModule = {
   meta: {
@@ -184,32 +198,17 @@ const noConflictingClasses: Rule.RuleModule = {
     },
   },
   create(context: Rule.RuleContext): Rule.RuleListener {
-    let twMerge: TwMerge | null = null;
-    let peerMissing = false;
-
-    try {
-      const mod = _require('tailwind-merge') as { twMerge: TwMerge };
-      twMerge = mod.twMerge;
-    } catch {
-      peerMissing = true;
-    }
+    const twMerge = loadTwMerge();
 
     function checkLiteral(node: StringNode) {
-      if (peerMissing || !twMerge) return;
+      if (!twMerge) return;
       if (typeof node.value !== 'string') return;
       const merged = twMerge(node.value);
       if (merged === node.value) return;
       context.report({
         node,
         message: `Conflicting Tailwind classes detected. Use '${merged}' instead.`,
-        fix(fixer) {
-          if (node.quasiRange)
-            return fixer.replaceTextRange(
-              node.quasiRange,
-              replacementText(node, merged),
-            );
-          return fixer.replaceText(node, replacementText(node, merged));
-        },
+        fix: (fixer) => replaceString(fixer, node, merged),
       });
     }
 
