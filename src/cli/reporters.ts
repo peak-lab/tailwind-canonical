@@ -15,7 +15,7 @@ const DEFAULT_ANALYZE_TEXT_OPTIONS = {
   maxPatterns: 10,
 };
 
-export type SarifReport = {
+type SarifReport = {
   $schema: string;
   version: string;
   runs: Array<{
@@ -43,8 +43,8 @@ export type SarifReport = {
   }>;
 };
 
-export type SarifRule = SarifReport['runs'][0]['tool']['driver']['rules'][0];
-export type SarifResult = SarifReport['runs'][0]['results'][0];
+type SarifRule = SarifReport['runs'][0]['tool']['driver']['rules'][0];
+type SarifResult = SarifReport['runs'][0]['results'][0];
 
 export function sarifDocument(
   rules: SarifRule[],
@@ -68,13 +68,132 @@ export function sarifDocument(
   };
 }
 
-export function fileLocations(files: string[]): SarifResult['locations'] {
-  return files.map((uri) => ({
+type SarifLocation = SarifResult['locations'][number];
+
+function pointLocation(uri: string, line: number, col: number): SarifLocation {
+  return {
     physicalLocation: {
       artifactLocation: { uri },
-      region: { startLine: 1, startColumn: 1 },
+      region: { startLine: line, startColumn: col },
     },
+  };
+}
+
+function fileLocations(files: string[]): SarifLocation[] {
+  return files.map((uri) => pointLocation(uri, 1, 1));
+}
+
+function uniqueFiles(entries: Array<{ files: string[] }>): string[] {
+  return [...new Set(entries.flatMap((entry) => entry.files))];
+}
+
+export function typoSarifDocument(findings: TypoFinding[]): SarifReport {
+  return sarifDocument(
+    [
+      {
+        id: 'color-typo',
+        name: 'ColorTypo',
+        shortDescription: {
+          text: 'Class color name is a likely typo of a Tailwind color',
+        },
+      },
+    ],
+    findings.map((f) => ({
+      ruleId: 'color-typo',
+      message: { text: `${f.original} → ${f.suggestion}` },
+      locations: [pointLocation(f.file, f.line, f.col)],
+    })),
+  );
+}
+
+export function findingsSarifDocument(findings: Finding[]): SarifReport {
+  return sarifDocument(
+    [
+      {
+        id: 'no-arbitrary-canonical',
+        name: 'NoArbitraryCanonical',
+        shortDescription: {
+          text: 'Arbitrary value has a canonical Tailwind equivalent',
+        },
+      },
+    ],
+    findings.map((f) => ({
+      ruleId: 'no-arbitrary-canonical',
+      message: {
+        text: `${f.suggestion.original} → ${f.suggestion.canonical}`,
+      },
+      locations: [pointLocation(f.file, f.line, f.col)],
+    })),
+  );
+}
+
+const ANALYZE_SARIF_RULES: SarifRule[] = [
+  {
+    id: 'color-variant-inconsistency',
+    name: 'ColorVariantInconsistency',
+    shortDescription: {
+      text: 'Multiple color variants of the same family used for one property',
+    },
+  },
+  {
+    id: 'scale-inconsistency',
+    name: 'ScaleInconsistency',
+    shortDescription: {
+      text: 'Inconsistent scale values used for the same property',
+    },
+  },
+  {
+    id: 'rare-scale-value',
+    name: 'RareScaleValue',
+    shortDescription: {
+      text: 'A scale value appears rarely within an otherwise common property',
+    },
+  },
+  {
+    id: 'repeated-combination',
+    name: 'RepeatedCombination',
+    shortDescription: {
+      text: 'Identical class combination repeated across files',
+    },
+  },
+];
+
+export function analyzeSarifDocument(report: ConsistencyReport): SarifReport {
+  const colorResults = report.colorVariants.map((group) => ({
+    ruleId: 'color-variant-inconsistency',
+    message: {
+      text: `${group.variants.length} ${group.family} color variants for ${group.property}: ${group.variants.map((v) => v.token).join(', ')}`,
+    },
+    locations: fileLocations(uniqueFiles(group.variants)),
   }));
+  const scaleResults = report.scaleInconsistencies.map((scale) => ({
+    ruleId: 'scale-inconsistency',
+    message: {
+      text: `${scale.property} inconsistency: ${scale.values.map((v) => scaleClass(scale.property, v.value)).join(' vs ')}`,
+    },
+    locations: fileLocations(uniqueFiles(scale.values)),
+  }));
+  const rareResults = report.rareScaleValues.map((rare) => ({
+    ruleId: 'rare-scale-value',
+    message: {
+      text: `${rare.className} is rare for ${rare.property}: ${rare.count} occurrence(s) in ${rare.files.length} file(s), within ${rare.propertyCount} ${rare.property} uses`,
+    },
+    locations: fileLocations(rare.files),
+  }));
+  const comboResults = report.combinations.map((combo) => ({
+    ruleId: 'repeated-combination',
+    message: {
+      text: `Repeated class combination: ${combo.classes.join(' ')}`,
+    },
+    locations: fileLocations(combo.files),
+  }));
+
+  return sarifDocument(ANALYZE_SARIF_RULES, [
+    ...colorResults,
+    ...scaleResults,
+    ...rareResults,
+    ...comboResults,
+  ]);
 }
 
 const TRANSFORM_LABELS: ReadonlyArray<{
@@ -167,7 +286,7 @@ export function writeJson(sink: Sink, value: unknown): void {
   sink.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-export function scaleClass(property: string, value: string): string {
+function scaleClass(property: string, value: string): string {
   return value.startsWith('-')
     ? `-${property}-${value.slice(1)}`
     : `${property}-${value}`;
