@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { isAbsolute, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { Finding } from '../core/analyzer.js';
 import type { ConsistencyReport } from '../core/consistency.js';
 import type { Config } from '../core/rules.js';
@@ -15,6 +18,20 @@ const DEFAULT_ANALYZE_TEXT_OPTIONS = {
   maxPatterns: 10,
 };
 
+type SarifLevel = 'error' | 'warning' | 'note';
+
+type SarifLocation = {
+  physicalLocation: {
+    artifactLocation: { uri: string; uriBaseId?: string };
+    region: {
+      startLine: number;
+      startColumn: number;
+      endLine?: number;
+      endColumn?: number;
+    };
+  };
+};
+
 export type SarifReport = {
   $schema: string;
   version: string;
@@ -22,23 +39,22 @@ export type SarifReport = {
     tool: {
       driver: {
         name: string;
+        version?: string;
         informationUri: string;
         rules: Array<{
           id: string;
           name: string;
           shortDescription: { text: string };
+          defaultConfiguration: { level: SarifLevel };
         }>;
       };
     };
     results: Array<{
       ruleId: string;
+      level?: SarifLevel;
       message: { text: string };
-      locations: Array<{
-        physicalLocation: {
-          artifactLocation: { uri: string };
-          region: { startLine: number; startColumn: number };
-        };
-      }>;
+      locations: SarifLocation[];
+      partialFingerprints?: Record<string, string>;
     }>;
   }>;
 };
@@ -46,10 +62,36 @@ export type SarifReport = {
 export type SarifRule = SarifReport['runs'][0]['tool']['driver']['rules'][0];
 export type SarifResult = SarifReport['runs'][0]['results'][0];
 
+export type SarifContext = { root: string; version?: string };
+
+const SRCROOT = '%SRCROOT%';
+const FINGERPRINT_KEY = 'tailwindCanonical/v1';
+
+function artifactLocation(
+  file: string,
+  root: string,
+): SarifLocation['physicalLocation']['artifactLocation'] {
+  const rel = relative(root, file);
+  if (rel === '' || /^\.\.(?:[\\/]|$)/.test(rel) || isAbsolute(rel)) {
+    return { uri: pathToFileURL(file).href };
+  }
+  const uri = rel.split(/[\\/]/).map(encodeURIComponent).join('/');
+  return { uri, uriBaseId: SRCROOT };
+}
+
+function fingerprint(parts: string[]): string {
+  return createHash('sha256').update(parts.join('\0')).digest('hex');
+}
+
 export function sarifDocument(
   rules: SarifRule[],
   results: SarifResult[],
+  ctx: SarifContext,
 ): SarifReport {
+  const levels = new Map(
+    rules.map((rule) => [rule.id, rule.defaultConfiguration.level]),
+  );
+  const occurrences = new Map<string, number>();
   return {
     $schema: SARIF_SCHEMA,
     version: '2.1.0',
@@ -58,17 +100,65 @@ export function sarifDocument(
         tool: {
           driver: {
             name: 'tailwind-canonical',
+            ...(ctx.version ? { version: ctx.version } : {}),
             informationUri: 'https://github.com/peak-lab/tailwind-canonical',
             rules,
           },
         },
-        results,
+        results: results.map((result) => {
+          const locations = result.locations.map((location) => ({
+            physicalLocation: {
+              ...location.physicalLocation,
+              artifactLocation: artifactLocation(
+                location.physicalLocation.artifactLocation.uri,
+                ctx.root,
+              ),
+            },
+          }));
+          const key = fingerprint([
+            result.ruleId,
+            result.message.text,
+            ...locations.map(
+              (location) => location.physicalLocation.artifactLocation.uri,
+            ),
+          ]);
+          const index = occurrences.get(key) ?? 0;
+          occurrences.set(key, index + 1);
+          return {
+            ruleId: result.ruleId,
+            level: result.level ?? levels.get(result.ruleId) ?? 'warning',
+            message: result.message,
+            locations,
+            partialFingerprints: {
+              [FINGERPRINT_KEY]: fingerprint([key, String(index)]),
+            },
+          };
+        }),
       },
     ],
   };
 }
 
-export function fileLocations(files: string[]): SarifResult['locations'] {
+export function pointLocation(
+  file: string,
+  line: number,
+  col: number,
+  length: number,
+): SarifLocation {
+  return {
+    physicalLocation: {
+      artifactLocation: { uri: file },
+      region: {
+        startLine: line,
+        startColumn: col,
+        endLine: line,
+        endColumn: col + length,
+      },
+    },
+  };
+}
+
+export function fileLocations(files: string[]): SarifLocation[] {
   return files.map((uri) => ({
     physicalLocation: {
       artifactLocation: { uri },

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
 import { toClassStringOpts } from '../core/class-strings.js';
 import {
@@ -26,6 +26,8 @@ import {
   logTransformCounts,
   logTyposText,
   logWatchFindings,
+  pointLocation,
+  type SarifContext,
   type SarifReport,
   type SarifResult,
   sarifDocument,
@@ -340,7 +342,37 @@ function collectTypos(
   return { findings, hadError };
 }
 
-function typoSarifDocument(findings: TypoFinding[]): SarifReport {
+function readVersion(): string {
+  const pkg = JSON.parse(
+    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  ) as { version: string };
+  return pkg.version;
+}
+
+function findProjectRoot(cwd: string): string {
+  let dir = resolve(cwd);
+  while (true) {
+    if (existsSync(join(dir, '.git'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return resolve(cwd);
+    dir = parent;
+  }
+}
+
+function sarifContext(cwd: string): SarifContext {
+  let version: string | undefined;
+  try {
+    version = readVersion();
+  } catch {
+    version = undefined;
+  }
+  return { root: findProjectRoot(cwd), version };
+}
+
+function typoSarifDocument(
+  findings: TypoFinding[],
+  ctx: SarifContext,
+): SarifReport {
   return sarifDocument(
     [
       {
@@ -349,20 +381,15 @@ function typoSarifDocument(findings: TypoFinding[]): SarifReport {
         shortDescription: {
           text: 'Class color name is a likely typo of a Tailwind color',
         },
+        defaultConfiguration: { level: 'warning' },
       },
     ],
     findings.map((f) => ({
       ruleId: 'color-typo',
       message: { text: `${f.original} → ${f.suggestion}` },
-      locations: [
-        {
-          physicalLocation: {
-            artifactLocation: { uri: f.file },
-            region: { startLine: f.line, startColumn: f.col },
-          },
-        },
-      ],
+      locations: [pointLocation(f.file, f.line, f.col, f.original.length)],
     })),
+    ctx,
   );
 }
 
@@ -371,6 +398,7 @@ function runTypos(
   config: Config,
   reporter: Reporter,
   sink: Sink,
+  sarif: SarifContext,
 ): RunResult {
   const { findings, hadError } = collectTypos(files, config, sink);
 
@@ -384,7 +412,7 @@ function runTypos(
   }
 
   if (reporter === 'sarif') {
-    writeJson(sink, typoSarifDocument(findings));
+    writeJson(sink, typoSarifDocument(findings, sarif));
     return { exitCode: findings.length > 0 || hadError ? 1 : 0 };
   }
 
@@ -479,6 +507,7 @@ function runAnalyze(
   config: Config,
   reporter: Reporter,
   sink: Sink,
+  sarif: SarifContext,
 ): RunResult {
   let hadError = false;
   const options = toConsistencyOptions(config);
@@ -560,6 +589,7 @@ function runAnalyze(
           shortDescription: {
             text: 'Multiple color variants of the same family used for one property',
           },
+          defaultConfiguration: { level: 'note' },
         },
         {
           id: 'scale-inconsistency',
@@ -567,6 +597,7 @@ function runAnalyze(
           shortDescription: {
             text: 'Inconsistent scale values used for the same property',
           },
+          defaultConfiguration: { level: 'note' },
         },
         {
           id: 'rare-scale-value',
@@ -574,6 +605,7 @@ function runAnalyze(
           shortDescription: {
             text: 'A scale value appears rarely within an otherwise common property',
           },
+          defaultConfiguration: { level: 'note' },
         },
         {
           id: 'repeated-combination',
@@ -581,9 +613,11 @@ function runAnalyze(
           shortDescription: {
             text: 'Identical class combination repeated across files',
           },
+          defaultConfiguration: { level: 'note' },
         },
       ],
       results,
+      sarif,
     );
     writeJson(sink, sarifOutput);
     return { exitCode: issueCount > 0 || hadError ? 1 : 0 };
@@ -623,10 +657,7 @@ export async function run(
 
   if (flags.version) {
     try {
-      const pkg = JSON.parse(
-        readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
-      ) as { version: string };
-      sink.log(pkg.version);
+      sink.log(readVersion());
       return { exitCode: 0 };
     } catch (err) {
       sink.error(`tailwind-canonical: could not read version: ${errMsg(err)}`);
@@ -710,12 +741,16 @@ export async function run(
     return { exitCode: 1 };
   }
 
-  if (flags.analyze) return runAnalyze(files, config, flags.reporter, sink);
+  const sarif = sarifContext(cwd);
+
+  if (flags.analyze) {
+    return runAnalyze(files, config, flags.reporter, sink, sarif);
+  }
 
   const transforming = flags.fix || flags.dedup || flags.merge || flags.sort;
 
   if (flags.typos && !transforming) {
-    return runTypos(files, config, flags.reporter, sink);
+    return runTypos(files, config, flags.reporter, sink, sarif);
   }
 
   const watching = flags.watch && !flags.typos && !flags.check;
@@ -809,8 +844,8 @@ export async function run(
 
     if (flags.reporter === 'sarif') {
       const doc = typoResult
-        ? typoSarifDocument(typoResult.findings)
-        : sarifDocument([], []);
+        ? typoSarifDocument(typoResult.findings, sarif)
+        : sarifDocument([], [], sarif);
       writeJson(sink, doc);
       return { exitCode };
     }
@@ -866,6 +901,7 @@ export async function run(
           shortDescription: {
             text: 'Arbitrary value has a canonical Tailwind equivalent',
           },
+          defaultConfiguration: { level: 'warning' },
         },
       ],
       allFindings.map((f) => ({
@@ -874,14 +910,10 @@ export async function run(
           text: `${f.suggestion.original} → ${f.suggestion.canonical}`,
         },
         locations: [
-          {
-            physicalLocation: {
-              artifactLocation: { uri: f.file },
-              region: { startLine: f.line, startColumn: f.col },
-            },
-          },
+          pointLocation(f.file, f.line, f.col, f.suggestion.original.length),
         ],
       })),
+      sarif,
     );
     writeJson(sink, sarifOutput);
     return { exitCode: totalFindings > 0 || hadError ? 1 : 0 };
