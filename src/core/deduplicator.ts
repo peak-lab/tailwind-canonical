@@ -49,54 +49,6 @@ interface BoxFamily {
   regex: RegExp;
 }
 
-const SIDE_MAP: Record<string, ReadonlyArray<keyof Box>> = {
-  p: ['t', 'b', 'l', 'r'],
-  m: ['t', 'b', 'l', 'r'],
-  border: ['t', 'b', 'l', 'r'],
-  inset: ['t', 'b', 'l', 'r'],
-  gap: ['t', 'b', 'l', 'r'],
-  'scroll-p': ['t', 'b', 'l', 'r'],
-  'scroll-m': ['t', 'b', 'l', 'r'],
-  px: ['l', 'r'],
-  mx: ['l', 'r'],
-  'border-x': ['l', 'r'],
-  'inset-x': ['l', 'r'],
-  'gap-x': ['l', 'r'],
-  'scroll-px': ['l', 'r'],
-  'scroll-mx': ['l', 'r'],
-  py: ['t', 'b'],
-  my: ['t', 'b'],
-  'border-y': ['t', 'b'],
-  'inset-y': ['t', 'b'],
-  'gap-y': ['t', 'b'],
-  'scroll-py': ['t', 'b'],
-  'scroll-my': ['t', 'b'],
-  pt: ['t'],
-  mt: ['t'],
-  'border-t': ['t'],
-  top: ['t'],
-  'scroll-pt': ['t'],
-  'scroll-mt': ['t'],
-  pb: ['b'],
-  mb: ['b'],
-  'border-b': ['b'],
-  bottom: ['b'],
-  'scroll-pb': ['b'],
-  'scroll-mb': ['b'],
-  pl: ['l'],
-  ml: ['l'],
-  'border-l': ['l'],
-  left: ['l'],
-  'scroll-pl': ['l'],
-  'scroll-ml': ['l'],
-  pr: ['r'],
-  mr: ['r'],
-  'border-r': ['r'],
-  right: ['r'],
-  'scroll-pr': ['r'],
-  'scroll-mr': ['r'],
-};
-
 const FAMILIES: BoxFamily[] = [
   {
     kind: 'p',
@@ -184,6 +136,20 @@ const FAMILIES: BoxFamily[] = [
   },
 ];
 
+const SIDE_MAP: Record<string, ReadonlyArray<keyof Box>> = {};
+for (const f of FAMILIES) {
+  const entries: Array<[string, ReadonlyArray<keyof Box>]> = [
+    [f.full, ['t', 'b', 'l', 'r']],
+    [f.x, ['l', 'r']],
+    [f.y, ['t', 'b']],
+    [f.t, ['t']],
+    [f.b, ['b']],
+    [f.l, ['l']],
+    [f.r, ['r']],
+  ];
+  for (const [prefix, sides] of entries) SIDE_MAP[prefix] ??= sides;
+}
+
 function parseBoxClass(
   cls: string,
 ): { family: BoxFamily; sides: Partial<Box> } | null {
@@ -234,39 +200,31 @@ type Corners = {
   br: string | null;
 };
 
+type Corner = keyof Corners;
+
+const CORNER_MAP: Record<string, ReadonlyArray<Corner>> = {
+  '': ['tl', 'tr', 'bl', 'br'],
+  t: ['tl', 'tr'],
+  b: ['bl', 'br'],
+  l: ['tl', 'bl'],
+  r: ['tr', 'br'],
+  tl: ['tl'],
+  tr: ['tr'],
+  bl: ['bl'],
+  br: ['br'],
+};
+
 function parseRoundedCorner(
   cls: string,
-): { corners: Partial<Record<keyof Corners, string>> } | null {
-  const sideM = cls.match(/^rounded-(tl|tr|bl|br|t|b|l|r)(?:-(.+))?$/);
-  if (sideM) {
-    const side = sideM[1];
-    const val = sideM[2] ?? '';
-    const c: Partial<Record<keyof Corners, string>> = {};
-    if (side === 't') {
-      c.tl = val;
-      c.tr = val;
-    } else if (side === 'b') {
-      c.bl = val;
-      c.br = val;
-    } else if (side === 'l') {
-      c.tl = val;
-      c.bl = val;
-    } else if (side === 'r') {
-      c.tr = val;
-      c.br = val;
-    } else {
-      c[side as keyof Corners] = val;
-    }
-    return { corners: c };
-  }
-
-  const allM = cls.match(/^rounded(?:-(.+))?$/);
-  if (allM) {
-    const val = allM[1] ?? '';
-    return { corners: { tl: val, tr: val, bl: val, br: val } };
-  }
-
-  return null;
+): Partial<Record<Corner, string>> | null {
+  const m =
+    cls.match(/^rounded-(tl|tr|bl|br|t|b|l|r)(?:-(.+))?$/) ??
+    cls.match(/^rounded()(?:-(.+))?$/);
+  if (!m) return null;
+  const value = m[2] ?? '';
+  const corners: Partial<Record<Corner, string>> = {};
+  for (const corner of CORNER_MAP[m[1]]) corners[corner] = value;
+  return corners;
 }
 
 function collapseCorners(c: Corners): string {
@@ -422,21 +380,14 @@ export function deduplicateClasses(classStr: string): string {
         boxGroups.set(family.kind, group);
       }
       group.classes.push(cls);
-      if (sides.t !== undefined) group.box.t = sides.t;
-      if (sides.b !== undefined) group.box.b = sides.b;
-      if (sides.l !== undefined) group.box.l = sides.l;
-      if (sides.r !== undefined) group.box.r = sides.r;
+      Object.assign(group.box, sides);
       continue;
     }
 
-    const roundedParsed = parseRoundedCorner(cls);
-    if (roundedParsed) {
+    const roundedCorners = parseRoundedCorner(cls);
+    if (roundedCorners) {
       cornersClasses.push(cls);
-      const { corners: c } = roundedParsed;
-      if (c.tl !== undefined) corners.tl = c.tl;
-      if (c.tr !== undefined) corners.tr = c.tr;
-      if (c.bl !== undefined) corners.bl = c.bl;
-      if (c.br !== undefined) corners.br = c.br;
+      Object.assign(corners, roundedCorners);
       continue;
     }
 
@@ -451,7 +402,6 @@ export function deduplicateClasses(classStr: string): string {
   if (positionWinner) result.push(positionWinner);
 
   for (const { family, box, classes: groupClasses } of boxGroups.values()) {
-    if (groupClasses.length === 0) continue;
     pushCollapsed(result, collapseBox(box, family), groupClasses);
   }
 
