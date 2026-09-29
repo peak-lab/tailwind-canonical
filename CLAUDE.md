@@ -33,7 +33,7 @@ Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 | `rules.ts` | Pure function `suggestCanonical(cls, config)` — the single source of truth for all replacement logic. No I/O. |
 | `analyzer.ts` | `analyzeContent(file, content, config)` — extracts `className` values via regex, maps each class through `suggestCanonical`, returns `Finding[]` with line/col. Re-exports `analyzeFile` from `io/`. |
 | `fixer.ts` | `fixContent(content, config)` — applies all `suggestCanonical` replacements, returns `{result,count}`. Re-exports `fixFile` from `io/`. |
-| `deduplicator.ts` | `deduplicateClasses(str)` — pure expand-apply-collapse for p/m/border-width/inset box families. Display/position last-wins. `dedupeContent()` wraps it; re-exports `dedupeFile` from `io/`. |
+| `deduplicator.ts` | `deduplicateClasses(str)` — pure expand-apply-collapse for p/m/border-width/inset box families. Display/position last-wins. Order-preserving: survivors keep their slot, collapsed shorthands take the first replaced slot; a no-op returns the input verbatim. `dedupeContent()` wraps it; re-exports `dedupeFile` from `io/`. |
 | `sorter.ts` | `sortClasses(str)` — stable sort by category (layout→position→display→flex/grid→sizing→border→spacing→typography→colors→effects→…→variants). `sortContent()` wraps it; re-exports `sortFile` from `io/`. |
 | `merger.ts` | `mergeContent(content, twMerge, opts)` — pure. Re-exports `mergeFile` from `io/` (async; dynamically imports `tailwind-merge`, an optional peer dep). |
 | `scanner.ts` | Pure glob helpers `globToRegex`/`isGlob` + `DEFAULT_EXTENSIONS`/`DEFAULT_IGNORE` + `ScanOptions`. Re-exports `scanFiles`/`resolveTargets` from `io/`. |

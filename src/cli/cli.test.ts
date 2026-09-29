@@ -1289,6 +1289,23 @@ test('run - --check --dedup --sort on a clean file exits 0 with no pending chang
   }
 });
 
+test('run - --check --dedup on an unsorted canonical file reports no pending changes (#128)', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const original =
+    '<div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 py-10" />';
+  writeFileSync(file, original, 'utf8');
+  const { sink, out } = captureSink();
+  try {
+    const result = await run(['--check', '--dedup', dir], dir, sink);
+    assert.strictEqual(result.exitCode, 0);
+    assert.ok(out.some((l) => l.includes('No pending changes')));
+    assert.strictEqual(readFileSync(file, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - a transform run writes nothing when --check reported no pending changes', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');

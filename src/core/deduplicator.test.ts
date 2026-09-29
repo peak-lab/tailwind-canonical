@@ -85,8 +85,8 @@ test('deduplicateClasses - padding shorthand', async (t: TestContext) => {
     assert.strictEqual(deduplicateClasses('p-4 px-2'), 'py-4 px-2');
   });
 
-  await t.test('p-4 py-2 → py-2 px-4', () => {
-    assert.strictEqual(deduplicateClasses('p-4 py-2'), 'py-2 px-4');
+  await t.test('p-4 py-2 → px-4 py-2', () => {
+    assert.strictEqual(deduplicateClasses('p-4 py-2'), 'px-4 py-2');
   });
 
   await t.test('px-4 py-4 → p-4 (collapsed)', () => {
@@ -118,8 +118,8 @@ test('deduplicateClasses - margin shorthand', async (t: TestContext) => {
     assert.strictEqual(deduplicateClasses('m-4 mx-2'), 'my-4 mx-2');
   });
 
-  await t.test('m-4 my-2 → my-2 mx-4', () => {
-    assert.strictEqual(deduplicateClasses('m-4 my-2'), 'my-2 mx-4');
+  await t.test('m-4 my-2 → mx-4 my-2', () => {
+    assert.strictEqual(deduplicateClasses('m-4 my-2'), 'mx-4 my-2');
   });
 
   await t.test('mx-4 my-4 → m-4', () => {
@@ -157,10 +157,10 @@ test('deduplicateClasses - border-width shorthand', async (t: TestContext) => {
     );
   });
 
-  await t.test('border-2 border-t-4 → border-x-2 border-t-4 border-b-2', () => {
+  await t.test('border-2 border-t-4 → border-x-2 border-b-2 border-t-4', () => {
     assert.strictEqual(
       deduplicateClasses('border-2 border-t-4'),
-      'border-x-2 border-t-4 border-b-2',
+      'border-x-2 border-b-2 border-t-4',
     );
   });
 
@@ -202,7 +202,7 @@ test('deduplicateClasses - inset shorthand', async (t: TestContext) => {
   await t.test('inset-4 top-0 → override top via last-wins', () => {
     assert.strictEqual(
       deduplicateClasses('inset-4 top-0'),
-      'inset-x-4 top-0 bottom-4',
+      'inset-x-4 bottom-4 top-0',
     );
   });
 
@@ -211,7 +211,7 @@ test('deduplicateClasses - inset shorthand', async (t: TestContext) => {
   });
 
   await t.test('top-4 alone unchanged', () => {
-    assert.strictEqual(deduplicateClasses('top-4 flex'), 'flex top-4');
+    assert.strictEqual(deduplicateClasses('top-4 flex'), 'top-4 flex');
   });
 });
 
@@ -224,8 +224,8 @@ test('deduplicateClasses - gap shorthand', async (t: TestContext) => {
     assert.strictEqual(deduplicateClasses('gap-4 gap-x-2'), 'gap-y-4 gap-x-2');
   });
 
-  await t.test('gap-4 gap-y-2 → gap-y-2 gap-x-4', () => {
-    assert.strictEqual(deduplicateClasses('gap-4 gap-y-2'), 'gap-y-2 gap-x-4');
+  await t.test('gap-4 gap-y-2 → gap-x-4 gap-y-2', () => {
+    assert.strictEqual(deduplicateClasses('gap-4 gap-y-2'), 'gap-x-4 gap-y-2');
   });
 
   await t.test('gap-4 gap-4 → gap-4 (exact dup)', () => {
@@ -235,7 +235,7 @@ test('deduplicateClasses - gap shorthand', async (t: TestContext) => {
   await t.test('different axes stay split (gap-x-4 gap-y-8)', () => {
     assert.strictEqual(
       deduplicateClasses('gap-x-4 gap-y-8'),
-      'gap-y-8 gap-x-4',
+      'gap-x-4 gap-y-8',
     );
   });
 
@@ -334,7 +334,7 @@ test('deduplicateClasses - rounded corner collapse', async (t: TestContext) => {
   await t.test('rounded-lg alone unchanged', () => {
     assert.strictEqual(
       deduplicateClasses('rounded-lg flex'),
-      'flex rounded-lg',
+      'rounded-lg flex',
     );
   });
 
@@ -576,4 +576,58 @@ test('dedupeFile', async (t: TestContext) => {
       unlinkSync(file);
     }
   });
+});
+
+test('deduplicateClasses - preserves order when nothing is removed (#128)', async (t: TestContext) => {
+  await t.test('flex items-center gap-3 unchanged', () => {
+    const s = 'flex items-center gap-3';
+    assert.strictEqual(deduplicateClasses(s), s);
+  });
+
+  await t.test('prettier-ordered string unchanged', () => {
+    const s = 'mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 py-10';
+    assert.strictEqual(deduplicateClasses(s), s);
+  });
+
+  await t.test(
+    'irregular whitespace is left verbatim when nothing changes',
+    () => {
+      const s = '  flex   items-center\tgap-3 ';
+      assert.strictEqual(deduplicateClasses(s), s);
+    },
+  );
+
+  await t.test('px-4 py-4 collapse keeps surrounding tokens in place', () => {
+    assert.strictEqual(
+      deduplicateClasses('flex px-4 items-center py-4 gap-2'),
+      'flex p-4 items-center gap-2',
+    );
+  });
+
+  await t.test(
+    'collapsed shorthand takes the slot of the first replaced token',
+    () => {
+      assert.strictEqual(
+        deduplicateClasses('text-sm py-2 pr-5 bg-white pl-5'),
+        'text-sm py-2 px-5 bg-white',
+      );
+    },
+  );
+
+  await t.test('display last-wins keeps the winner in place', () => {
+    assert.strictEqual(
+      deduplicateClasses('block items-center flex gap-2'),
+      'items-center flex gap-2',
+    );
+  });
+
+  await t.test(
+    'exact duplicate removal keeps first occurrence in place',
+    () => {
+      assert.strictEqual(
+        deduplicateClasses('text-sm flex text-sm gap-2'),
+        'text-sm flex gap-2',
+      );
+    },
+  );
 });
