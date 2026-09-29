@@ -375,42 +375,60 @@ function collapseResponsiveCascade(classes: string[]): string[] {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-function pushCollapsed(
-  result: string[],
-  collapsed: string,
+// Survivors keep their slot; new shorthands take the slot of the first token
+// they replace, so an unchanged group leaves the string byte-for-byte intact.
+function placeCollapsed(
+  slots: string[][],
   classes: string[],
+  indices: number[],
+  collapsed: string,
 ): void {
-  const original = [...new Set(classes)].join(' ');
-  result.push(
-    ...(collapsed === original ? original.split(' ') : collapsed.split(' ')),
-  );
+  const firstIndex = new Map<string, number>();
+  for (const i of indices) {
+    if (!firstIndex.has(classes[i])) firstIndex.set(classes[i], i);
+  }
+  const kept = new Set<number>();
+  const fresh: string[] = [];
+  for (const token of collapsed.split(' ')) {
+    const i = firstIndex.get(token);
+    if (i === undefined) fresh.push(token);
+    else kept.add(i);
+  }
+  for (const i of indices) slots[i] = kept.has(i) ? [classes[i]] : [];
+  if (fresh.length === 0) return;
+  const anchor = indices.find((i) => !kept.has(i)) ?? indices[0];
+  slots[anchor] = [...slots[anchor], ...fresh];
+}
+
+function keepLastOf(slots: string[][], indices: number[]): void {
+  for (const i of indices.slice(0, -1)) slots[i] = [];
 }
 
 export function deduplicateClasses(classStr: string): string {
-  let classes = classStr.split(/\s+/).filter(Boolean);
-  if (classes.length <= 1) return classStr;
+  const original = classStr.split(/\s+/).filter(Boolean);
+  if (original.length <= 1) return classStr;
 
-  classes = collapseResponsiveCascade(classes);
+  const classes = collapseResponsiveCascade(original);
+  const slots: string[][] = classes.map((cls) => [cls]);
 
-  let displayWinner: string | null = null;
-  let positionWinner: string | null = null;
+  const displayIndices: number[] = [];
+  const positionIndices: number[] = [];
   const seen = new Set<string>();
-  const others: string[] = [];
   const boxGroups = new Map<
     string,
-    { family: BoxFamily; box: Box; classes: string[] }
+    { family: BoxFamily; box: Box; indices: number[] }
   >();
   const corners: Corners = { tl: null, tr: null, bl: null, br: null };
-  const cornersClasses: string[] = [];
+  const cornerIndices: number[] = [];
 
-  for (const cls of classes) {
+  classes.forEach((cls, idx) => {
     if (DISPLAY_GROUP.has(cls)) {
-      displayWinner = cls;
-      continue;
+      displayIndices.push(idx);
+      return;
     }
     if (POSITION_GROUP.has(cls)) {
-      positionWinner = cls;
-      continue;
+      positionIndices.push(idx);
+      return;
     }
 
     const parsed = parseBoxClass(cls);
@@ -418,49 +436,48 @@ export function deduplicateClasses(classStr: string): string {
       const { family, sides } = parsed;
       let group = boxGroups.get(family.kind);
       if (!group) {
-        group = { family, box: { t: '', b: '', l: '', r: '' }, classes: [] };
+        group = { family, box: { t: '', b: '', l: '', r: '' }, indices: [] };
         boxGroups.set(family.kind, group);
       }
-      group.classes.push(cls);
+      group.indices.push(idx);
       if (sides.t !== undefined) group.box.t = sides.t;
       if (sides.b !== undefined) group.box.b = sides.b;
       if (sides.l !== undefined) group.box.l = sides.l;
       if (sides.r !== undefined) group.box.r = sides.r;
-      continue;
+      return;
     }
 
     const roundedParsed = parseRoundedCorner(cls);
     if (roundedParsed) {
-      cornersClasses.push(cls);
+      cornerIndices.push(idx);
       const { corners: c } = roundedParsed;
       if (c.tl !== undefined) corners.tl = c.tl;
       if (c.tr !== undefined) corners.tr = c.tr;
       if (c.bl !== undefined) corners.bl = c.bl;
       if (c.br !== undefined) corners.br = c.br;
-      continue;
+      return;
     }
 
-    if (!seen.has(cls)) {
-      seen.add(cls);
-      others.push(cls);
-    }
+    if (seen.has(cls)) slots[idx] = [];
+    else seen.add(cls);
+  });
+
+  keepLastOf(slots, displayIndices);
+  keepLastOf(slots, positionIndices);
+
+  for (const { family, box, indices } of boxGroups.values()) {
+    placeCollapsed(slots, classes, indices, collapseBox(box, family));
   }
 
-  const result: string[] = [];
-  if (displayWinner) result.push(displayWinner);
-  if (positionWinner) result.push(positionWinner);
-
-  for (const { family, box, classes: groupClasses } of boxGroups.values()) {
-    if (groupClasses.length === 0) continue;
-    pushCollapsed(result, collapseBox(box, family), groupClasses);
+  if (cornerIndices.length > 0) {
+    placeCollapsed(slots, classes, cornerIndices, collapseCorners(corners));
   }
 
-  if (cornersClasses.length > 0) {
-    pushCollapsed(result, collapseCorners(corners), cornersClasses);
-  }
-
-  result.push(...others);
-  return result.join(' ');
+  const result = slots.flat();
+  const unchanged =
+    result.length === original.length &&
+    result.every((cls, i) => cls === original[i]);
+  return unchanged ? classStr : result.join(' ');
 }
 
 export function dedupeContent(
