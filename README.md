@@ -349,10 +349,14 @@ left-2 right-2                  → inset-x-2
 | `h-[64px]` | `h-16` | Spacing scale ÷4 |
 | `w-[50%]` | `w-1/2` | Percentage fractions |
 | `opacity-[0.5]` | `opacity-50` | Opacity scale |
-| `text-[11px]` | `text-2xs` | Built-in extra token |
-| `text-[8px]`–`text-[10px]` | `text-3xs` | Built-in extra token |
+| `text-[11px]` | `text-2xs` | Requires `customTextTokens` |
+| `text-[8px]`–`text-[10px]` | `text-3xs` | Requires `customTextTokens` |
 
-`text-2xs` (11px) and `text-3xs` (8–10px) are part of the built-in text size map — they convert with no config. Override or extend the map via `customTextTokens`.
+`text-2xs` and `text-3xs` are not stock Tailwind tokens, so they are not in the built-in text size map — without config, `text-[11px]` and `text-[8px]`–`text-[10px]` are left untouched. Enable them with `customTextTokens`:
+
+```ts
+export default { customTextTokens: { 8: '3xs', 9: '3xs', 10: '3xs', 11: '2xs' } }
+```
 
 Non-divisible values (`h-[22px]`, `px-[7px]`) are left untouched.
 
