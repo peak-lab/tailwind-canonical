@@ -45,9 +45,7 @@ const TEXT_SIZE_MAP: Record<number, string> = {
   128: '9xl',
 };
 
-const BUILT_IN_TEXT_PX = new Set([
-  12, 14, 16, 18, 20, 24, 30, 36, 48, 60, 72, 96, 128,
-]);
+const BUILT_IN_TEXT_PX = new Set(Object.keys(TEXT_SIZE_MAP).map(Number));
 
 const ROUNDED_MAP: Record<number, string> = {
   2: 'sm',
@@ -234,6 +232,43 @@ function isMissingInV3(prefix: string, step: number): boolean {
   return !V3_SPACING_STEPS.has(step);
 }
 
+function textSuggestion(
+  cls: string,
+  px: number,
+  textTokens: Record<number, string>,
+): Suggestion | null {
+  const token = textTokens[px];
+  if (!token) return null;
+  return {
+    original: cls,
+    canonical: `text-${token}`,
+    isCustomToken: !BUILT_IN_TEXT_PX.has(px),
+  };
+}
+
+function spacingSuggestion(
+  cls: string,
+  prefix: string,
+  px: number,
+  spacingTokens: Record<number, string>,
+  v3: boolean,
+): Suggestion | null {
+  if (spacingTokens[px]) {
+    return {
+      original: cls,
+      canonical: `${prefix}-${spacingTokens[px]}`,
+      isCustomToken: true,
+    };
+  }
+  if (px % 4 !== 0) return null;
+  if (v3 && isMissingInV3(prefix, px / 4)) return null;
+  return {
+    original: cls,
+    canonical: `${prefix}-${px / 4}`,
+    isCustomToken: false,
+  };
+}
+
 export function suggestCanonical(
   cls: string,
   config: Config = {},
@@ -247,75 +282,29 @@ export function suggestCanonical(
   // text-[Npx]
   const textPxMatch = cls.match(/^text-\[(\d+)px\]$/);
   if (textPxMatch) {
-    const px = parseInt(textPxMatch[1], 10);
-    const token = textTokens[px];
-    if (!token) return null;
-    return {
-      original: cls,
-      canonical: `text-${token}`,
-      isCustomToken: !BUILT_IN_TEXT_PX.has(px),
-    };
+    return textSuggestion(cls, parseInt(textPxMatch[1], 10), textTokens);
   }
 
   // text-[N.Nrem]
   const textRemMatch = cls.match(/^text-\[(\d+(?:\.\d+)?)rem\]$/);
   if (textRemMatch) {
     const px = remToPx(parseFloat(textRemMatch[1]));
-    if (px === null) return null;
-    const token = textTokens[px];
-    if (!token) return null;
-    return {
-      original: cls,
-      canonical: `text-${token}`,
-      isCustomToken: !BUILT_IN_TEXT_PX.has(px),
-    };
+    return px === null ? null : textSuggestion(cls, px, textTokens);
   }
 
   // spacing-[Npx]
   const spacingPxMatch = cls.match(SPACING_PX_RE);
   if (spacingPxMatch) {
-    const prefix = spacingPxMatch[1];
     const px = parseInt(spacingPxMatch[2], 10);
-    if (spacingTokens[px]) {
-      return {
-        original: cls,
-        canonical: `${prefix}-${spacingTokens[px]}`,
-        isCustomToken: true,
-      };
-    }
-    if (px % 4 === 0) {
-      if (v3 && isMissingInV3(prefix, px / 4)) return null;
-      return {
-        original: cls,
-        canonical: `${prefix}-${px / 4}`,
-        isCustomToken: false,
-      };
-    }
-    return null;
+    return spacingSuggestion(cls, spacingPxMatch[1], px, spacingTokens, v3);
   }
 
   // spacing-[N.Nrem]
   const spacingRemMatch = cls.match(SPACING_REM_RE);
   if (spacingRemMatch) {
-    const prefix = spacingRemMatch[1];
     const px = remToPx(parseFloat(spacingRemMatch[2]));
     if (px === null) return null;
-    if (spacingTokens[px]) {
-      return {
-        original: cls,
-        canonical: `${prefix}-${spacingTokens[px]}`,
-        isCustomToken: true,
-      };
-    }
-    if (px % 4 === 0) {
-      if (v3 && isMissingInV3(prefix, px / 4)) return null;
-      return {
-        original: cls,
-        canonical: `${prefix}-${px / 4}`,
-        isCustomToken: false,
-      };
-    }
-    return null;
+    return spacingSuggestion(cls, spacingRemMatch[1], px, spacingTokens, v3);
   }
 
   // w/h/inset/etc-[N.N%]

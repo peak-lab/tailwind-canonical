@@ -179,15 +179,62 @@ function getVariantOrder(cls: string): number {
   return 3;
 }
 
-export function sortClasses(
-  classStr: string,
-  sortOrder?: SortCategory[],
-): string {
-  const classes = classStr.split(/\s+/).filter(Boolean);
-  if (classes.length <= 1) return classStr;
+const RE_ARBITRARY = /\[[^\]]*\]/g;
+const RE_IMPLAUSIBLE_CLASS = /^:|:$|["'`{}?]|^[&|]+$/;
 
-  const rank = buildRank(sortOrder?.length ? sortOrder : DEFAULT_SORT_ORDER);
+function isPlausibleClass(token: string): boolean {
+  return !RE_IMPLAUSIBLE_CLASS.test(token.replace(RE_ARBITRARY, '[]'));
+}
 
+type Atom = { text: string; start: number; end: number; fixed: boolean };
+
+function interpolationEnd(str: string, from: number): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let j = from + 1; j < str.length; j++) {
+    const ch = str[j];
+    if (quote) {
+      if (ch === '\\') j++;
+      else if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+    else if (ch === '{') depth++;
+    else if (ch === '}' && --depth === 0) return j + 1;
+  }
+  return str.length;
+}
+
+function splitAtoms(str: string): Atom[] {
+  const atoms: Atom[] = [];
+  let i = 0;
+  while (i < str.length) {
+    if (/\s/.test(str[i])) {
+      i++;
+      continue;
+    }
+    let j = i;
+    let interpolated = false;
+    while (j < str.length && !/\s/.test(str[j])) {
+      if (str.startsWith('${', j)) {
+        interpolated = true;
+        j = interpolationEnd(str, j);
+      } else j++;
+    }
+    const text = str.slice(i, j);
+    atoms.push({
+      text,
+      start: i,
+      end: j,
+      fixed: interpolated || !isPlausibleClass(text),
+    });
+    i = j;
+  }
+  return atoms;
+}
+
+function sortSegment(
+  classes: string[],
+  rank: (category: SortCategory | null) => number,
+): string[] {
   return classes
     .map((cls, i) => ({
       cls,
@@ -202,8 +249,40 @@ export function sortClasses(
       if (cd !== 0) return cd;
       return a.i - b.i;
     })
-    .map((x) => x.cls)
-    .join(' ');
+    .map((x) => x.cls);
+}
+
+export function sortClasses(
+  classStr: string,
+  sortOrder?: SortCategory[],
+): string {
+  const atoms = splitAtoms(classStr);
+  if (atoms.length <= 1) return classStr;
+
+  const rank = buildRank(sortOrder?.length ? sortOrder : DEFAULT_SORT_ORDER);
+
+  if (!atoms.some((a) => a.fixed))
+    return sortSegment(
+      atoms.map((a) => a.text),
+      rank,
+    ).join(' ');
+
+  const texts = atoms.map((a) => a.text);
+  let start = 0;
+  for (let k = 0; k <= atoms.length; k++) {
+    if (k < atoms.length && !atoms[k].fixed) continue;
+    const sorted = sortSegment(texts.slice(start, k), rank);
+    texts.splice(start, sorted.length, ...sorted);
+    start = k + 1;
+  }
+
+  let out = '';
+  let cursor = 0;
+  atoms.forEach((atom, k) => {
+    out += classStr.slice(cursor, atom.start) + texts[k];
+    cursor = atom.end;
+  });
+  return out + classStr.slice(cursor);
 }
 
 export function sortContent(
