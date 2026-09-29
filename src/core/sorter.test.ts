@@ -7,6 +7,7 @@ import {
   DEFAULT_SORT_ORDER,
   type SortCategory,
   sortClasses,
+  sortContent,
   sortFile,
 } from './sorter.js';
 
@@ -224,3 +225,60 @@ test('sortFile - respects sortOrder argument', async (_t: TestContext) => {
     unlinkSync(file);
   }
 });
+
+// biome-ignore-start lint/suspicious/noTemplateCurlyInString: raw template-literal bodies under test
+test('sortClasses - template interpolations (#127)', async (t: TestContext) => {
+  await t.test('leaves a ternary interpolation byte-identical', () => {
+    const input = 'p-2 ${big ? "text-lg" : "text-sm"}';
+    assert.strictEqual(sortClasses(input), input);
+  });
+
+  await t.test('leaves && and bare identifier interpolations intact', () => {
+    for (const input of ['p-2 ${on && "text-lg"}', 'p-2 ${cls}']) {
+      assert.strictEqual(sortClasses(input), input);
+    }
+  });
+
+  await t.test('sorts static parts around an interpolation', () => {
+    assert.strictEqual(
+      sortClasses('text-sm p-2 flex ${big ? "a" : "b"} bg-red-500 p-4 block'),
+      'flex p-2 text-sm ${big ? "a" : "b"} block p-4 bg-red-500',
+    );
+  });
+
+  await t.test('handles nested braces and quoted braces', () => {
+    const input = 'p-2 ${a ? `x ${b}` : "}"} flex block';
+    assert.strictEqual(sortClasses(input), input);
+  });
+
+  await t.test('keeps classes glued to an interpolation in place', () => {
+    assert.strictEqual(
+      sortClasses('p-2 flex-${dir} bg-${c}-500 block'),
+      'p-2 flex-${dir} bg-${c}-500 block',
+    );
+  });
+
+  await t.test('keeps unrecognised non-class tokens in place', () => {
+    assert.strictEqual(sortClasses('text-sm : flex'), 'text-sm : flex');
+  });
+
+  await t.test('still sorts negative and arbitrary-value classes', () => {
+    assert.strictEqual(
+      sortClasses("p-4 bg-[url('a.png')] -mt-2 flex"),
+      "flex p-4 bg-[url('a.png')] -mt-2",
+    );
+  });
+
+  await t.test('sortContent leaves template literal ternaries intact', () => {
+    const content = [
+      '<a className={`p-2 ${big ? "text-lg" : "text-sm"}`} />',
+      '<b className={`p-2 ${on && "text-lg"}`} />',
+      '<c className={`p-2 ${cls}`} />',
+      '<d className={cn("p-2", big ? "text-lg" : "text-sm")} />',
+    ].join('\n');
+    const { result, count } = sortContent(content);
+    assert.strictEqual(result, content);
+    assert.strictEqual(count, 0);
+  });
+});
+// biome-ignore-end lint/suspicious/noTemplateCurlyInString: raw template-literal bodies under test
