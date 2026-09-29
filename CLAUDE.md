@@ -74,7 +74,7 @@ export default {
 - `suggestCanonical` returns `null` for non-divisible px values — they must be left untouched.
 - `isCustomToken: true` on a `Suggestion` means the canonical name comes from config/non-built-in mapping; the CLI appends `[custom token]` to the output.
 - The ESLint plugin does NOT use `analyzeFile`/`fixFile` — it calls `suggestCanonical` directly on AST node values.
-- `deduplicator.ts` uses a generic `BoxFamily` system — add new box families (e.g. `margin-block`) by adding an entry to `FAMILIES` and keys to `SIDE_MAP`.
+- `deduplicator.ts` uses a generic `BoxFamily` system — add new box families (e.g. `margin-block`) by adding an entry to `FAMILIES`; `SIDE_MAP` is derived from it.
 - `sorter.ts` uses named `SortCategory` values; `getCategory` returns a name (or `null` for unknown). Rank derives from index in the active order (`config.sortOrder` or `DEFAULT_SORT_ORDER`); omitted/unknown categories rank last. Adding a new category = add the name to the `SortCategory` union + `DEFAULT_SORT_ORDER` and a condition in `getCategory`.
 - `merger.ts` uses dynamic `import('tailwind-merge')` — it is async; the ESLint rule uses synchronous `createRequire(import.meta.url)` instead.
 - Suppression is line-based (offset-shift-safe since replacements never change newline count). `replaceClassStrings` takes an `isSuppressed(line)` predicate; all four `*File` transformers pass `makeLineSuppressor(content)`, and `analyzeFile` filters findings by suppressed line. Pragmas are matched as substrings, checking `disable-next-line` before `disable`.
