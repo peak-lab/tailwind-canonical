@@ -244,6 +244,132 @@ test('run - sarif reporter emits results and exits 1', async (_t: TestContext) =
   }
 });
 
+function sarifOf(raw: string[]) {
+  return JSON.parse(raw.join(''));
+}
+
+test('run - sarif reporter emits repo-relative URIs and no absolute path', async (_t: TestContext) => {
+  const dir = freshDir();
+  mkdirSync(join(dir, '.git'));
+  mkdirSync(join(dir, 'src', 'ui'), { recursive: true });
+  writeFileSync(
+    join(dir, 'src', 'ui', 'a b.tsx'),
+    '<div className="p-2 text-[12px]" />',
+    'utf8',
+  );
+  const { sink, raw } = captureSink();
+  try {
+    await run(['--reporter', 'sarif', 'src'], dir, sink);
+    const doc = raw.join('');
+    assert.ok(!doc.includes(dir), 'document leaks an absolute path');
+    const sarif = sarifOf(raw);
+    const result = sarif.runs[0].results[0];
+    const location = result.locations[0].physicalLocation;
+    assert.deepEqual(location.artifactLocation, {
+      uri: 'src/ui/a%20b.tsx',
+      uriBaseId: '%SRCROOT%',
+    });
+    assert.deepEqual(location.region, {
+      startLine: 1,
+      startColumn: 21,
+      endLine: 1,
+      endColumn: 32,
+    });
+    assert.strictEqual(result.level, 'warning');
+    assert.match(
+      result.partialFingerprints['tailwindCanonical/v1'],
+      /^[0-9a-f]{64}$/,
+    );
+    assert.match(sarif.runs[0].tool.driver.version, /^\d+\.\d+\.\d+/);
+    assert.strictEqual(
+      sarif.runs[0].tool.driver.rules[0].defaultConfiguration.level,
+      'warning',
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - sarif URIs resolve from the git root when run from a subdirectory', async (_t: TestContext) => {
+  const dir = freshDir();
+  mkdirSync(join(dir, '.git'));
+  const pkg = join(dir, 'packages', 'web');
+  mkdirSync(join(pkg, 'src'), { recursive: true });
+  writeFileSync(
+    join(pkg, 'src', 'a.tsx'),
+    '<div className="bg-slte-100" />',
+    'utf8',
+  );
+  const { sink, raw } = captureSink();
+  try {
+    await run(['--typos', '--reporter', 'sarif', './src'], pkg, sink);
+    assert.ok(!raw.join('').includes(dir));
+    const result = sarifOf(raw).runs[0].results[0];
+    assert.strictEqual(
+      result.locations[0].physicalLocation.artifactLocation.uri,
+      'packages/web/src/a.tsx',
+    );
+    assert.strictEqual(
+      result.locations[0].physicalLocation.region.endColumn,
+      28,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - sarif fingerprints survive line shifts and separate duplicates', async (_t: TestContext) => {
+  const dir = freshDir();
+  const file = join(dir, 'a.tsx');
+  const line = '<div className="text-[12px]" />';
+  const fingerprints = async (content: string) => {
+    writeFileSync(file, content, 'utf8');
+    const { sink, raw } = captureSink();
+    await run(['--reporter', 'sarif', dir], dir, sink);
+    return sarifOf(raw).runs[0].results.map(
+      (r: { partialFingerprints: Record<string, string> }) =>
+        r.partialFingerprints['tailwindCanonical/v1'],
+    );
+  };
+  try {
+    const before = await fingerprints(`${line}\n${line}\n`);
+    const after = await fingerprints(`\n\n${line}\n${line}\n`);
+    assert.strictEqual(before.length, 2);
+    assert.notStrictEqual(before[0], before[1]);
+    assert.deepEqual(after, before);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - --analyze sarif uses note level and relative URIs', async (_t: TestContext) => {
+  const dir = freshDir();
+  writeFileSync(
+    join(dir, 'a.tsx'),
+    '<div className="bg-blue-500" /><div className="bg-blue-600" />',
+    'utf8',
+  );
+  writeFileSync(join(dir, 'b.tsx'), '<div className="bg-blue-700" />', 'utf8');
+  const { sink, raw } = captureSink();
+  try {
+    await run(['--analyze', '--reporter', 'sarif', dir], dir, sink);
+    assert.ok(!raw.join('').includes(dir));
+    const results = sarifOf(raw).runs[0].results;
+    assert.ok(results.length > 0);
+    for (const result of results) {
+      assert.strictEqual(result.level, 'note');
+      for (const location of result.locations) {
+        assert.match(
+          location.physicalLocation.artifactLocation.uri,
+          /^[ab]\.tsx$/,
+        );
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run - --sort rewrites file and reports summary', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');

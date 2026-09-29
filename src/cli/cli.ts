@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
 import { toClassStringOpts } from '../core/class-strings.js';
 import {
@@ -27,6 +27,7 @@ import {
   logTransformCounts,
   logTyposText,
   logWatchFindings,
+  type SarifContext,
   sarifDocument,
   typoSarifDocument,
   writeJson,
@@ -339,11 +340,39 @@ function collectTypos(
   return { findings, hadError };
 }
 
+function readVersion(): string {
+  const pkg = JSON.parse(
+    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  ) as { version: string };
+  return pkg.version;
+}
+
+function findProjectRoot(cwd: string): string {
+  let dir = resolve(cwd);
+  while (true) {
+    if (existsSync(join(dir, '.git'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return resolve(cwd);
+    dir = parent;
+  }
+}
+
+function sarifContext(cwd: string): SarifContext {
+  let version: string | undefined;
+  try {
+    version = readVersion();
+  } catch {
+    version = undefined;
+  }
+  return { root: findProjectRoot(cwd), version };
+}
+
 function runTypos(
   files: string[],
   config: Config,
   reporter: Reporter,
   sink: Sink,
+  sarif: SarifContext,
 ): RunResult {
   const { findings, hadError } = collectTypos(files, config, sink);
 
@@ -354,7 +383,7 @@ function runTypos(
     };
     writeJson(sink, report);
   } else if (reporter === 'sarif') {
-    writeJson(sink, typoSarifDocument(findings));
+    writeJson(sink, typoSarifDocument(findings, sarif));
   } else {
     logTyposText(findings, sink);
   }
@@ -467,6 +496,7 @@ function runAnalyze(
   config: Config,
   reporter: Reporter,
   sink: Sink,
+  sarif: SarifContext,
 ): RunResult {
   let hadError = false;
   const options = toConsistencyOptions(config);
@@ -496,7 +526,7 @@ function runAnalyze(
   if (reporter === 'json') {
     writeJson(sink, report);
   } else if (reporter === 'sarif') {
-    writeJson(sink, analyzeSarifDocument(report));
+    writeJson(sink, analyzeSarifDocument(report, sarif));
   } else {
     logAnalyzeText(report, issueCount, config, sink);
   }
@@ -533,10 +563,7 @@ export async function run(
 
   if (flags.version) {
     try {
-      const pkg = JSON.parse(
-        readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
-      ) as { version: string };
-      sink.log(pkg.version);
+      sink.log(readVersion());
       return { exitCode: 0 };
     } catch (err) {
       sink.error(`tailwind-canonical: could not read version: ${errMsg(err)}`);
@@ -611,12 +638,16 @@ export async function run(
     return { exitCode: 1 };
   }
 
-  if (flags.analyze) return runAnalyze(files, config, flags.reporter, sink);
+  const sarif = sarifContext(cwd);
+
+  if (flags.analyze) {
+    return runAnalyze(files, config, flags.reporter, sink, sarif);
+  }
 
   const transforming = isTransforming(flags);
 
   if (flags.typos && !transforming) {
-    return runTypos(files, config, flags.reporter, sink);
+    return runTypos(files, config, flags.reporter, sink, sarif);
   }
 
   if (flags.watch && !flags.typos && !flags.check) {
@@ -636,8 +667,8 @@ export async function run(
   }
 
   return transforming
-    ? runTransforms(files, flags, config, sink, twMerge)
-    : runLint(files, config, flags.reporter, sink);
+    ? runTransforms(files, flags, config, sink, sarif, twMerge)
+    : runLint(files, config, flags.reporter, sink, sarif);
 }
 
 function watchTransform(
@@ -658,6 +689,7 @@ function runTransforms(
   flags: Flags,
   config: Config,
   sink: Sink,
+  sarif: SarifContext,
   twMerge?: (classes: string) => string,
 ): RunResult {
   const totals = emptyCounts();
@@ -709,8 +741,8 @@ function runTransforms(
 
   if (flags.reporter === 'sarif') {
     const doc = typoResult
-      ? typoSarifDocument(typoResult.findings)
-      : sarifDocument([], []);
+      ? typoSarifDocument(typoResult.findings, sarif)
+      : sarifDocument([], [], sarif);
     writeJson(sink, doc);
     return result;
   }
@@ -741,6 +773,7 @@ function runLint(
   config: Config,
   reporter: Reporter,
   sink: Sink,
+  sarif: SarifContext,
 ): RunResult {
   const findings: Finding[] = [];
   let hadError = false;
@@ -774,7 +807,7 @@ function runLint(
   }
 
   if (reporter === 'sarif') {
-    writeJson(sink, findingsSarifDocument(findings));
+    writeJson(sink, findingsSarifDocument(findings, sarif));
     return exitWith(findings.length > 0 || hadError);
   }
 

@@ -140,6 +140,11 @@ npx tailwind-canonical --fix --reporter json ./src
 npx tailwind-canonical --reporter sarif ./src > results.sarif
 ```
 
+Each result's `artifactLocation.uri` is relative to the git root (falling back to the working
+directory), with `uriBaseId: "%SRCROOT%"`, so Code Scanning maps it from any subdirectory.
+Results also carry `level`, a full `region` (start/end column) and line-independent
+`partialFingerprints`; `tool.driver.version` records the emitting version.
+
 **GitHub Actions integration:**
 ```yaml
 - run: npx tailwind-canonical --reporter sarif ./src > results.sarif
