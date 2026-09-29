@@ -37,9 +37,7 @@ const ANALYZE_KEYS = [
   'maxPatterns',
 ] as const;
 
-const ANALYZE_KEY_SET = new Set<string>(ANALYZE_KEYS);
-
-const DEFAULT_COMMAND_KEYS = [
+const DEFAULT_COMMAND_BOOLEAN_KEYS = [
   'fix',
   'merge',
   'dedup',
@@ -48,32 +46,50 @@ const DEFAULT_COMMAND_KEYS = [
   'analyze',
   'typos',
   'watch',
+] as const;
+
+const DEFAULT_COMMAND_KEYS = [
+  ...DEFAULT_COMMAND_BOOLEAN_KEYS,
   'reporter',
   'targets',
 ] as const;
 
-const DEFAULT_COMMAND_KEY_SET = new Set<string>(DEFAULT_COMMAND_KEYS);
 const REPORTERS = new Set<string>(['text', 'json', 'sarif']);
 
-const KNOWN_KEY_SET = new Set<string>(KNOWN_KEYS);
 const SORT_CATEGORIES = new Set<string>(DEFAULT_SORT_ORDER);
 
-function invalidConfig(filename: string, message: string): Error {
-  return new Error(`Invalid ${filename}: ${message}`);
+function fail(filename: string, message: string): never {
+  throw new Error(`Invalid ${filename}: ${message}`);
 }
 
-function fail(filename: string, message: string): never {
-  throw invalidConfig(filename, message);
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function assertKnownKeys(
+  cfg: Record<string, unknown>,
+  known: readonly string[],
+  label: string,
+  filename: string,
+): void {
+  for (const key of Object.keys(cfg)) {
+    if (!known.includes(key)) {
+      fail(
+        filename,
+        `${label} "${key}" (expected one of: ${known.join(', ')})`,
+      );
+    }
+  }
 }
 
 function assertPxTokenMap(value: unknown, key: string, filename: string): void {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isPlainObject(value)) {
     fail(
       filename,
       `${key} must be an object mapping px numbers to token names`,
     );
   }
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(value)) {
     if (!/^\d+$/.test(k))
       fail(filename, `${key} keys must be integers (got "${k}")`);
     if (typeof v !== 'string') fail(filename, `${key}[${k}] must be a string`);
@@ -105,10 +121,10 @@ function assertStringRecord(
   key: string,
   filename: string,
 ): void {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isPlainObject(value)) {
     fail(filename, `${key} must be an object mapping strings to strings`);
   }
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(value)) {
     if (typeof v !== 'string') fail(filename, `${key}[${k}] must be a string`);
   }
 }
@@ -124,46 +140,29 @@ function assertPositiveInteger(
 }
 
 function assertAnalyzeConfig(value: unknown, filename: string): void {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    fail(filename, 'analyze must be an object');
-  }
-  const cfg = value as Record<string, unknown>;
-  for (const key of Object.keys(cfg)) {
-    if (!ANALYZE_KEY_SET.has(key)) {
-      fail(
-        filename,
-        `analyze contains unknown key "${key}" (expected one of: ${ANALYZE_KEYS.join(', ')})`,
-      );
-    }
-  }
+  if (!isPlainObject(value)) fail(filename, 'analyze must be an object');
+  assertKnownKeys(
+    value,
+    ANALYZE_KEYS,
+    'analyze contains unknown key',
+    filename,
+  );
   for (const key of ANALYZE_KEYS) {
-    if (key in cfg) assertPositiveInteger(cfg[key], `analyze.${key}`, filename);
+    if (key in value)
+      assertPositiveInteger(value[key], `analyze.${key}`, filename);
   }
 }
 
 function assertDefaultCommandConfig(value: unknown, filename: string): void {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    fail(filename, 'defaultCommand must be an object');
-  }
-  const cfg = value as Record<string, unknown>;
-  for (const key of Object.keys(cfg)) {
-    if (!DEFAULT_COMMAND_KEY_SET.has(key)) {
-      fail(
-        filename,
-        `defaultCommand contains unknown key "${key}" (expected one of: ${DEFAULT_COMMAND_KEYS.join(', ')})`,
-      );
-    }
-  }
-  for (const key of [
-    'fix',
-    'merge',
-    'dedup',
-    'sort',
-    'check',
-    'analyze',
-    'typos',
-    'watch',
-  ]) {
+  if (!isPlainObject(value)) fail(filename, 'defaultCommand must be an object');
+  const cfg = value;
+  assertKnownKeys(
+    cfg,
+    DEFAULT_COMMAND_KEYS,
+    'defaultCommand contains unknown key',
+    filename,
+  );
+  for (const key of DEFAULT_COMMAND_BOOLEAN_KEYS) {
     if (key in cfg && typeof cfg[key] !== 'boolean') {
       fail(filename, `defaultCommand.${key} must be a boolean`);
     }
@@ -202,14 +201,7 @@ export function validateConfig(
   }
 
   const cfg = input as Record<string, unknown>;
-  for (const key of Object.keys(cfg)) {
-    if (!KNOWN_KEY_SET.has(key)) {
-      fail(
-        filename,
-        `unknown key "${key}" (expected one of: ${KNOWN_KEYS.join(', ')})`,
-      );
-    }
-  }
+  assertKnownKeys(cfg, KNOWN_KEYS, 'unknown key', filename);
 
   if ('customTextTokens' in cfg)
     assertPxTokenMap(cfg.customTextTokens, 'customTextTokens', filename);
