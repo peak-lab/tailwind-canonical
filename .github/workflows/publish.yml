@@ -30,3 +30,13 @@ jobs:
       # workflow filename; renaming this file breaks publishing until npm is
       # updated, since the trust is pinned to `publish.yml`
       - run: pnpm publish --no-git-checks --provenance --access public
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
