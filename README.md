@@ -403,7 +403,10 @@ Fractions: `w` carries all thirteen, `h` stops at sixths, `inset`/`top`/`left`/
 `right`/`bottom`/`translate-x`/`translate-y` only have halves, thirds and
 quarters, and `min-w`/`max-w`/`min-h`/`max-h` have none.
 
-`text-*`, `rounded-*` and `opacity-*` are identical in both majors and are
+`rounded-*` follows each major's radius scale: v4 renamed the small end, so
+`rounded-[2px]` → `rounded-xs` and `rounded-[4px]` → `rounded-sm` on v4, but
+`rounded-sm` and bare `rounded` on v3; `rounded-[32px]` → `rounded-4xl` is
+v4-only. `text-*` and `opacity-*` are identical in both majors and are
 never gated. `customSpacingTokens` stays your decision and is applied in both
 modes. All of the above was measured against `tailwindcss@3.3.7`, the
 advertised floor.
