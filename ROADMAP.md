@@ -32,13 +32,13 @@
 ## v0.7 — cn()/clsx() function call support ✅
 - [x] `cn('flex p-4', 'text-sm')` → `--fix`, `--dedup`, `--sort` all work
 - [x] Configurable function names: `functionNames: ['cn', 'clsx', 'cx', 'tv', 'cva']`
-- [ ] ESLint rule support for cn()/clsx() literals — #42
+- [x] ESLint rule support for cn()/clsx() literals — #42
 
 ## v0.8 — CI/DX improvements ✅
 - [x] `--reporter json` (+ `sarif`) — structured output for CI
 - [x] Glob pattern support with negation + brace expansion
 - [x] `--watch` mode for development workflow
-- [ ] Inline suppression: `// tailwind-canonical-disable-next-line` — #44
+- [x] Inline suppression: `// tailwind-canonical-disable-next-line` — #44
 
 ## v0.9 — Responsive cascade collapse ✅
 - [x] `sm:p-4 md:p-4 lg:p-4` → `p-4` (all breakpoints identical = use base)
@@ -46,27 +46,42 @@
 - [x] `p-4 sm:p-4` → `p-4` (sm: redundant when matches base)
 
 ## v1.0 — Full ecosystem (in progress)
+- [x] `--check` dry-run, `init` command, upward config resolution — #102, #103, #104
+- [x] `tailwindVersion: 3` gating (no v4-only classes on v3)
+- [x] Configurable CLI defaults (`defaultCommand`)
 - [x] Configurable attribute names: `attributeNames: ['className', 'class', ':class', 'tw']`
 - [x] Configurable sort order in `tailwind-canonical.config.js`
 - [x] Cross-file consistency analysis (`--analyze`) — flag N shades for same intent
-- [ ] Block suppression: `// tailwind-canonical-disable` … `enable` — #44
-- [ ] Unknown class detection (typo: `text-gry-500`) — #45
+- [x] Block suppression: `// tailwind-canonical-disable` … `enable` — #44
+- [x] Typo detection for color names (`text-gry-500`, `--typos`) — #45
 - [ ] VS Code extension (hover preview, inline fix)
 - [ ] Biome plugin (GritQL, when stable)
 
 ---
 
-## Hardening backlog
+## Rule coverage (next)
+
+Arbitrary values that still have no canonical suggestion:
+- [x] Variants, important modifier and negative sign (`hover:p-[16px]`, `!p-[16px]`, `-mt-[8px]`) — #143
+- [ ] Rounded map is version-dependent (`rounded-[2px]` → `rounded-xs` on v4) — #144
+- [ ] Keyword values: `w-full`, `h-screen`, `rounded-full`, `aspect-video`, unitless zero — #145
+- [ ] 1px widths: `border`, `border-t`, `p-px`, `ring-1`, `outline-2` — #146
+- [ ] Unitless scales: `z-10`, `font-bold`, `leading-6`, `order-1`, `line-clamp-3` — #147
+- [ ] Transitions/transforms: `duration-200`, `scale-105`, `rotate-45`, `blur-*` — #148
+
+---
+
+## Hardening backlog ✅
 
 Quality / robustness work tracked as issues (not version-gated):
-- [ ] Validate user config + stop swallowing load errors — #38
-- [ ] Refactor CLI into testable `run()` — #39
-- [ ] File I/O error handling + watch re-entrancy — #40
-- [ ] Multiline / template-literal / escaped-quote extraction — #41
-- [ ] ESLint schema aligned with `Config` + ignorePatterns — #42
-- [ ] analyzer + cli test coverage — #43
-- [ ] Share color/scale lexicons, config-extensible — #46
-- [ ] Linear dedupe + document gap family — #47
+- [x] Validate user config + stop swallowing load errors — #38
+- [x] Refactor CLI into testable `run()` — #39
+- [x] File I/O error handling + watch re-entrancy — #40
+- [x] Multiline / template-literal / escaped-quote extraction — #41
+- [x] ESLint schema aligned with `Config` + ignorePatterns — #42
+- [x] analyzer + cli test coverage — #43
+- [x] Share color/scale lexicons, config-extensible — #46
+- [x] Linear dedupe + document gap family — #47
 
 ### Shipped fixes (v0.2.1)
 - [x] Remove non-existent `xxs` text token — #37
