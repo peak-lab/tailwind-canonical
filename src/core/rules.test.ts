@@ -734,3 +734,53 @@ test('suggestCanonical - tailwindVersion: 3', async (t: TestContext) => {
     }
   });
 });
+
+test('suggestCanonical - variants, important and sign', async (t: TestContext) => {
+  const cases: [string, string | null, Config?][] = [
+    ['hover:p-[16px]', 'hover:p-4'],
+    ['md:hover:w-[50%]', 'md:hover:w-1/2'],
+    ['[&:hover]:p-[16px]', '[&:hover]:p-4'],
+    ['data-[state=open]:h-[64px]', 'data-[state=open]:h-16'],
+    ['supports-[display:grid]:gap-[8px]', 'supports-[display:grid]:gap-2'],
+    ['group-hover/item:text-[12px]', 'group-hover/item:text-xs'],
+    ['!p-[16px]', '!p-4'],
+    ['md:!p-[16px]', 'md:!p-4'],
+    ['p-[16px]!', 'p-4!'],
+    ['-mt-[8px]', '-mt-2'],
+    ['mt-[-8px]', '-mt-2'],
+    ['md:-translate-x-[50%]', 'md:-translate-x-1/2'],
+    ['-top-[1rem]', '-top-4'],
+    ['-mt-[-8px]', 'mt-2'],
+    ['-mt-[0px]', 'mt-0'],
+    ['-mt-[14px]', '-mt-3.5', { customSpacingTokens: { 14: '3.5' } }],
+    ['-p-[16px]', null],
+    ['p-[-16px]', null],
+    ['-w-[50%]', null],
+    ['-text-[12px]', null],
+    ['-opacity-[0.5]', null],
+    ['hover:p-[13px]', null],
+    ['hover:p-4', null],
+    ['md:text-[12px]', null, { ignorePatterns: [/^text-/] }],
+  ];
+  for (const [input, expected, config] of cases) {
+    await t.test(`${input} → ${expected}`, () => {
+      assert.strictEqual(
+        suggestCanonical(input, config)?.canonical ?? null,
+        expected,
+      );
+    });
+  }
+
+  await t.test('original keeps the full class', () => {
+    assert.deepEqual(suggestCanonical('md:-mt-[8px]'), {
+      original: 'md:-mt-[8px]',
+      canonical: 'md:-mt-2',
+      isCustomToken: false,
+    });
+  });
+
+  await t.test('v3 scale gating still applies under a variant', () => {
+    const config: Config = { tailwindVersion: 3 };
+    assert.strictEqual(suggestCanonical('hover:size-[32px]', config), null);
+  });
+});

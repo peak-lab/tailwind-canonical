@@ -356,6 +356,9 @@ left-2 right-2                  → inset-x-2
 | `opacity-[0.5]` | `opacity-50` | Opacity scale |
 | `text-[11px]` | `text-2xs` | Requires `customTextTokens` |
 | `text-[8px]`–`text-[10px]` | `text-3xs` | Requires `customTextTokens` |
+| `hover:p-[16px]` | `hover:p-4` | Variants are preserved |
+| `!p-[16px]` / `p-[16px]!` | `!p-4` / `p-4!` | Important modifier kept in place |
+| `-mt-[8px]` / `mt-[-8px]` | `-mt-2` | Negative margin / inset / translate / space only |
 
 `text-2xs` and `text-3xs` are not stock Tailwind tokens, so they are not in the built-in text size map — without config, `text-[11px]` and `text-[8px]`–`text-[10px]` are left untouched. Enable them with `customTextTokens`:
 

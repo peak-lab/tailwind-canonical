@@ -30,7 +30,7 @@ Outputs to `dist/` via `tsc`. Two public entry points: `.` and `./eslint`.
 
 | File | Role |
 |---|---|
-| `rules.ts` | Pure function `suggestCanonical(cls, config)` — the single source of truth for all replacement logic. No I/O. |
+| `rules.ts` | Pure function `suggestCanonical(cls, config)` — the single source of truth for all replacement logic. No I/O. Strips variants (last top-level `:`), the `!` important modifier (leading or trailing) and the sign (`-mt-[8px]` / `mt-[-8px]`) before matching, then re-applies them; a sign is only kept on `NEGATABLE_PREFIXES`. |
 | `analyzer.ts` | `analyzeContent(file, content, config)` — extracts `className` values via regex, maps each class through `suggestCanonical`, returns `Finding[]` with line/col. Re-exports `analyzeFile` from `io/`. |
 | `fixer.ts` | `fixContent(content, config)` — applies all `suggestCanonical` replacements, returns `{result,count}`. Re-exports `fixFile` from `io/`. |
 | `deduplicator.ts` | `deduplicateClasses(str)` — pure expand-apply-collapse for p/m/border-width/inset box families. Display/position last-wins. Order-preserving: survivors keep their slot, collapsed shorthands take the first replaced slot; a no-op returns the input verbatim. `dedupeContent()` wraps it; re-exports `dedupeFile` from `io/`. |

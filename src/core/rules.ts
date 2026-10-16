@@ -269,12 +269,106 @@ function spacingSuggestion(
   };
 }
 
+/** Utilities whose arbitrary value may be negated (`-mt-2`, `-translate-x-1/2`). */
+const NEGATABLE_PREFIXES = [
+  'm',
+  'mx',
+  'my',
+  'mt',
+  'mb',
+  'ml',
+  'mr',
+  'inset',
+  'top',
+  'left',
+  'right',
+  'bottom',
+  'translate-x',
+  'translate-y',
+  'space-x',
+  'space-y',
+];
+
+type ParsedClass = {
+  variants: string;
+  leadingImportant: boolean;
+  trailingImportant: boolean;
+  negative: boolean;
+  utility: string;
+};
+
+/** Index just past the last top-level `:` — brackets/parens may hold colons. */
+function variantsEnd(cls: string): number {
+  let depth = 0;
+  let end = 0;
+  for (let i = 0; i < cls.length; i++) {
+    const ch = cls[i];
+    if (ch === '[' || ch === '(') depth++;
+    else if ((ch === ']' || ch === ')') && depth > 0) depth--;
+    else if (ch === ':' && depth === 0) end = i + 1;
+  }
+  return end;
+}
+
+function parseClass(cls: string): ParsedClass {
+  const end = variantsEnd(cls);
+  let utility = cls.slice(end);
+  const leadingImportant = utility.startsWith('!');
+  if (leadingImportant) utility = utility.slice(1);
+  const trailingImportant = !leadingImportant && utility.endsWith('!');
+  if (trailingImportant) utility = utility.slice(0, -1);
+  let negative = utility.startsWith('-');
+  if (negative) utility = utility.slice(1);
+  const innerNegative = utility.match(/^([a-z-]+)-\[-([^\]]+)\]$/);
+  if (innerNegative) {
+    negative = !negative;
+    utility = `${innerNegative[1]}-[${innerNegative[2]}]`;
+  }
+  return {
+    variants: cls.slice(0, end),
+    leadingImportant,
+    trailingImportant,
+    negative,
+    utility,
+  };
+}
+
+/**
+ * Suggests the canonical form of a class, preserving its variants
+ * (`hover:`, `md:`, `[&:hover]:`), important modifier (`!p-4` / `p-4!`)
+ * and sign (`-mt-[8px]` / `mt-[-8px]` → `-mt-2`).
+ */
 export function suggestCanonical(
   cls: string,
   config: Config = {},
 ): Suggestion | null {
   if (isIgnored(cls, config.ignorePatterns)) return null;
 
+  const parsed = parseClass(cls);
+  if (
+    parsed.utility !== cls &&
+    isIgnored(parsed.utility, config.ignorePatterns)
+  )
+    return null;
+
+  const base = suggestUtility(parsed.utility, config);
+  if (!base) return null;
+  if (
+    parsed.negative &&
+    !NEGATABLE_PREFIXES.some((p) => parsed.utility.startsWith(`${p}-[`))
+  ) {
+    return null;
+  }
+
+  const sign = parsed.negative && !base.canonical.endsWith('-0') ? '-' : '';
+  return {
+    original: cls,
+    canonical: `${parsed.variants}${parsed.leadingImportant ? '!' : ''}${sign}${base.canonical}${parsed.trailingImportant ? '!' : ''}`,
+    isCustomToken: base.isCustomToken,
+  };
+}
+
+function suggestUtility(cls: string, config: Config): Suggestion | null {
   const textTokens = { ...TEXT_SIZE_MAP, ...config.customTextTokens };
   const spacingTokens = config.customSpacingTokens ?? {};
   const v3 = config.tailwindVersion === 3;
