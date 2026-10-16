@@ -47,9 +47,26 @@ const TEXT_SIZE_MAP: Record<number, string> = {
 
 const BUILT_IN_TEXT_PX = new Set(Object.keys(TEXT_SIZE_MAP).map(Number));
 
-const ROUNDED_MAP: Record<number, string> = {
-  2: 'sm',
+/**
+ * Radius px → token suffix. v4 renamed the small end (`rounded-sm` → `-xs`,
+ * bare `rounded` → `-sm`) and added `4xl`; `''` is the bare v3 `rounded`.
+ */
+const ROUNDED_MAP_V4: Record<number, string> = {
+  0: 'none',
+  2: 'xs',
   4: 'sm',
+  6: 'md',
+  8: 'lg',
+  12: 'xl',
+  16: '2xl',
+  24: '3xl',
+  32: '4xl',
+};
+
+const ROUNDED_MAP_V3: Record<number, string> = {
+  0: 'none',
+  2: 'sm',
+  4: '',
   6: 'md',
   8: 'lg',
   12: 'xl',
@@ -445,11 +462,11 @@ function suggestUtility(cls: string, config: Config): Suggestion | null {
   if (roundedMatch) {
     const prefix = roundedMatch[1];
     const px = parseInt(roundedMatch[2], 10);
-    const token = ROUNDED_MAP[px];
-    if (!token) return null;
+    const token = (v3 ? ROUNDED_MAP_V3 : ROUNDED_MAP_V4)[px];
+    if (token === undefined) return null;
     return {
       original: cls,
-      canonical: `${prefix}-${token}`,
+      canonical: token ? `${prefix}-${token}` : prefix,
       isCustomToken: false,
     };
   }
