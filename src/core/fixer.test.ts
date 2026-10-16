@@ -3,7 +3,7 @@ import { readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { fixFile } from './fixer.js';
+import { fixContent, fixFile } from './fixer.js';
 
 test('fixFile', async (t) => {
   await t.test(
@@ -360,4 +360,15 @@ test('fixFile', async (t) => {
       unlinkSync(tempFile);
     }
   });
+});
+
+test('fixContent - rewrites variant, important and negative classes', () => {
+  const { result, count } = fixContent(
+    '<div className="hover:p-[16px] !m-[8px] -mt-[4px] md:w-[50%]" />',
+  );
+  assert.strictEqual(
+    result,
+    '<div className="hover:p-4 !m-2 -mt-1 md:w-1/2" />',
+  );
+  assert.strictEqual(count, 4);
 });
