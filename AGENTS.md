@@ -82,9 +82,9 @@ from `src/io/` directly.
 
 ### Adding a new canonical mapping
 
-Edit `src/core/rules.ts` only. Three maps live there: `TEXT_SIZE_MAP`, `ROUNDED_MAP`,
+Edit `src/core/rules.ts` only. Three maps live there: `TEXT_SIZE_MAP`, `ROUNDED_MAP_V4`/`ROUNDED_MAP_V3`,
 and the implicit ÷4 spacing rule. Adding new dimensions (e.g. `opacity-[N]`) means
-adding a new regex branch in `suggestCanonical`.
+adding a new regex branch in `suggestUtility` (`suggestCanonical` handles variants, `!` and sign).
 
 ### Returning `null`
 

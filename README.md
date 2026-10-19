@@ -435,7 +435,10 @@ quarters, and `min-w`/`max-w`/`min-h`/`max-h` have none.
 `*-px` follows the same per-utility gating: `size-px`, `min-w-px`, `max-w-px`
 and `min-h-px` are left untouched on v3.
 
-`text-*`, `rounded-*`, `opacity-*`, `font-*` weights, the `leading-*`
+`rounded-*` follows each major's radius scale: v4 renamed the small end, so
+`rounded-[2px]` → `rounded-xs` and `rounded-[4px]` → `rounded-sm` on v4, but
+`rounded-sm` and bare `rounded` on v3; `rounded-[32px]` → `rounded-4xl` is
+v4-only. `text-*`, `opacity-*`, `font-*` weights, the `leading-*`
 keywords and the `border`/`divide`/`ring`/`outline`
 widths are identical in both majors and are
 never gated. `customSpacingTokens` stays your decision and is applied in both

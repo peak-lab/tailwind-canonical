@@ -972,3 +972,31 @@ test('suggestCanonical - unitless scales', async (t: TestContext) => {
     );
   });
 });
+
+test('suggestCanonical - rounded scale per version', async (t: TestContext) => {
+  const v3: Config = { tailwindVersion: 3 };
+  const cases: [string, string | null, Config?][] = [
+    ['rounded-[0px]', 'rounded-none'],
+    ['rounded-[2px]', 'rounded-xs'],
+    ['rounded-[4px]', 'rounded-sm'],
+    ['rounded-[32px]', 'rounded-4xl'],
+    ['rounded-t-[2px]', 'rounded-t-xs'],
+    ['rounded-[0px]', 'rounded-none', v3],
+    ['rounded-[2px]', 'rounded-sm', v3],
+    ['rounded-[4px]', 'rounded', v3],
+    ['rounded-t-[4px]', 'rounded-t', v3],
+    ['md:rounded-tl-[4px]', 'md:rounded-tl', v3],
+    ['rounded-[6px]', 'rounded-md', v3],
+    ['rounded-[24px]', 'rounded-3xl', v3],
+    ['rounded-[32px]', null, v3],
+  ];
+  for (const [input, expected, config] of cases) {
+    const label = config ? 'v3' : 'v4';
+    await t.test(`${label}: ${input} → ${expected}`, () => {
+      assert.strictEqual(
+        suggestCanonical(input, config)?.canonical ?? null,
+        expected,
+      );
+    });
+  }
+});
