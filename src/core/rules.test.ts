@@ -837,3 +837,61 @@ test('suggestCanonical - variants, important and sign', async (t: TestContext) =
     assert.strictEqual(suggestCanonical('hover:size-[32px]', config), null);
   });
 });
+
+test('suggestCanonical - transitions and transforms', async (t: TestContext) => {
+  const v3: Config = { tailwindVersion: 3 };
+  const cases: [string, string | null, Config?][] = [
+    ['duration-[200ms]', 'duration-200'],
+    ['delay-[150ms]', 'delay-150'],
+    ['duration-[0.2s]', 'duration-200'],
+    ['delay-[1.5s]', 'delay-1500'],
+    ['duration-[250ms]', 'duration-250'],
+    ['duration-[250ms]', null, v3],
+    ['duration-[0.3s]', 'duration-300', v3],
+    ['delay-[1.5s]', null, v3],
+    ['duration-[0.25ms]', null],
+    ['duration-[200]', null],
+    ['scale-[1.05]', 'scale-105'],
+    ['scale-[0.95]', 'scale-95'],
+    ['scale-[1.1]', 'scale-110'],
+    ['scale-[105%]', 'scale-105'],
+    ['scale-x-[1.5]', 'scale-x-150'],
+    ['scale-y-[0.5]', 'scale-y-50'],
+    ['scale-[1.15]', 'scale-115'],
+    ['scale-[1.15]', null, v3],
+    ['scale-[1.05]', 'scale-105', v3],
+    ['scale-[1.055]', null],
+    ['rotate-[45deg]', 'rotate-45'],
+    ['rotate-[30deg]', 'rotate-30'],
+    ['rotate-[30deg]', null, v3],
+    ['rotate-[90deg]', 'rotate-90', v3],
+    ['rotate-[22.5deg]', null],
+    ['rotate-[0.5turn]', null],
+    ['blur-[4px]', 'blur-xs'],
+    ['blur-[8px]', 'blur-sm'],
+    ['blur-[0.75rem]', 'blur-md'],
+    ['blur-[64px]', 'blur-3xl'],
+    ['blur-[4px]', 'blur-sm', v3],
+    ['blur-[8px]', 'blur', v3],
+    ['blur-[12px]', 'blur-md', v3],
+    ['blur-[6px]', null],
+    ['-rotate-[45deg]', '-rotate-45'],
+    ['rotate-[-45deg]', '-rotate-45'],
+    ['-scale-[1.05]', '-scale-105'],
+    ['-scale-x-[0.5]', '-scale-x-50'],
+    ['-rotate-[0deg]', 'rotate-0'],
+    ['-duration-[200ms]', null],
+    ['-blur-[4px]', null],
+    ['hover:scale-[1.05]', 'hover:scale-105'],
+    ['md:!rotate-[45deg]', 'md:!rotate-45'],
+  ];
+  for (const [input, expected, config] of cases) {
+    const label = config?.tailwindVersion === 3 ? ' (v3)' : '';
+    await t.test(`${input} → ${expected}${label}`, () => {
+      assert.strictEqual(
+        suggestCanonical(input, config)?.canonical ?? null,
+        expected,
+      );
+    });
+  }
+});

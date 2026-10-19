@@ -202,6 +202,31 @@ const V3_FRACTIONS_BY_PREFIX: Record<string, Set<string>> = {
   'translate-y': new Set(V3_INSET_FRACTIONS),
 };
 
+/** Discrete v3 scales; v4 accepts any integer for these utilities. */
+const V3_TIME_STEPS = new Set([0, 75, 100, 150, 200, 300, 500, 700, 1000]);
+const V3_SCALE_STEPS = new Set([0, 50, 75, 90, 95, 100, 105, 110, 125, 150]);
+const V3_ROTATE_STEPS = new Set([0, 1, 2, 3, 6, 12, 45, 90, 180]);
+
+/** px → blur suffix; `''` is the bare `blur` class. */
+const BLUR_MAP_V4: Record<number, string> = {
+  4: '-xs',
+  8: '-sm',
+  12: '-md',
+  16: '-lg',
+  24: '-xl',
+  40: '-2xl',
+  64: '-3xl',
+};
+const BLUR_MAP_V3: Record<number, string> = {
+  4: '-sm',
+  8: '',
+  12: '-md',
+  16: '-lg',
+  24: '-xl',
+  40: '-2xl',
+  64: '-3xl',
+};
+
 export type Config = {
   customTextTokens?: Record<number, string>;
   customSpacingTokens?: Record<number, string>;
@@ -232,6 +257,27 @@ function isIgnored(cls: string, patterns?: RegExp[]): boolean {
     re.lastIndex = 0;
     return re.test(cls);
   });
+}
+
+/** `value × factor` when it lands on an integer, else null (float-safe). */
+function toInteger(value: number, factor: number): number | null {
+  const scaled = value * factor;
+  const rounded = Math.round(scaled);
+  return Math.abs(scaled - rounded) <= 1e-9 ? rounded : null;
+}
+
+function scaleStepSuggestion(
+  cls: string,
+  prefix: string,
+  step: number | null,
+  v3Steps: Set<number> | null,
+): Suggestion | null {
+  if (step === null || (v3Steps && !v3Steps.has(step))) return null;
+  return {
+    original: cls,
+    canonical: `${prefix}-${step}`,
+    isCustomToken: false,
+  };
 }
 
 /** True when the ÷4 result would be a class v3 never generates. */
@@ -306,6 +352,10 @@ const NEGATABLE_PREFIXES = [
   'translate-y',
   'space-x',
   'space-y',
+  'scale',
+  'scale-x',
+  'scale-y',
+  'rotate',
 ];
 
 type ParsedClass = {
@@ -495,6 +545,51 @@ function suggestUtility(cls: string, config: Config): Suggestion | null {
       canonical: `${prefix}-${token}`,
       isCustomToken: false,
     };
+  }
+
+  // duration-[200ms] / delay-[0.2s]
+  const timeMatch = cls.match(/^(duration|delay)-\[(\d+(?:\.\d+)?)(ms|s)\]$/);
+  if (timeMatch) {
+    const ms = toInteger(
+      parseFloat(timeMatch[2]),
+      timeMatch[3] === 's' ? 1000 : 1,
+    );
+    return scaleStepSuggestion(
+      cls,
+      timeMatch[1],
+      ms,
+      v3 ? V3_TIME_STEPS : null,
+    );
+  }
+
+  // scale-[1.05] / scale-x-[105%]
+  const scaleMatch = cls.match(/^(scale(?:-[xy])?)-\[(\d+(?:\.\d+)?)(%?)\]$/);
+  if (scaleMatch) {
+    const pct = toInteger(parseFloat(scaleMatch[2]), scaleMatch[3] ? 1 : 100);
+    return scaleStepSuggestion(
+      cls,
+      scaleMatch[1],
+      pct,
+      v3 ? V3_SCALE_STEPS : null,
+    );
+  }
+
+  // rotate-[45deg]
+  const rotateMatch = cls.match(/^rotate-\[(\d+(?:\.\d+)?)deg\]$/);
+  if (rotateMatch) {
+    const deg = toInteger(parseFloat(rotateMatch[1]), 1);
+    return scaleStepSuggestion(cls, 'rotate', deg, v3 ? V3_ROTATE_STEPS : null);
+  }
+
+  // blur-[8px] / blur-[0.5rem]
+  const blurMatch = cls.match(/^blur-\[(\d+(?:\.\d+)?)(px|rem)\]$/);
+  if (blurMatch) {
+    const raw = parseFloat(blurMatch[1]);
+    const px = blurMatch[2] === 'rem' ? remToPx(raw) : toInteger(raw, 1);
+    if (px === null) return null;
+    const suffix = (v3 ? BLUR_MAP_V3 : BLUR_MAP_V4)[px];
+    if (suffix === undefined) return null;
+    return { original: cls, canonical: `blur${suffix}`, isCustomToken: false };
   }
 
   return null;

@@ -67,7 +67,7 @@ Arbitrary values that still have no canonical suggestion:
 - [ ] Keyword values: `w-full`, `h-screen`, `rounded-full`, `aspect-video`, unitless zero — #145
 - [x] 1px widths: `border`, `border-t`, `p-px`, `ring-1`, `outline-2` — #146
 - [ ] Unitless scales: `z-10`, `font-bold`, `leading-6`, `order-1`, `line-clamp-3` — #147
-- [ ] Transitions/transforms: `duration-200`, `scale-105`, `rotate-45`, `blur-*` — #148
+- [x] Transitions/transforms: `duration-200`, `scale-105`, `rotate-45`, `blur-*` — #148
 
 ---
 
