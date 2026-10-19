@@ -607,6 +607,59 @@ test('suggestCanonical - opacity values', async (t: TestContext) => {
   });
 });
 
+test('suggestCanonical - 1px spacing and width utilities', async (t: TestContext) => {
+  const cases: [string, string | null, Config?][] = [
+    ['p-[1px]', 'p-px'],
+    ['m-[1px]', 'm-px'],
+    ['gap-[1px]', 'gap-px'],
+    ['px-[1px]', 'px-px'],
+    ['w-[1px]', 'w-px'],
+    ['p-[0.0625rem]', 'p-px'],
+    ['-mt-[1px]', '-mt-px'],
+    ['mt-[-1px]', '-mt-px'],
+    ['p-[1px]', 'p-px', { tailwindVersion: 3 }],
+    ['size-[1px]', 'size-px'],
+    ['size-[1px]', null, { tailwindVersion: 3 }],
+    ['min-w-[1px]', null, { tailwindVersion: 3 }],
+    ['p-[1px]', 'p-0.25', { customSpacingTokens: { 1: '0.25' } }],
+    ['border-[1px]', 'border'],
+    ['border-t-[1px]', 'border-t'],
+    ['border-x-[1px]', 'border-x'],
+    ['border-s-[1px]', 'border-s'],
+    ['border-[0px]', 'border-0'],
+    ['border-[2px]', 'border-2'],
+    ['border-[4px]', 'border-4'],
+    ['border-[8px]', 'border-8'],
+    ['border-b-[2px]', 'border-b-2'],
+    ['border-[3px]', null],
+    ['border-[#fff]', null],
+    ['border-[1px]', 'border', { tailwindVersion: 3 }],
+    ['hover:border-[1px]', 'hover:border'],
+    ['-border-[1px]', null],
+    ['divide-x-[1px]', 'divide-x'],
+    ['divide-y-[2px]', 'divide-y-2'],
+    ['ring-[1px]', 'ring-1'],
+    ['ring-[2px]', 'ring-2'],
+    ['ring-[0px]', 'ring-0'],
+    ['ring-[1px]', 'ring-1', { tailwindVersion: 3 }],
+    ['ring-[3px]', null],
+    ['outline-[2px]', 'outline-2'],
+    ['outline-[1px]', 'outline-1'],
+    ['outline-[1px]', 'outline-1', { tailwindVersion: 3 }],
+    ['outline-[5px]', null],
+  ];
+
+  for (const [cls, expected, config] of cases) {
+    const label = config ? `${cls} ${JSON.stringify(config)}` : cls;
+    await t.test(`${label} -> ${expected}`, () => {
+      assert.strictEqual(
+        suggestCanonical(cls, config)?.canonical ?? null,
+        expected,
+      );
+    });
+  }
+});
+
 test('suggestCanonical - tailwindVersion: 3', async (t: TestContext) => {
   const v3 = { tailwindVersion: 3 } as const;
 

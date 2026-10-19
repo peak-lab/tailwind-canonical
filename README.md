@@ -352,8 +352,12 @@ left-2 right-2                  → inset-x-2
 | `text-[12px]` | `text-xs` | Built-in |
 | `text-[0.75rem]` | `text-xs` | rem values |
 | `h-[64px]` | `h-16` | Spacing scale ÷4 |
+| `p-[1px]` / `gap-[1px]` | `p-px` / `gap-px` | 1px spacing step |
 | `w-[50%]` | `w-1/2` | Percentage fractions |
 | `opacity-[0.5]` | `opacity-50` | Opacity scale |
+| `border-[1px]` / `border-t-[1px]` | `border` / `border-t` | Bare = 1px; `[0/2/4/8px]` → `border-0/2/4/8` |
+| `divide-x-[1px]` | `divide-x` | Same scale as `border` |
+| `ring-[1px]` / `outline-[2px]` | `ring-1` / `outline-2` | Never bare: `ring` is 3px on v3 |
 | `text-[11px]` | `text-2xs` | Requires `customTextTokens` |
 | `text-[8px]`–`text-[10px]` | `text-3xs` | Requires `customTextTokens` |
 | `hover:p-[16px]` | `hover:p-4` | Variants are preserved |
@@ -403,7 +407,11 @@ Fractions: `w` carries all thirteen, `h` stops at sixths, `inset`/`top`/`left`/
 `right`/`bottom`/`translate-x`/`translate-y` only have halves, thirds and
 quarters, and `min-w`/`max-w`/`min-h`/`max-h` have none.
 
-`text-*`, `rounded-*` and `opacity-*` are identical in both majors and are
+`*-px` follows the same per-utility gating: `size-px`, `min-w-px`, `max-w-px`
+and `min-h-px` are left untouched on v3.
+
+`text-*`, `rounded-*`, `opacity-*` and the `border`/`divide`/`ring`/`outline`
+widths are identical in both majors and are
 never gated. `customSpacingTokens` stays your decision and is applied in both
 modes. All of the above was measured against `tailwindcss@3.3.7`, the
 advertised floor.
