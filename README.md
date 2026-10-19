@@ -354,6 +354,14 @@ left-2 right-2                  → inset-x-2
 | `h-[64px]` | `h-16` | Spacing scale ÷4 |
 | `p-[1px]` / `gap-[1px]` | `p-px` / `gap-px` | 1px spacing step |
 | `w-[50%]` | `w-1/2` | Percentage fractions |
+| `w-[100%]` / `basis-[100%]` | `w-full` / `basis-full` | Sizing, inset, translate, basis |
+| `h-[100vh]` / `w-[100vw]` | `h-screen` / `w-screen` | Axis-checked; `min-w-screen` is v4-only |
+| `h-[100dvh]` / `svh` / `lvh` | `h-dvh` / `h-svh` / `h-lvh` | v4 only |
+| `w-[auto]` / `mx-[auto]` | `w-auto` / `mx-auto` | Never negated |
+| `w-[fit-content]` / `min-content` / `max-content` | `w-fit` / `w-min` / `w-max` | |
+| `p-[0]` / `top-[0]` | `p-0` / `top-0` | Unitless zero |
+| `aspect-[16/9]` / `aspect-[1/1]` | `aspect-video` / `aspect-square` | Other ratios (`aspect-4/3`) v4 only |
+| `rounded-[9999px]` | `rounded-full` | |
 | `opacity-[0.5]` / `opacity-[.5]` | `opacity-50` | Opacity scale |
 | `border-[1px]` / `border-t-[1px]` | `border` / `border-t` | Bare = 1px; `[0/2/4/8px]` → `border-0/2/4/8` |
 | `divide-x-[1px]` | `divide-x` | Same scale as `border` |

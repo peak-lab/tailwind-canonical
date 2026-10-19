@@ -61,6 +61,7 @@ const ROUNDED_MAP_V4: Record<number, string> = {
   16: '2xl',
   24: '3xl',
   32: '4xl',
+  9999: 'full',
 };
 
 const ROUNDED_MAP_V3: Record<number, string> = {
@@ -72,6 +73,7 @@ const ROUNDED_MAP_V3: Record<number, string> = {
   12: 'xl',
   16: '2xl',
   24: '3xl',
+  9999: 'full',
 };
 
 const FRACTION_MAP: Record<string, string> = {
@@ -110,6 +112,7 @@ const FRACTION_PREFIXES = [
   'bottom',
   'translate-x',
   'translate-y',
+  'basis',
 ];
 
 const SPACING_PREFIXES = [
@@ -257,7 +260,92 @@ const V3_FRACTIONS_BY_PREFIX: Record<string, Set<string>> = {
   bottom: new Set(V3_INSET_FRACTIONS),
   'translate-x': new Set(V3_INSET_FRACTIONS),
   'translate-y': new Set(V3_INSET_FRACTIONS),
+  basis: new Set([...V3_HEIGHT_FRACTIONS, '1/12', '11/12']),
 };
+
+const SIZING_PREFIXES = ['w', 'h', 'min-w', 'max-w', 'min-h', 'max-h'];
+const INSET_PREFIXES = ['inset', 'top', 'left', 'right', 'bottom'];
+const MARGIN_PREFIXES = ['m', 'mx', 'my', 'mt', 'mb', 'ml', 'mr'];
+
+type KeywordRule = { keyword: string; v4: string[]; v3: string[] };
+
+const fullViewport = (keyword: string, prefixes: string[]): KeywordRule => ({
+  keyword,
+  v4: prefixes,
+  v3: [],
+});
+
+/**
+ * Arbitrary value → named keyword, with the prefixes shipping it per major.
+ * v3 lists what tailwindcss@3.3.7 generates: no `size-*`, no dynamic
+ * viewport units, and `screen` only on the axis it measures.
+ */
+const KEYWORD_VALUES: Record<string, KeywordRule> = {
+  '100%': {
+    keyword: 'full',
+    v4: [
+      ...SIZING_PREFIXES,
+      'size',
+      ...INSET_PREFIXES,
+      'translate-x',
+      'translate-y',
+      'basis',
+    ],
+    v3: [
+      ...SIZING_PREFIXES,
+      ...INSET_PREFIXES,
+      'translate-x',
+      'translate-y',
+      'basis',
+    ],
+  },
+  '100vw': { keyword: 'screen', v4: ['w', 'min-w', 'max-w'], v3: ['w'] },
+  '100vh': {
+    keyword: 'screen',
+    v4: ['h', 'min-h', 'max-h'],
+    v3: ['h', 'min-h', 'max-h'],
+  },
+  '100dvh': fullViewport('dvh', ['h', 'min-h', 'max-h']),
+  '100svh': fullViewport('svh', ['h', 'min-h', 'max-h']),
+  '100lvh': fullViewport('lvh', ['h', 'min-h', 'max-h']),
+  '100dvw': fullViewport('dvw', ['w']),
+  '100svw': fullViewport('svw', ['w']),
+  '100lvw': fullViewport('lvw', ['w']),
+  auto: {
+    keyword: 'auto',
+    v4: [
+      'w',
+      'h',
+      'size',
+      ...MARGIN_PREFIXES,
+      ...INSET_PREFIXES,
+      'basis',
+      'aspect',
+    ],
+    v3: ['w', 'h', ...MARGIN_PREFIXES, ...INSET_PREFIXES, 'basis', 'aspect'],
+  },
+  'fit-content': {
+    keyword: 'fit',
+    v4: [...SIZING_PREFIXES, 'size'],
+    v3: SIZING_PREFIXES,
+  },
+  'min-content': {
+    keyword: 'min',
+    v4: [...SIZING_PREFIXES, 'size'],
+    v3: SIZING_PREFIXES,
+  },
+  'max-content': {
+    keyword: 'max',
+    v4: [...SIZING_PREFIXES, 'size'],
+    v3: SIZING_PREFIXES,
+  },
+};
+
+const KEYWORD_RE = /^([a-z]+(?:-[a-z]+)*)-\[([a-z0-9%-]+)\]$/;
+
+const SPACING_ZERO_RE = new RegExp(`^(${SPACING_PREFIXES.join('|')})-\\[0\\]$`);
+
+const ASPECT_RATIO_RE = /^aspect-\[(\d+)_?\/_?(\d+)\]$/;
 
 /** Discrete v3 scales; v4 accepts any integer for these utilities. */
 const V3_TIME_STEPS = new Set([0, 75, 100, 150, 200, 300, 500, 700, 1000]);
@@ -489,6 +577,8 @@ export function suggestCanonical(
     return null;
   }
 
+  if (parsed.negative && base.canonical.endsWith('-auto')) return null;
+
   const sign = parsed.negative && !/-(0|none)$/.test(base.canonical) ? '-' : '';
   return {
     original: cls,
@@ -513,6 +603,39 @@ function suggestUtility(cls: string, config: Config): Suggestion | null {
   if (textRemMatch) {
     const px = remToPx(parseFloat(textRemMatch[1]));
     return px === null ? null : textSuggestion(cls, px, textTokens);
+  }
+
+  // w-[100%] → w-full, h-[100vh] → h-screen, mx-[auto] → mx-auto
+  const keywordMatch = cls.match(KEYWORD_RE);
+  const keywordRule = keywordMatch && KEYWORD_VALUES[keywordMatch[2]];
+  if (keywordMatch && keywordRule) {
+    const prefix = keywordMatch[1];
+    if (!(v3 ? keywordRule.v3 : keywordRule.v4).includes(prefix)) return null;
+    return {
+      original: cls,
+      canonical: `${prefix}-${keywordRule.keyword}`,
+      isCustomToken: false,
+    };
+  }
+
+  // p-[0] → p-0 (unitless zero)
+  const spacingZeroMatch = cls.match(SPACING_ZERO_RE);
+  if (spacingZeroMatch) {
+    return spacingSuggestion(cls, spacingZeroMatch[1], 0, spacingTokens, v3);
+  }
+
+  // aspect-[16/9] → aspect-video; other ratios are v4-only
+  const aspectMatch = cls.match(ASPECT_RATIO_RE);
+  if (aspectMatch) {
+    if (/^0+$/.test(aspectMatch[1]) || /^0+$/.test(aspectMatch[2])) return null;
+    const ratio = `${aspectMatch[1]}/${aspectMatch[2]}`;
+    const keyword = { '16/9': 'video', '1/1': 'square' }[ratio];
+    if (!keyword && v3) return null;
+    return {
+      original: cls,
+      canonical: `aspect-${keyword ?? ratio}`,
+      isCustomToken: false,
+    };
   }
 
   // spacing-[Npx]

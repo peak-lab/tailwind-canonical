@@ -372,3 +372,14 @@ test('fixContent - rewrites variant, important and negative classes', () => {
   );
   assert.strictEqual(count, 4);
 });
+
+test('fixContent - rewrites keyword values', () => {
+  const { result, count } = fixContent(
+    '<div className="w-[100%] h-[100vh] mx-[auto] aspect-[16/9] top-[0]" />',
+  );
+  assert.strictEqual(
+    result,
+    '<div className="w-full h-screen mx-auto aspect-video top-0" />',
+  );
+  assert.strictEqual(count, 5);
+});

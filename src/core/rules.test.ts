@@ -1000,3 +1000,89 @@ test('suggestCanonical - rounded scale per version', async (t: TestContext) => {
     });
   }
 });
+
+test('suggestCanonical - keyword values', async (t: TestContext) => {
+  const v3: Config = { tailwindVersion: 3 };
+  const cases: [string, string | null, Config?][] = [
+    ['w-[100%]', 'w-full'],
+    ['max-h-[100%]', 'max-h-full'],
+    ['size-[100%]', 'size-full'],
+    ['basis-[100%]', 'basis-full'],
+    ['inset-[100%]', 'inset-full'],
+    ['-top-[100%]', '-top-full'],
+    ['-translate-x-[100%]', '-translate-x-full'],
+    ['hover:w-[100%]', 'hover:w-full'],
+    ['text-[100%]', null],
+    ['h-[100vh]', 'h-screen'],
+    ['min-h-[100vh]', 'min-h-screen'],
+    ['w-[100vw]', 'w-screen'],
+    ['min-w-[100vw]', 'min-w-screen'],
+    ['w-[100vh]', null],
+    ['h-[100vw]', null],
+    ['h-[100dvh]', 'h-dvh'],
+    ['min-h-[100svh]', 'min-h-svh'],
+    ['max-h-[100lvh]', 'max-h-lvh'],
+    ['w-[100dvw]', 'w-dvw'],
+    ['w-[auto]', 'w-auto'],
+    ['mx-[auto]', 'mx-auto'],
+    ['top-[auto]', 'top-auto'],
+    ['aspect-[auto]', 'aspect-auto'],
+    ['-mx-[auto]', null],
+    ['p-[auto]', null],
+    ['w-[fit-content]', 'w-fit'],
+    ['min-h-[min-content]', 'min-h-min'],
+    ['max-w-[max-content]', 'max-w-max'],
+    ['size-[fit-content]', 'size-fit'],
+    ['rounded-[9999px]', 'rounded-full'],
+    ['rounded-tl-[9999px]', 'rounded-tl-full'],
+    ['basis-[50%]', 'basis-1/2'],
+    ['size-[100%]', null, v3],
+    ['size-[fit-content]', null, v3],
+    ['min-w-[100vw]', null, v3],
+    ['h-[100dvh]', null, v3],
+    ['w-[100dvw]', null, v3],
+    ['h-[100vh]', 'h-screen', v3],
+    ['max-h-[100vh]', 'max-h-screen', v3],
+    ['mx-[auto]', 'mx-auto', v3],
+    ['rounded-[9999px]', 'rounded-full', v3],
+    ['basis-[8.333333%]', 'basis-1/12', v3],
+  ];
+  for (const [input, expected, config] of cases) {
+    const label = config ? 'v3' : 'v4';
+    await t.test(`${label}: ${input} → ${expected}`, () => {
+      assert.strictEqual(
+        suggestCanonical(input, config)?.canonical ?? null,
+        expected,
+      );
+    });
+  }
+});
+
+test('suggestCanonical - unitless zero and aspect ratios', async (t: TestContext) => {
+  const v3: Config = { tailwindVersion: 3 };
+  const cases: [string, string | null, Config?][] = [
+    ['top-[0]', 'top-0'],
+    ['p-[0]', 'p-0'],
+    ['-mt-[0]', 'mt-0'],
+    ['min-w-[0]', 'min-w-0', v3],
+    ['size-[0]', null, v3],
+    ['text-[0]', null],
+    ['aspect-[16/9]', 'aspect-video'],
+    ['aspect-[16_/_9]', 'aspect-video'],
+    ['aspect-[1/1]', 'aspect-square'],
+    ['aspect-[4/3]', 'aspect-4/3'],
+    ['aspect-[0/3]', null],
+    ['aspect-[16/9]', 'aspect-video', v3],
+    ['aspect-[1/1]', 'aspect-square', v3],
+    ['aspect-[4/3]', null, v3],
+  ];
+  for (const [input, expected, config] of cases) {
+    const label = config ? 'v3' : 'v4';
+    await t.test(`${label}: ${input} → ${expected}`, () => {
+      assert.strictEqual(
+        suggestCanonical(input, config)?.canonical ?? null,
+        expected,
+      );
+    });
+  }
+});
