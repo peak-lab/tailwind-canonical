@@ -529,7 +529,7 @@ function suggestUtility(cls: string, config: Config): Suggestion | null {
   }
 
   // leading-[1.5] → leading-normal
-  const leadingUnitlessMatch = cls.match(/^leading-\[(\d*\.?\d+)\]$/);
+  const leadingUnitlessMatch = cls.match(/^leading-\[(\d+(?:\.\d+)?|\.\d+)\]$/);
   if (leadingUnitlessMatch) {
     const keyword =
       LEADING_KEYWORDS[String(parseFloat(leadingUnitlessMatch[1]))];
@@ -581,7 +581,7 @@ function suggestUtility(cls: string, config: Config): Suggestion | null {
   }
 
   // opacity-[N.N], opacity-[0.N] or opacity-[.N]
-  const opacityMatch = cls.match(/^opacity-\[(\d*\.?\d+)\]$/);
+  const opacityMatch = cls.match(/^opacity-\[(\d+(?:\.\d+)?|\.\d+)\]$/);
   if (opacityMatch) {
     const raw = parseFloat(opacityMatch[1]);
     // CSS opacity is a 0..1 fraction; a bare value > 1 clamps to 1 and is not
