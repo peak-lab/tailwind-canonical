@@ -354,7 +354,7 @@ left-2 right-2                  → inset-x-2
 | `h-[64px]` | `h-16` | Spacing scale ÷4 |
 | `p-[1px]` / `gap-[1px]` | `p-px` / `gap-px` | 1px spacing step |
 | `w-[50%]` | `w-1/2` | Percentage fractions |
-| `opacity-[0.5]` | `opacity-50` | Opacity scale |
+| `opacity-[0.5]` / `opacity-[.5]` | `opacity-50` | Opacity scale |
 | `border-[1px]` / `border-t-[1px]` | `border` / `border-t` | Bare = 1px; `[0/2/4/8px]` → `border-0/2/4/8` |
 | `divide-x-[1px]` | `divide-x` | Same scale as `border` |
 | `ring-[1px]` / `outline-[2px]` | `ring-1` / `outline-2` | Never bare: `ring` is 3px on v3 |
@@ -362,11 +362,18 @@ left-2 right-2                  → inset-x-2
 | `scale-[1.05]` / `scale-x-[95%]` | `scale-105` / `scale-x-95` | Factor or percentage |
 | `rotate-[45deg]` | `rotate-45` | Integer degrees |
 | `blur-[4px]` | `blur-xs` | `blur-sm` with `tailwindVersion: 3` |
+| `z-[10]` | `z-10` | Any integer on v4 |
+| `font-[700]` | `font-bold` | Weights 100–900 |
+| `leading-[24px]` / `leading-[1.5rem]` | `leading-6` | Spacing scale ÷4 |
+| `leading-[1.5]` | `leading-normal` | `none`, `tight`, `snug`, `normal`, `relaxed`, `loose` |
+| `order-[1]` / `order-[0]` | `order-1` / `order-none` | Any integer on v4 |
+| `grow-[1]` / `shrink-[0]` | `grow` / `shrink-0` | |
+| `line-clamp-[3]`, `columns-[3]` | `line-clamp-3`, `columns-3` | Any integer ≥ 1 on v4 |
 | `text-[11px]` | `text-2xs` | Requires `customTextTokens` |
 | `text-[8px]`–`text-[10px]` | `text-3xs` | Requires `customTextTokens` |
 | `hover:p-[16px]` | `hover:p-4` | Variants are preserved |
 | `!p-[16px]` / `p-[16px]!` | `!p-4` / `p-4!` | Important modifier kept in place |
-| `-mt-[8px]` / `mt-[-8px]` | `-mt-2` | Negative margin / inset / translate / space / scale / rotate only |
+| `-mt-[8px]` / `mt-[-8px]` | `-mt-2` | Negative margin / inset / translate / space / scale / rotate / z / order only |
 
 `text-2xs` and `text-3xs` are not stock Tailwind tokens, so they are not in the built-in text size map — without config, `text-[11px]` and `text-[8px]`–`text-[10px]` are left untouched. Enable them with `customTextTokens`:
 
@@ -409,6 +416,12 @@ scale differs per utility, not just per family:
 | `rotate-[30deg]` | `rotate-30` | untouched — not on the v3 scale |
 | `blur-[4px]` | `blur-xs` | `blur-sm` — v3 names are one step lower |
 | `blur-[8px]` | `blur-sm` | `blur` |
+| `z-[15]` | `z-15` | untouched — v3 stops at `0`–`50` in tens |
+| `leading-[44px]` | `leading-11` | untouched — v3 ships `leading-3`–`leading-10` |
+| `order-[13]` | `order-13` | untouched — v3 ships `1`–`12` |
+| `grow-[2]` | `grow-2` | untouched — v3 ships `grow` and `grow-0` |
+| `line-clamp-[7]` | `line-clamp-7` | untouched — v3 ships `1`–`6` |
+| `columns-[13]` | `columns-13` | untouched — v3 ships `1`–`12` |
 
 Spacing steps: `size-*` has no numeric scale in v3.3, and `min-w-*`, `max-w-*`
 and `min-h-*` only ship the zero step — they gained the scale afterwards.
@@ -422,7 +435,8 @@ quarters, and `min-w`/`max-w`/`min-h`/`max-h` have none.
 `*-px` follows the same per-utility gating: `size-px`, `min-w-px`, `max-w-px`
 and `min-h-px` are left untouched on v3.
 
-`text-*`, `rounded-*`, `opacity-*` and the `border`/`divide`/`ring`/`outline`
+`text-*`, `rounded-*`, `opacity-*`, `font-*` weights, the `leading-*`
+keywords and the `border`/`divide`/`ring`/`outline`
 widths are identical in both majors and are
 never gated. `customSpacingTokens` stays your decision and is applied in both
 modes. All of the above was measured against `tailwindcss@3.3.7`, the

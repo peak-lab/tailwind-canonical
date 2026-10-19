@@ -895,3 +895,80 @@ test('suggestCanonical - transitions and transforms', async (t: TestContext) => 
     });
   }
 });
+
+test('suggestCanonical - unitless scales', async (t: TestContext) => {
+  const v3: Config = { tailwindVersion: 3 };
+  const cases: Array<[string, string | null, string | null]> = [
+    ['z-[0]', 'z-0', 'z-0'],
+    ['z-[10]', 'z-10', 'z-10'],
+    ['z-[50]', 'z-50', 'z-50'],
+    ['z-[15]', 'z-15', null],
+    ['-z-[10]', '-z-10', '-z-10'],
+    ['z-[-10]', '-z-10', '-z-10'],
+    ['md:!z-[20]', 'md:!z-20', 'md:!z-20'],
+    ['font-[100]', 'font-thin', 'font-thin'],
+    ['font-[400]', 'font-normal', 'font-normal'],
+    ['font-[700]', 'font-bold', 'font-bold'],
+    ['font-[900]', 'font-black', 'font-black'],
+    ['font-[450]', null, null],
+    ['-font-[700]', null, null],
+    ['leading-[24px]', 'leading-6', 'leading-6'],
+    ['leading-[1.5rem]', 'leading-6', 'leading-6'],
+    ['leading-[44px]', 'leading-11', null],
+    ['leading-[8px]', 'leading-2', null],
+    ['leading-[22px]', null, null],
+    ['leading-[1]', 'leading-none', 'leading-none'],
+    ['leading-[1.25]', 'leading-tight', 'leading-tight'],
+    ['leading-[1.375]', 'leading-snug', 'leading-snug'],
+    ['leading-[1.5]', 'leading-normal', 'leading-normal'],
+    ['leading-[1.50]', 'leading-normal', 'leading-normal'],
+    ['leading-[1.625]', 'leading-relaxed', 'leading-relaxed'],
+    ['leading-[2]', 'leading-loose', 'leading-loose'],
+    ['leading-[1.4]', null, null],
+    ['opacity-[.5]', 'opacity-50', 'opacity-50'],
+    ['opacity-[.33]', null, null],
+    ['order-[1]', 'order-1', 'order-1'],
+    ['order-[12]', 'order-12', 'order-12'],
+    ['order-[13]', 'order-13', null],
+    ['order-[0]', 'order-none', 'order-none'],
+    ['-order-[1]', '-order-1', '-order-1'],
+    ['-order-[0]', 'order-none', 'order-none'],
+    ['grow-[0]', 'grow-0', 'grow-0'],
+    ['grow-[1]', 'grow', 'grow'],
+    ['grow-[2]', 'grow-2', null],
+    ['shrink-[0]', 'shrink-0', 'shrink-0'],
+    ['shrink-[1]', 'shrink', 'shrink'],
+    ['-grow-[1]', null, null],
+    ['line-clamp-[3]', 'line-clamp-3', 'line-clamp-3'],
+    ['line-clamp-[7]', 'line-clamp-7', null],
+    ['line-clamp-[0]', null, null],
+    ['columns-[3]', 'columns-3', 'columns-3'],
+    ['columns-[13]', 'columns-13', null],
+    ['columns-[0]', null, null],
+  ];
+  for (const [input, v4Expected, v3Expected] of cases) {
+    await t.test(`${input} → v4 ${v4Expected} / v3 ${v3Expected}`, () => {
+      assert.strictEqual(
+        suggestCanonical(input)?.canonical ?? null,
+        v4Expected,
+      );
+      assert.strictEqual(
+        suggestCanonical(input, v3)?.canonical ?? null,
+        v3Expected,
+      );
+    });
+  }
+
+  await t.test('customSpacingTokens apply to leading', () => {
+    assert.deepEqual(
+      suggestCanonical('leading-[14px]', {
+        customSpacingTokens: { 14: '3.5' },
+      }),
+      {
+        original: 'leading-[14px]',
+        canonical: 'leading-3.5',
+        isCustomToken: true,
+      },
+    );
+  });
+});
