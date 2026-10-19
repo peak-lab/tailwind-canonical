@@ -341,7 +341,7 @@ const KEYWORD_VALUES: Record<string, KeywordRule> = {
   },
 };
 
-const KEYWORD_RE = /^(.+)-\[([^\]]+)\]$/;
+const KEYWORD_RE = /^([a-z]+(?:-[a-z]+)*)-\[([a-z0-9%-]+)\]$/;
 
 const SPACING_ZERO_RE = new RegExp(`^(${SPACING_PREFIXES.join('|')})-\\[0\\]$`);
 
