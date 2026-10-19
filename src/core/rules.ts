@@ -129,6 +129,7 @@ const SPACING_PREFIXES = [
   'translate-y',
   'space-x',
   'space-y',
+  'leading',
 ];
 
 const SPACING_PX_RE = new RegExp(
@@ -151,6 +152,45 @@ const BARE_WIDTH_RE = /^(border(?:-[xytrblse])?|divide-[xy])-\[(\d+)px\]$/;
 
 /** No bare form: `ring` is 3px in v3, `outline` is a style in v3. */
 const NUMBERED_WIDTH_RE = /^(ring|outline)-\[(\d+)px\]$/;
+
+const LEADING_KEYWORDS: Record<string, string> = {
+  '1': 'none',
+  '1.25': 'tight',
+  '1.375': 'snug',
+  '1.5': 'normal',
+  '1.625': 'relaxed',
+  '2': 'loose',
+};
+
+const FONT_WEIGHT_MAP: Record<number, string> = {
+  100: 'thin',
+  200: 'extralight',
+  300: 'light',
+  400: 'normal',
+  500: 'medium',
+  600: 'semibold',
+  700: 'bold',
+  800: 'extrabold',
+  900: 'black',
+};
+
+/**
+ * Unitless integer utilities. v4 derives each from the bare number, so any
+ * integer at or above `min` works; v3 only ships the listed steps.
+ */
+const INTEGER_SCALES: Record<string, { min: number; v3: Set<number> }> = {
+  z: { min: 0, v3: new Set([0, 10, 20, 30, 40, 50]) },
+  order: { min: 1, v3: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) },
+  'line-clamp': { min: 1, v3: new Set([1, 2, 3, 4, 5, 6]) },
+  columns: { min: 1, v3: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) },
+};
+
+const INTEGER_SCALE_RE = new RegExp(
+  `^(${Object.keys(INTEGER_SCALES).join('|')})-\\[(\\d+)\\]$`,
+);
+
+/** Leading steps v3 ships; v4 derives any integer from the spacing scale. */
+const V3_LEADING_STEPS = new Set([3, 4, 5, 6, 7, 8, 9, 10]);
 
 const OPACITY_SCALE = new Set([
   0, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95, 100,
@@ -282,6 +322,7 @@ function scaleStepSuggestion(
 
 /** True when the ÷4 result would be a class v3 never generates. */
 function isMissingInV3(prefix: string, step: number): boolean {
+  if (prefix === 'leading') return !V3_LEADING_STEPS.has(step);
   if (V3_UNSCALED_SPACING_PREFIXES.has(prefix)) return true;
   if (V3_ZERO_ONLY_SPACING_PREFIXES.has(prefix)) return step !== 0;
   return !V3_SPACING_STEPS.has(step);
@@ -356,6 +397,8 @@ const NEGATABLE_PREFIXES = [
   'scale-x',
   'scale-y',
   'rotate',
+  'z',
+  'order',
 ];
 
 type ParsedClass = {
@@ -429,7 +472,7 @@ export function suggestCanonical(
     return null;
   }
 
-  const sign = parsed.negative && !base.canonical.endsWith('-0') ? '-' : '';
+  const sign = parsed.negative && !/-(0|none)$/.test(base.canonical) ? '-' : '';
   return {
     original: cls,
     canonical: `${parsed.variants}${parsed.leadingImportant ? '!' : ''}${sign}${base.canonical}${parsed.trailingImportant ? '!' : ''}`,
@@ -485,8 +528,60 @@ function suggestUtility(cls: string, config: Config): Suggestion | null {
     };
   }
 
-  // opacity-[N.N] or opacity-[0.N]
-  const opacityMatch = cls.match(/^opacity-\[(\d+(?:\.\d+)?)\]$/);
+  // leading-[1.5] → leading-normal
+  const leadingUnitlessMatch = cls.match(/^leading-\[(\d+(?:\.\d+)?|\.\d+)\]$/);
+  if (leadingUnitlessMatch) {
+    const keyword =
+      LEADING_KEYWORDS[String(parseFloat(leadingUnitlessMatch[1]))];
+    if (!keyword) return null;
+    return {
+      original: cls,
+      canonical: `leading-${keyword}`,
+      isCustomToken: false,
+    };
+  }
+
+  // font-[700] → font-bold
+  const fontWeightMatch = cls.match(/^font-\[(\d+)\]$/);
+  if (fontWeightMatch) {
+    const weight = FONT_WEIGHT_MAP[parseInt(fontWeightMatch[1], 10)];
+    if (!weight) return null;
+    return { original: cls, canonical: `font-${weight}`, isCustomToken: false };
+  }
+
+  // z/order/line-clamp/columns-[N]
+  const integerMatch = cls.match(INTEGER_SCALE_RE);
+  if (integerMatch) {
+    const prefix = integerMatch[1];
+    const value = parseInt(integerMatch[2], 10);
+    if (prefix === 'order' && value === 0) {
+      return { original: cls, canonical: 'order-none', isCustomToken: false };
+    }
+    const scale = INTEGER_SCALES[prefix];
+    if (value < scale.min) return null;
+    if (v3 && !scale.v3.has(value)) return null;
+    return {
+      original: cls,
+      canonical: `${prefix}-${value}`,
+      isCustomToken: false,
+    };
+  }
+
+  // grow-[N] / shrink-[N]
+  const flexFactorMatch = cls.match(/^(grow|shrink)-\[(\d+)\]$/);
+  if (flexFactorMatch) {
+    const prefix = flexFactorMatch[1];
+    const value = parseInt(flexFactorMatch[2], 10);
+    if (value > 1 && v3) return null;
+    return {
+      original: cls,
+      canonical: value === 1 ? prefix : `${prefix}-${value}`,
+      isCustomToken: false,
+    };
+  }
+
+  // opacity-[N.N], opacity-[0.N] or opacity-[.N]
+  const opacityMatch = cls.match(/^opacity-\[(\d+(?:\.\d+)?|\.\d+)\]$/);
   if (opacityMatch) {
     const raw = parseFloat(opacityMatch[1]);
     // CSS opacity is a 0..1 fraction; a bare value > 1 clamps to 1 and is not
