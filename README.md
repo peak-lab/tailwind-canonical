@@ -358,11 +358,15 @@ left-2 right-2                  → inset-x-2
 | `border-[1px]` / `border-t-[1px]` | `border` / `border-t` | Bare = 1px; `[0/2/4/8px]` → `border-0/2/4/8` |
 | `divide-x-[1px]` | `divide-x` | Same scale as `border` |
 | `ring-[1px]` / `outline-[2px]` | `ring-1` / `outline-2` | Never bare: `ring` is 3px on v3 |
+| `duration-[200ms]` / `delay-[0.15s]` | `duration-200` / `delay-150` | ms or s |
+| `scale-[1.05]` / `scale-x-[95%]` | `scale-105` / `scale-x-95` | Factor or percentage |
+| `rotate-[45deg]` | `rotate-45` | Integer degrees |
+| `blur-[4px]` | `blur-xs` | `blur-sm` with `tailwindVersion: 3` |
 | `text-[11px]` | `text-2xs` | Requires `customTextTokens` |
 | `text-[8px]`–`text-[10px]` | `text-3xs` | Requires `customTextTokens` |
 | `hover:p-[16px]` | `hover:p-4` | Variants are preserved |
 | `!p-[16px]` / `p-[16px]!` | `!p-4` / `p-4!` | Important modifier kept in place |
-| `-mt-[8px]` / `mt-[-8px]` | `-mt-2` | Negative margin / inset / translate / space only |
+| `-mt-[8px]` / `mt-[-8px]` | `-mt-2` | Negative margin / inset / translate / space / scale / rotate only |
 
 `text-2xs` and `text-3xs` are not stock Tailwind tokens, so they are not in the built-in text size map — without config, `text-[11px]` and `text-[8px]`–`text-[10px]` are left untouched. Enable them with `customTextTokens`:
 
@@ -400,12 +404,20 @@ scale differs per utility, not just per family:
 | `top-[20%]` | `top-1/5` | untouched — v3.3 stops at quarters here |
 | `top-[25%]` | `top-1/4` | `top-1/4` |
 | `w-[8.333333%]` | `w-1/12` | `w-1/12` — `w` carries the full set |
+| `duration-[250ms]` | `duration-250` | untouched — not on the v3 scale |
+| `scale-[1.15]` | `scale-115` | untouched — not on the v3 scale |
+| `rotate-[30deg]` | `rotate-30` | untouched — not on the v3 scale |
+| `blur-[4px]` | `blur-xs` | `blur-sm` — v3 names are one step lower |
+| `blur-[8px]` | `blur-sm` | `blur` |
 
 Spacing steps: `size-*` has no numeric scale in v3.3, and `min-w-*`, `max-w-*`
 and `min-h-*` only ship the zero step — they gained the scale afterwards.
 Fractions: `w` carries all thirteen, `h` stops at sixths, `inset`/`top`/`left`/
 `right`/`bottom`/`translate-x`/`translate-y` only have halves, thirds and
 quarters, and `min-w`/`max-w`/`min-h`/`max-h` have none.
+`duration-*`/`delay-*` stop at 0, 75, 100, 150, 200, 300, 500, 700 and 1000;
+`scale-*` at 0, 50, 75, 90, 95, 100, 105, 110, 125 and 150; `rotate-*` at 0, 1,
+2, 3, 6, 12, 45, 90 and 180. v4 accepts any integer for all four.
 
 `*-px` follows the same per-utility gating: `size-px`, `min-w-px`, `max-w-px`
 and `min-h-px` are left untouched on v3.
