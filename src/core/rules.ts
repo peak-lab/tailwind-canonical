@@ -143,6 +143,15 @@ const FRACTION_RE = new RegExp(
   `^(${FRACTION_PREFIXES.join('|')})-\\[(\\d+(?:\\.\\d+)?)%\\]$`,
 );
 
+/** Pixel widths shipped by `border`, `divide`, `ring` and `outline` in both majors. */
+const WIDTH_SCALE = new Set([0, 1, 2, 4, 8]);
+
+/** Bare form is 1px in both majors. */
+const BARE_WIDTH_RE = /^(border(?:-[xytrblse])?|divide-[xy])-\[(\d+)px\]$/;
+
+/** No bare form: `ring` is 3px in v3, `outline` is a style in v3. */
+const NUMBERED_WIDTH_RE = /^(ring|outline)-\[(\d+)px\]$/;
+
 const OPACITY_SCALE = new Set([
   0, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95, 100,
 ]);
@@ -259,6 +268,16 @@ function spacingSuggestion(
       canonical: `${prefix}-${spacingTokens[px]}`,
       isCustomToken: true,
     };
+  }
+  if (px === 1) {
+    if (
+      v3 &&
+      (V3_UNSCALED_SPACING_PREFIXES.has(prefix) ||
+        V3_ZERO_ONLY_SPACING_PREFIXES.has(prefix))
+    ) {
+      return null;
+    }
+    return { original: cls, canonical: `${prefix}-px`, isCustomToken: false };
   }
   if (px % 4 !== 0) return null;
   if (v3 && isMissingInV3(prefix, px / 4)) return null;
@@ -436,6 +455,30 @@ function suggestUtility(cls: string, config: Config): Suggestion | null {
     return {
       original: cls,
       canonical: `opacity-${value}`,
+      isCustomToken: false,
+    };
+  }
+
+  // border/divide-[Npx]
+  const bareWidthMatch = cls.match(BARE_WIDTH_RE);
+  if (bareWidthMatch) {
+    const px = parseInt(bareWidthMatch[2], 10);
+    if (!WIDTH_SCALE.has(px)) return null;
+    return {
+      original: cls,
+      canonical: px === 1 ? bareWidthMatch[1] : `${bareWidthMatch[1]}-${px}`,
+      isCustomToken: false,
+    };
+  }
+
+  // ring/outline-[Npx]
+  const numberedWidthMatch = cls.match(NUMBERED_WIDTH_RE);
+  if (numberedWidthMatch) {
+    const px = parseInt(numberedWidthMatch[2], 10);
+    if (!WIDTH_SCALE.has(px)) return null;
+    return {
+      original: cls,
+      canonical: `${numberedWidthMatch[1]}-${px}`,
       isCustomToken: false,
     };
   }
