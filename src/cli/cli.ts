@@ -16,7 +16,7 @@ import { dedupeContent } from '../core/deduplicator.js';
 import { fixContent } from '../core/fixer.js';
 import { mergeContent } from '../core/merger.js';
 import type { Config } from '../core/rules.js';
-import { resolveTargets } from '../core/scanner.js';
+import { isGlob, resolveTargets } from '../core/scanner.js';
 import { sortContent } from '../core/sorter.js';
 import { analyzeTyposFile, type TypoFinding } from '../core/typos.js';
 import { errMsg, pluralize, timestamp } from './format.js';
@@ -45,6 +45,8 @@ const INIT_CONFIG_BODY = [
   '  // Run `tailwind-canonical` with no flags using these defaults:',
   "  // defaultCommand: { fix: true, dedup: true, sort: true, typos: true, targets: ['./src'] },",
   '  // px → token additions/overrides:',
+  '  // Text mappings can change line-height; enable only when intentional:',
+  '  // allowTextSizeLineHeightChanges: true,',
   "  // customTextTokens: { 11: '2xs' },",
   "  // customSpacingTokens: { 14: '3.5' },",
   '  // Never suggest replacements for classes matching:',
@@ -646,7 +648,31 @@ export async function run(
   }
 
   const targetPaths = flags.targets.map((target) => resolveTarget(cwd, target));
-  const files = await resolveTargets(targetPaths);
+  const targetKinds = new Map<string, 'literal' | 'glob'>();
+  const rememberTargetKinds = (paths: string[]) => {
+    for (const path of paths) {
+      const target = path.startsWith('!') ? path.slice(1) : path;
+      const key = target.replace(/\\/g, '/');
+      if (!targetKinds.has(key))
+        targetKinds.set(
+          key,
+          existsSync(target) || !(path.startsWith('!') || isGlob(target))
+            ? 'literal'
+            : 'glob',
+        );
+    }
+    return targetKinds;
+  };
+  rememberTargetKinds(targetPaths);
+  let files: string[];
+  try {
+    files = await resolveTargets(targetPaths, { targetKinds });
+  } catch (error) {
+    sink.error(
+      `tailwind-canonical: could not resolve targets: ${errMsg(error)}`,
+    );
+    return { exitCode: 1 };
+  }
 
   if (
     files.length === 0 &&
@@ -673,9 +699,16 @@ export async function run(
       const path = findConfigPath(cwd);
       return path ? dirname(path) : cwd;
     };
+    const explicitTargets = (paths: string[]) =>
+      paths.filter(
+        (path) =>
+          !path.startsWith('!') &&
+          targetKinds.get(path.replace(/\\/g, '/')) === 'literal',
+      );
     return startWatch({
       files,
-      roots: watchRoots(targetPaths, [cwd, configDirectory()]),
+      explicitTargets: explicitTargets(targetPaths),
+      roots: watchRoots(targetPaths, [cwd, configDirectory()], targetKinds),
       sink,
       refresh: async (changed) => {
         const nextConfig = await loadConfig(cwd, { reload: true });
@@ -696,8 +729,14 @@ export async function run(
         const paths = nextFlags.targets.map((target) =>
           resolveTarget(cwd, target),
         );
-        const nextFiles = await resolveTargets(paths);
-        const nextRoots = watchRoots(paths, [cwd, configDirectory()]);
+        const nextFiles = await resolveTargets(paths, {
+          targetKinds: rememberTargetKinds(paths),
+        });
+        const nextRoots = watchRoots(
+          paths,
+          [cwd, configDirectory()],
+          targetKinds,
+        );
         const configChanged =
           JSON.stringify(config, (_key, value) =>
             value instanceof RegExp ? value.toString() : value,
@@ -711,6 +750,7 @@ export async function run(
         return {
           files: nextFiles,
           roots: nextRoots,
+          explicitTargets: explicitTargets(paths),
           reprocessAll:
             configChanged ||
             [...changed].some((file) =>

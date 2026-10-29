@@ -3,7 +3,9 @@
 ## Project Overview
 
 `tailwind-canonical` is a zero-dependency TypeScript library that lints and auto-fixes
-Tailwind CSS arbitrary values (e.g. `text-[12px]`) that have canonical equivalents (`text-xs`).
+Tailwind CSS arbitrary values (e.g. `p-[16px]`) that have canonical equivalents (`p-4`).
+Text-size conversions are disabled by default because named typography tokens can
+change line-height; they require `allowTextSizeLineHeightChanges: true`.
 
 Ships three artifacts from one codebase:
 
@@ -16,7 +18,7 @@ Ships three artifacts from one codebase:
 - Node `>=22.6`, ESM-only (`"type": "module"`) — CI runs Node 22 and 24
 - TypeScript `^7.0.2`, target ES2022, module NodeNext
 - pnpm `11.4.0` (pinned via `packageManager` field)
-- Biome `^2.5.11` — internal linter/formatter
+- Biome `^2.6.3` — internal linter/formatter
 - `node:test` + `tsx` `^4.23.13` — test runner (no Jest, no Vitest)
 - Lefthook `^2.1.12` — git hook manager (pre-commit: biome + typecheck, pre-push: test + knip)
 - knip `^6.34.0` — dead code/dependency detection (`pnpm knip`; enforced in CI and the pre-push hook)
@@ -89,6 +91,10 @@ and the implicit ÷4 spacing rule. Adding new dimensions (e.g. `opacity-[N]`) me
 adding a new regex branch in `suggestUtility` (`suggestCanonical` handles variants, `!` and sign).
 
 ### Returning `null`
+
+Text-size px/rem mappings also return `null` by default, even for custom tokens.
+Do not infer safety from nearby `leading-*` classes. Only an explicit
+`allowTextSizeLineHeightChanges: true` enables their previous conversion behavior.
 
 `suggestCanonical` returns `null` for non-canonical px values (e.g. `h-[22px]`).
 **These must stay untouched** — they are valid Tailwind, just not divisible.

@@ -1,5 +1,8 @@
 # Roadmap
 
+Text-size mappings listed below are historical capabilities. They now require
+`allowTextSizeLineHeightChanges: true`; the default preserves text line-height.
+
 ## v0.1 — Arbitrary → Canonical ✅
 - [x] `text-[12px]` → `text-xs`, `h-[64px]` → `h-16`, `rounded-[8px]` → `rounded-lg`
 - [x] CLI `--fix`, ESLint plugin `no-arbitrary-canonical`, config file

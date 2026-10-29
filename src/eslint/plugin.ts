@@ -30,14 +30,15 @@ type StringNode = Literal & {
  * Inner-text range of a `TemplateElement`. In espree, `quasi.range` spans the
  * delimiters too (the opening backtick or `}` plus the closing backtick or
  * `${`). The leading delimiter is always one character, so the raw text starts
- * at `range[0] + 1` and runs for `raw.length` characters.
+ * at `range[0] + 1`. Use source range endpoints for its end because espree
+ * normalizes CRLF in `value.raw`, whose length can differ from the source.
  */
 function quasiTextRange(
   quasi: TemplateLiteral['quasis'][number],
 ): [number, number] | undefined {
   if (!quasi.range) return undefined;
   const start = quasi.range[0] + 1;
-  return [start, start + quasi.value.raw.length];
+  return [start, quasi.range[1] - (quasi.tail === false ? 2 : 1)];
 }
 
 type ContextNode = {
@@ -51,6 +52,8 @@ type ContextNode = {
   operator?: string;
   consequent?: ContextNode;
   alternate?: ContextNode;
+  computed?: boolean;
+  properties?: ContextNode[];
 };
 
 /** Only inspect strings whose syntax establishes that they contain classes. */
@@ -89,6 +92,10 @@ function isClassContext(node: ContextNode, config: Config): boolean {
       return properties.every((property) => property.isKey);
     }
     if (parent.type === 'Property') {
+      // Computed CVA option names need evaluation to establish their meaning.
+      if (parent.computed) return false;
+      if (current === parent.key && parent.parent?.properties?.length !== 1)
+        return false;
       properties.push({
         key: String(parent.key?.name ?? parent.key?.value ?? ''),
         isKey: current === parent.key,
@@ -229,6 +236,7 @@ const noArbitraryCanonical: Rule.RuleModule = {
           ignorePatterns: { type: 'array' },
           tailwindVersion: { enum: [3, 4] },
           useDefaultTheme: { type: 'boolean' },
+          allowTextSizeLineHeightChanges: { type: 'boolean' },
           functionNames: { type: 'array', items: { type: 'string' } },
           attributeNames: { type: 'array', items: { type: 'string' } },
           sortOrder: { type: 'array', items: { type: 'string' } },

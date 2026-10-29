@@ -150,15 +150,26 @@ for (const f of FAMILIES) {
   for (const [prefix, sides] of entries) SIDE_MAP[prefix] ??= sides;
 }
 
-function parseBoxClass(
-  cls: string,
-): { family: BoxFamily; sides: Partial<Box> } | null {
+function parseBoxClass(cls: string): {
+  family: BoxFamily;
+  sides: Partial<Box>;
+  kind: 'full' | 'axis' | 'side';
+} | null {
+  // Important utilities occupy a different cascade priority. Keep their
+  // declarations intact instead of mixing their suffix into a box value.
+  if (cls.endsWith('!')) return null;
   for (const family of FAMILIES) {
     const m = cls.match(family.regex);
     if (!m) continue;
     const sides: Partial<Box> = {};
     for (const side of SIDE_MAP[m[1]] ?? []) sides[side] = m[2];
-    return { family, sides };
+    const kind =
+      m[1] === family.full
+        ? 'full'
+        : m[1] === family.x || m[1] === family.y
+          ? 'axis'
+          : 'side';
+    return { family, sides, kind };
   }
   return null;
 }
@@ -217,7 +228,8 @@ const CORNER_MAP: Record<string, ReadonlyArray<Corner>> = {
 function parseRoundedCorner(
   cls: string,
 ): Partial<Record<Corner, string>> | null {
-  if (/^rounded-(?:s|e|ss|se|es|ee)(?:-|$)/.test(cls)) return null;
+  if (cls.endsWith('!') || /^rounded-(?:s|e|ss|se|es|ee)(?:-|$)/.test(cls))
+    return null;
   const m =
     cls.match(/^rounded-(tl|tr|bl|br|t|b|l|r)(?:-(.+))?$/) ??
     cls.match(/^rounded()(?:-(.+))?$/);
@@ -363,7 +375,10 @@ function keepLastOf(slots: string[][], indices: number[]): void {
   for (const i of indices.slice(0, -1)) slots[i] = [];
 }
 
-export function deduplicateClasses(classStr: string): string {
+export function deduplicateClasses(
+  classStr: string,
+  opts: Pick<ClassStringOpts, 'tailwindVersion'> = {},
+): string {
   if (classStr.includes('${')) return classStr;
   const original = classStr.split(/\s+/).filter(Boolean);
   if (original.length <= 1) return classStr;
@@ -376,7 +391,13 @@ export function deduplicateClasses(classStr: string): string {
   const seen = new Set<string>();
   const boxGroups = new Map<
     string,
-    { family: BoxFamily; box: Box; indices: number[] }
+    {
+      family: BoxFamily;
+      box: Box;
+      indices: number[];
+      hasAxis: boolean;
+      hasSide: boolean;
+    }
   >();
   const corners: Corners = { tl: null, tr: null, bl: null, br: null };
   const cornerIndices: number[] = [];
@@ -393,12 +414,20 @@ export function deduplicateClasses(classStr: string): string {
 
     const parsed = parseBoxClass(cls);
     if (parsed) {
-      const { family, sides } = parsed;
+      const { family, sides, kind } = parsed;
       let group = boxGroups.get(family.kind);
       if (!group) {
-        group = { family, box: { t: '', b: '', l: '', r: '' }, indices: [] };
+        group = {
+          family,
+          box: { t: '', b: '', l: '', r: '' },
+          indices: [],
+          hasAxis: false,
+          hasSide: false,
+        };
         boxGroups.set(family.kind, group);
       }
+      group.hasAxis ||= kind === 'axis';
+      group.hasSide ||= kind === 'side';
       group.indices.push(idx);
       Object.assign(group.box, sides);
       return;
@@ -418,8 +447,17 @@ export function deduplicateClasses(classStr: string): string {
   keepLastOf(slots, displayIndices);
   keepLastOf(slots, positionIndices);
 
-  for (const { family, box, indices } of boxGroups.values()) {
-    placeCollapsed(slots, classes, indices, collapseBox(box, family));
+  for (const { family, box, indices, hasAxis, hasSide } of boxGroups.values()) {
+    // v4's x/y utilities use inline/block properties, unlike the physical
+    // t/b/l/r utilities. They cannot be interchanged in vertical writing modes.
+    const allEqual =
+      box.t && box.t === box.b && box.t === box.l && box.t === box.r;
+    const preservePhysical =
+      opts.tailwindVersion !== 3 && hasSide && (hasAxis || !allEqual);
+    const collapsed = preservePhysical
+      ? indices.map((index) => classes[index]).join(' ')
+      : collapseBox(box, family);
+    placeCollapsed(slots, classes, indices, collapsed);
   }
 
   if (cornerIndices.length > 0) {
@@ -437,10 +475,14 @@ export function dedupeContent(
   content: string,
   opts: ClassStringOpts = {},
 ): { result: string; count: number } {
-  return replaceClassStrings(content, deduplicateClasses, {
-    ...opts,
-    isSuppressed: makeLineSuppressor(content),
-  });
+  return replaceClassStrings(
+    content,
+    (classes) => deduplicateClasses(classes, opts),
+    {
+      ...opts,
+      isSuppressed: makeLineSuppressor(content),
+    },
+  );
 }
 
 export { dedupeFile } from '../io/deduplicator.js';

@@ -7,7 +7,8 @@ import { analyzeContent } from './analyzer.js';
 import { extractClassStrings, replaceClassStrings } from './class-strings.js';
 import { dedupeContent, dedupeFile } from './deduplicator.js';
 import { fixContent, fixFile } from './fixer.js';
-import { sortFile } from './sorter.js';
+import { sortContent, sortFile } from './sorter.js';
+import { analyzeTyposContent } from './typos.js';
 
 const FN_OPTS = { functionNames: ['cn', 'clsx'] };
 
@@ -170,12 +171,12 @@ test('replaceClassStrings - braced attribute strings', async (t: TestContext) =>
 
   await t.test('transforms className={"..."}', () => {
     const { result, count } = replaceClassStrings(
-      '<div className={"text-[12px]"}>',
-      (s) => s.replace('text-[12px]', 'text-xs'),
+      '<div className={"size-[12px]"}>',
+      (s) => s.replace('size-[12px]', 'size-3'),
     );
 
     assert.strictEqual(count, 1);
-    assert.strictEqual(result, '<div className={"text-xs"}>');
+    assert.strictEqual(result, '<div className={"size-3"}>');
   });
 
   await t.test("transforms className={'...'}", () => {
@@ -192,14 +193,14 @@ test('replaceClassStrings - braced attribute strings', async (t: TestContext) =>
 test('fixFile with functionNames', async (t: TestContext) => {
   await t.test('fixes arbitrary values inside cn()', async () => {
     const file = join(tmpdir(), `fn-fix-${Date.now()}.tsx`);
-    writeFileSync(file, 'cn("flex text-[12px] h-[64px]")', 'utf8');
+    writeFileSync(file, 'cn("flex size-[12px] h-[64px]")', 'utf8');
     try {
       const count = fixFile(file, { functionNames: ['cn'] });
       assert.strictEqual(count, 2);
       const result = readFileSync(file, 'utf8');
-      assert.ok(result.includes('text-xs'));
+      assert.ok(result.includes('size-3'));
       assert.ok(result.includes('h-16'));
-      assert.ok(!result.includes('text-[12px]'));
+      assert.ok(!result.includes('size-[12px]'));
     } finally {
       unlinkSync(file);
     }
@@ -210,13 +211,13 @@ test('fixFile with functionNames', async (t: TestContext) => {
     async () => {
       const D = '$';
       const file = join(tmpdir(), `fn-fix-interp-${Date.now()}.tsx`);
-      writeFileSync(file, `cn(\`text-[12px] ${D}{y} p-[16px]\`)`, 'utf8');
+      writeFileSync(file, `cn(\`size-[12px] ${D}{y} p-[16px]\`)`, 'utf8');
       try {
         const count = fixFile(file, { functionNames: ['cn'] });
         assert.strictEqual(count, 2);
         assert.strictEqual(
           readFileSync(file, 'utf8'),
-          `cn(\`text-xs ${D}{y} p-4\`)`,
+          `cn(\`size-3 ${D}{y} p-4\`)`,
         );
       } finally {
         unlinkSync(file);
@@ -226,7 +227,7 @@ test('fixFile with functionNames', async (t: TestContext) => {
 
   await t.test('no-op without functionNames config', async () => {
     const file = join(tmpdir(), `fn-fix-${Date.now()}.tsx`);
-    const content = 'cn("flex text-[12px]")';
+    const content = 'cn("flex size-[12px]")';
     writeFileSync(file, content, 'utf8');
     try {
       const count = fixFile(file, {});
@@ -273,40 +274,40 @@ test('sortFile with functionNames', async (t: TestContext) => {
 test('replaceClassStrings - attributeNames config', async (t: TestContext) => {
   await t.test('transforms class= attribute in HTML', () => {
     const { result, count } = replaceClassStrings(
-      '<div class="text-[12px] flex">',
-      (s) => s.replace('text-[12px]', 'text-xs'),
+      '<div class="size-[12px] flex">',
+      (s) => s.replace('size-[12px]', 'size-3'),
       { attributeNames: ['class'] },
     );
     assert.strictEqual(count, 1);
-    assert.ok(result.includes('class="text-xs flex"'));
+    assert.ok(result.includes('class="size-3 flex"'));
   });
 
   await t.test('transforms :class= attribute (Vue)', () => {
     const { result, count } = replaceClassStrings(
-      ':class="text-[14px] p-4"',
+      `:class="'text-[14px] p-4'"`,
       (s) => s.replace('text-[14px]', 'text-sm'),
       { attributeNames: [':class'] },
     );
     assert.strictEqual(count, 1);
-    assert.ok(result.includes(':class="text-sm p-4"'));
+    assert.ok(result.includes(`:class="'text-sm p-4'"`));
   });
 
   await t.test('transforms multiple attribute names', () => {
     const { result, count } = replaceClassStrings(
-      '<div class="text-[12px]" className="text-[14px]">',
+      '<div class="size-[12px]" className="text-[14px]">',
       (s) =>
-        s.replace('text-[12px]', 'text-xs').replace('text-[14px]', 'text-sm'),
+        s.replace('size-[12px]', 'size-3').replace('text-[14px]', 'text-sm'),
       { attributeNames: ['class', 'className'] },
     );
     assert.strictEqual(count, 2);
-    assert.ok(result.includes('class="text-xs"'));
+    assert.ok(result.includes('class="size-3"'));
     assert.ok(result.includes('className="text-sm"'));
   });
 
   await t.test('default only matches className, not class', () => {
-    const input = '<div class="text-[12px]">';
+    const input = '<div class="size-[12px]">';
     const { count } = replaceClassStrings(input, (s) =>
-      s.replace('text-[12px]', 'text-xs'),
+      s.replace('size-[12px]', 'size-3'),
     );
     assert.strictEqual(count, 0);
   });
@@ -323,10 +324,10 @@ test('replaceClassStrings - attributeNames config', async (t: TestContext) => {
     'does not match attributes that merely contain className',
     () => {
       const input =
-        '<div data-className="text-[12px]" xclassName="h-[64px]" className="w-[16px]">';
+        '<div data-className="size-[12px]" xclassName="h-[64px]" className="w-[16px]">';
       const { result, count } = replaceClassStrings(input, (s) =>
         s
-          .replace('text-[12px]', 'text-xs')
+          .replace('size-[12px]', 'size-3')
           .replace('h-[64px]', 'h-16')
           .replace('w-[16px]', 'w-4'),
       );
@@ -334,23 +335,23 @@ test('replaceClassStrings - attributeNames config', async (t: TestContext) => {
       assert.strictEqual(count, 1);
       assert.strictEqual(
         result,
-        '<div data-className="text-[12px]" xclassName="h-[64px]" className="w-4">',
+        '<div data-className="size-[12px]" xclassName="h-[64px]" className="w-4">',
       );
     },
   );
 
   await t.test('matches configured colon-prefixed attributes exactly', () => {
     const { result, count } = replaceClassStrings(
-      '<div data-:class="text-[12px]" :class="text-[14px]">',
+      `<div data-:class="size-[12px]" :class="'text-[14px]'">`,
       (s) =>
-        s.replace('text-[12px]', 'text-xs').replace('text-[14px]', 'text-sm'),
+        s.replace('size-[12px]', 'size-3').replace('text-[14px]', 'text-sm'),
       { attributeNames: [':class'] },
     );
 
     assert.strictEqual(count, 1);
     assert.strictEqual(
       result,
-      '<div data-:class="text-[12px]" :class="text-sm">',
+      `<div data-:class="size-[12px]" :class="'text-sm'">`,
     );
   });
 });
@@ -358,12 +359,12 @@ test('replaceClassStrings - attributeNames config', async (t: TestContext) => {
 test('fixFile with attributeNames', async (t: TestContext) => {
   await t.test('fixes class= in HTML file', async () => {
     const file = join(tmpdir(), `attr-fix-${Date.now()}.html`);
-    writeFileSync(file, '<div class="text-[12px] p-4">', 'utf8');
+    writeFileSync(file, '<div class="size-[12px] p-4">', 'utf8');
     try {
       const count = fixFile(file, { attributeNames: ['class'] });
       assert.strictEqual(count, 1);
       const result = readFileSync(file, 'utf8');
-      assert.ok(result.includes('class="text-xs p-4"'));
+      assert.ok(result.includes('class="size-3 p-4"'));
     } finally {
       unlinkSync(file);
     }
@@ -372,7 +373,7 @@ test('fixFile with attributeNames', async (t: TestContext) => {
 
 test('keeps template expressions and partial dynamic tokens outside transforms', () => {
   const input =
-    'cn(`text-[12px]' +
+    'cn(`size-[12px]' +
     '$' +
     '{suffix} ' +
     '$' +
@@ -381,7 +382,7 @@ test('keeps template expressions and partial dynamic tokens outside transforms',
     '{a + a + a}`)';
   assert.strictEqual(
     replaceClassStrings(input, (s) => s.toUpperCase(), FN_OPTS).result,
-    'cn(`text-[12px]' +
+    'cn(`size-[12px]' +
       '$' +
       '{suffix} ' +
       '$' +
@@ -452,10 +453,10 @@ test('protects template expressions containing regex braces', () => {
 
 test('content transforms retain dynamic expressions while fixing complete static classes', () => {
   const input =
-    'cn(`text-[12px]' + '$' + '{suffix} p-[16px] ' + '$' + '{a + a + a}`)';
+    'cn(`size-[12px]' + '$' + '{suffix} p-[16px] ' + '$' + '{a + a + a}`)';
   assert.strictEqual(
     fixContent(input, FN_OPTS).result,
-    'cn(`text-[12px]' + '$' + '{suffix} p-4 ' + '$' + '{a + a + a}`)',
+    'cn(`size-[12px]' + '$' + '{suffix} p-4 ' + '$' + '{a + a + a}`)',
   );
   assert.strictEqual(dedupeContent(input, FN_OPTS).result, input);
 });
@@ -525,7 +526,7 @@ test('does not interpret JSX URL text as a source comment', () => {
 });
 
 test('preserves quoted prose immediately after a JavaScript keyword', () => {
-  const input = `function f(){return'cn("text-[12px]")';}`;
+  const input = `function f(){return'cn("size-[12px]")';}`;
   assert.strictEqual(fixContent(input, FN_OPTS).result, input);
   assert.deepStrictEqual(analyzeContent('example.ts', input, FN_OPTS), []);
 });
@@ -534,18 +535,18 @@ test('transforms only proven class positions in complex configured calls', () =>
   const opts = { functionNames: ['cn', 'cva'] };
   for (const [input, expected] of [
     [
-      'cn({"p-[16px]": value === "text-[12px]"})',
-      'cn({"p-4": value === "text-[12px]"})',
+      'cn({"p-[16px]": value === "size-[12px]"})',
+      'cn({"p-4": value === "size-[12px]"})',
     ],
-    ['cn(fetch("text-[12px]"), "p-[8px]")', 'cn(fetch("text-[12px]"), "p-2")'],
+    ['cn(fetch("size-[12px]"), "p-[8px]")', 'cn(fetch("size-[12px]"), "p-2")'],
     [
-      'cn(value === "text-[12px]" && "p-[8px]")',
-      'cn(value === "text-[12px]" && "p-2")',
+      'cn(value === "size-[12px]" && "p-[8px]")',
+      'cn(value === "size-[12px]" && "p-2")',
     ],
-    ['cn({"p-[16px]": cn("text-[12px]")})', 'cn({"p-4": cn("text-[12px]")})'],
+    ['cn({"p-[16px]": cn("size-[12px]")})', 'cn({"p-4": cn("size-[12px]")})'],
     [
-      'cva("p-[16px]", {variants: {size: {"text-[12px]": "p-[8px]"}}, defaultVariants: {size: "text-[12px]"}})',
-      'cva("p-4", {variants: {size: {"text-[12px]": "p-2"}}, defaultVariants: {size: "text-[12px]"}})',
+      'cva("p-[16px]", {variants: {size: {"size-[12px]": "p-[8px]"}}, defaultVariants: {size: "size-[12px]"}})',
+      'cva("p-4", {variants: {size: {"size-[12px]": "p-2"}}, defaultVariants: {size: "size-[12px]"}})',
     ],
   ]) {
     const findings = analyzeContent('example.ts', input, opts);
@@ -558,13 +559,13 @@ test('transforms only proven class positions in complex configured calls', () =>
 
 test('quoted JSX text does not hide nested attributes', () => {
   for (const input of [
-    '<p>"<span className=\'text-[12px]\' />"</p>',
-    '<p><em>note</em>"<span className=\'text-[12px]\' />"</p>',
-    '<p>{label}"<span className=\'text-[12px]\' />"</p>',
+    '<p>"<span className=\'size-[12px]\' />"</p>',
+    '<p><em>note</em>"<span className=\'size-[12px]\' />"</p>',
+    '<p>{label}"<span className=\'size-[12px]\' />"</p>',
   ]) {
     assert.strictEqual(
       fixContent(input, FN_OPTS).result,
-      input.replace('text-[12px]', 'text-xs'),
+      input.replace('size-[12px]', 'size-3'),
     );
     assert.strictEqual(analyzeContent('example.tsx', input, FN_OPTS).length, 1);
   }
@@ -572,14 +573,14 @@ test('quoted JSX text does not hide nested attributes', () => {
 
 test('regex and division arguments do not hide subsequent calls', () => {
   for (const input of [
-    'cn(/"p-[16px]"/.test(value)); cn("text-[12px]")',
-    'cn(total / 2); cn("text-[12px]")',
-    'cn(/[(}]/.test(value)); cn("text-[12px]")',
-    'cn(total / fn("p-[16px]")); cn("text-[12px]")',
+    'cn(/"p-[16px]"/.test(value)); cn("size-[12px]")',
+    'cn(total / 2); cn("size-[12px]")',
+    'cn(/[(}]/.test(value)); cn("size-[12px]")',
+    'cn(total / fn("p-[16px]")); cn("size-[12px]")',
   ]) {
     assert.strictEqual(
       fixContent(input, FN_OPTS).result,
-      input.replace('text-[12px]', 'text-xs'),
+      input.replace('size-[12px]', 'size-3'),
     );
     assert.strictEqual(analyzeContent('example.ts', input, FN_OPTS).length, 1);
   }
@@ -587,9 +588,9 @@ test('regex and division arguments do not hide subsequent calls', () => {
 
 test('cva identifiers and compound predicates remain unchanged', () => {
   const input =
-    'cva("p-[16px]", { variants: {"text-[12px]": {"p-[16px]": ["h-[16px]", "w-[16px]"]}}, defaultVariants: {"text-[12px]": "p-[16px]"}, compoundVariants: [{"text-[12px]": "p-[16px]", class: "m-[16px]", className: "gap-[16px]"}] })';
+    'cva("p-[16px]", { variants: {"size-[12px]": {"p-[16px]": ["h-[16px]", "w-[16px]"]}}, defaultVariants: {"size-[12px]": "p-[16px]"}, compoundVariants: [{"size-[12px]": "p-[16px]", class: "m-[16px]", className: "gap-[16px]"}] })';
   const expected =
-    'cva("p-4", { variants: {"text-[12px]": {"p-[16px]": ["h-4", "w-4"]}}, defaultVariants: {"text-[12px]": "p-[16px]"}, compoundVariants: [{"text-[12px]": "p-[16px]", class: "m-4", className: "gap-4"}] })';
+    'cva("p-4", { variants: {"size-[12px]": {"p-[16px]": ["h-4", "w-4"]}}, defaultVariants: {"size-[12px]": "p-[16px]"}, compoundVariants: [{"size-[12px]": "p-[16px]", class: "m-4", className: "gap-4"}] })';
   const opts = { functionNames: ['cva'] };
   assert.strictEqual(fixContent(input, opts).result, expected);
   assert.strictEqual(analyzeContent('example.ts', input, opts).length, 5);
@@ -597,11 +598,11 @@ test('cva identifiers and compound predicates remain unchanged', () => {
 
 test('leaves spreads, computed properties, unknown calls and tagged templates intact', () => {
   for (const input of [
-    'cn({...get("text-[12px]")})',
-    'cn({["text-[12px]"]: enabled})',
-    'cn(fetch("text-[12px]"))',
-    'cn(tag`text-[12px]`)',
-    'cva("flex", dynamicOptions("text-[12px]"))',
+    'cn({...get("size-[12px]")})',
+    'cn({["size-[12px]"]: enabled})',
+    'cn(fetch("size-[12px]"))',
+    'cn(tag`size-[12px]`)',
+    'cva("flex", dynamicOptions("size-[12px]"))',
   ]) {
     const opts = { functionNames: ['cn', 'cva'] };
     assert.strictEqual(fixContent(input, opts).result, input);
@@ -611,9 +612,9 @@ test('leaves spreads, computed properties, unknown calls and tagged templates in
 
 test('regex and division inside templates preserve code and later calls', () => {
   for (const expression of [
-    '/}/.test("text-[12px]")',
+    '/}/.test("size-[12px]")',
     'total / 2',
-    '"a" + /}/.test("text-[12px]")',
+    '"a" + /}/.test("size-[12px]")',
   ]) {
     const input = [
       'cn(`p-[16px] ',
@@ -636,12 +637,12 @@ test('regex and division inside templates preserve code and later calls', () => 
 
 test('braced attribute strings allow surrounding whitespace without rewriting formatting', () => {
   for (const input of [
-    '<div className={ "text-[12px]" } />',
-    "<div className={\n  'text-[12px]'\n} />",
-    '<div className = { `text-[12px]` } />',
+    '<div className={ "size-[12px]" } />',
+    "<div className={\n  'size-[12px]'\n} />",
+    '<div className = { `size-[12px]` } />',
   ]) {
     const fixed = fixContent(input);
-    assert.strictEqual(fixed.result, input.replace('text-[12px]', 'text-xs'));
+    assert.strictEqual(fixed.result, input.replace('size-[12px]', 'size-3'));
     assert.strictEqual(fixed.count, 1);
     assert.strictEqual(analyzeContent('example.tsx', input).length, 1);
   }
@@ -662,14 +663,14 @@ test('nested templates inside attribute expressions remain JavaScript while stat
   const input = [
     '<div className={ `p-[16px] ',
     '$',
-    '{fn(`text-[12px] ',
+    '{fn(`size-[12px] ',
     '$',
     '{value}`)} h-[16px]` } />',
   ].join('');
   const expected = [
     '<div className={ `p-4 ',
     '$',
-    '{fn(`text-[12px] ',
+    '{fn(`size-[12px] ',
     '$',
     '{value}`)} h-4` } />',
   ].join('');
@@ -679,9 +680,9 @@ test('nested templates inside attribute expressions remain JavaScript while stat
 
 test('attribute expressions requiring computation are left intact', () => {
   for (const input of [
-    '<div className={ "text-[12px]" + suffix } />',
-    '<div className={ "text-[12px]".toUpperCase() } />',
-    '<div className={ tag`text-[12px]` } />',
+    '<div className={ "size-[12px]" + suffix } />',
+    '<div className={ "size-[12px]".toUpperCase() } />',
+    '<div className={ tag`size-[12px]` } />',
   ]) {
     assert.strictEqual(fixContent(input).result, input);
     assert.deepStrictEqual(analyzeContent('example.tsx', input), []);
@@ -691,23 +692,239 @@ test('attribute expressions requiring computation are left intact', () => {
 test('conditional class branches honor ternary and logical precedence', () => {
   for (const [input, expected, count] of [
     [
-      'cn(flag ? "text-[12px]" : other && "text-[16px]")',
-      'cn(flag ? "text-xs" : other && "text-base")',
+      'cn(flag ? "size-[12px]" : other && "size-[16px]")',
+      'cn(flag ? "size-3" : other && "size-4")',
       2,
     ],
-    ['cn("text-[12px]" || other)', 'cn("text-xs" || other)', 1],
-    ['cn("text-[12px]" ?? other)', 'cn("text-xs" ?? other)', 1],
+    ['cn("size-[12px]" || other)', 'cn("size-3" || other)', 1],
+    ['cn("size-[12px]" ?? other)', 'cn("size-3" ?? other)', 1],
     [
-      'cn(flag && predicate === "text-[12px]" ? "p-[8px]" : "m-[8px]")',
-      'cn(flag && predicate === "text-[12px]" ? "p-2" : "m-2")',
+      'cn(flag && predicate === "size-[12px]" ? "p-[8px]" : "m-[8px]")',
+      'cn(flag && predicate === "size-[12px]" ? "p-2" : "m-2")',
       2,
     ],
-    ['cn("text-[12px]" && "p-[8px]")', 'cn("text-[12px]" && "p-2")', 1],
+    ['cn("size-[12px]" && "p-[8px]")', 'cn("size-[12px]" && "p-2")', 1],
   ] as const) {
     assert.strictEqual(fixContent(input, FN_OPTS).result, expected);
     assert.strictEqual(
       analyzeContent('example.ts', input, FN_OPTS).length,
       count,
     );
+  }
+});
+
+test('object-key transforms cannot create collisions or overwrite predicates', () => {
+  for (const input of [
+    'cn({"p-[16px]": enabled, "p-4": other})',
+    'cn({"p-2 p-4": enabled, "p-4": other})',
+    'cn({"p-[16px]": enabled, ...other})',
+    'cn({"p-[16px]": enabled, [other]: flag})',
+  ]) {
+    assert.strictEqual(fixContent(input, FN_OPTS).result, input);
+    assert.strictEqual(dedupeContent(input, FN_OPTS).result, input);
+    assert.deepStrictEqual(analyzeContent('example.ts', input, FN_OPTS), []);
+  }
+});
+
+test('Vue bindings transform class-valued branches and preserve predicates', () => {
+  const opts = {
+    attributeNames: [':class', 'v-bind:class'],
+    functionNames: ['cn'],
+  };
+  for (const [input, expected] of [
+    [
+      `<div :class="kind === 'p-[16px]' ? 'p-[8px]' : 'hidden'" />`,
+      `<div :class="kind === 'p-[16px]' ? 'p-2' : 'hidden'" />`,
+    ],
+    [
+      `<div v-bind:class="['p-[16px]', active && 'h-[16px]']" />`,
+      `<div v-bind:class="['p-4', active && 'h-4']" />`,
+    ],
+    [
+      `<div :class="{'p-[16px]': active}" />`,
+      `<div :class="{'p-4': active}" />`,
+    ],
+    [
+      `<div :class="'p-[16px]' + suffix" />`,
+      `<div :class="'p-[16px]' + suffix" />`,
+    ],
+    ['<div :class="size-[16px]" />', '<div :class="size-[16px]" />'],
+    [
+      '<div :class="&quot;p-[16px]&quot;" />',
+      '<div :class="&quot;p-[16px]&quot;" />',
+    ],
+  ]) {
+    assert.strictEqual(fixContent(input, opts).result, expected);
+    assert.deepStrictEqual(analyzeContent('example.vue', expected, opts), []);
+  }
+});
+
+test('Svelte and JSX braced branches preserve predicates and computations', () => {
+  for (const attr of ['class', 'className']) {
+    const input = `<div ${attr}={kind === "p-[16px]" ? "h-[16px]" : "hidden"} />`;
+    const opts = { attributeNames: [attr] };
+    assert.strictEqual(
+      fixContent(input, opts).result,
+      input.replace('h-[16px]', 'h-4'),
+    );
+    assert.strictEqual(analyzeContent('example.svelte', input, opts).length, 1);
+  }
+});
+
+test('component scripts are JavaScript, style blocks stay opaque, fragments preserve text', () => {
+  for (const input of [
+    '<script setup>const cls=cn("p-[16px]")</script><template><div className="p-[16px]" /></template>',
+    '<script lang="ts">const cls=cn("p-[16px]")</script><style>.x { --value: cn("p-[16px]") }</style>',
+    '<>Don\'t stop<div className="p-[16px]" /></>',
+    '<><img src="test" />Don\'t stop<div className="p-[16px]" /></>',
+  ]) {
+    const expected = input
+      .replaceAll('cn("p-[16px]")</script>', 'cn("p-4")</script>')
+      .replaceAll('className="p-[16px]"', 'className="p-4"');
+    assert.strictEqual(fixContent(input, FN_OPTS).result, expected);
+  }
+});
+
+test('markup interpolation holes preserve Svelte predicates and partial tokens', () => {
+  const input = `<div class="size-[12px]{suffix} p-[16px] {kind === 'h-[16px]' ? 'block' : 'hidden'}" />`;
+  const opts = { attributeNames: ['class'] };
+  const result = fixContent(input, opts);
+  assert.strictEqual(result.result, input.replace('p-[16px]', 'p-4'));
+  assert.strictEqual(result.count, 1);
+  assert.deepStrictEqual(
+    analyzeContent('example.svelte', input, opts).map(
+      ({ suggestion }) => suggestion.original,
+    ),
+    ['p-[16px]'],
+  );
+});
+
+test('rewrites use original source lines for suppressions regardless of transform order', () => {
+  for (const [input, expected] of [
+    [
+      '<div className="text-sm\n flex" />\n// tailwind-canonical-disable-next-line\ncn("text-sm flex")',
+      '<div className="flex text-sm" />\n// tailwind-canonical-disable-next-line\ncn("text-sm flex")',
+    ],
+    [
+      'cn(`text-sm\n flex`)\n// tailwind-canonical-disable-next-line\n<div className="text-sm flex" />',
+      'cn(`flex text-sm`)\n// tailwind-canonical-disable-next-line\n<div className="text-sm flex" />',
+    ],
+  ]) {
+    const result = sortContent(input, FN_OPTS);
+    assert.strictEqual(result.result, expected);
+    assert.strictEqual(result.count, 1);
+  }
+});
+
+test('overlapping attributes and configured calls transform each source range once', () => {
+  const input = '<div className={cn("size-[12px] p-[16px]")} />';
+  const calls: string[] = [];
+  const result = replaceClassStrings(
+    input,
+    (value) => {
+      calls.push(value);
+      return value.toUpperCase();
+    },
+    FN_OPTS,
+  );
+  assert.deepStrictEqual(calls, ['size-[12px] p-[16px]']);
+  assert.strictEqual(result.count, 1);
+  assert.strictEqual(
+    result.result,
+    input.replace('size-[12px] p-[16px]', 'SIZE-[12PX] P-[16PX]'),
+  );
+  const fixed = fixContent(input, FN_OPTS);
+  assert.strictEqual(fixed.count, 2);
+  assert.strictEqual(
+    fixed.result,
+    input.replace('size-[12px] p-[16px]', 'size-3 p-4'),
+  );
+  assert.strictEqual(extractClassStrings(input, FN_OPTS).length, 1);
+});
+
+test('regex statements after control conditions remain opaque without hiding division or later calls', () => {
+  for (const input of [
+    'if (ready) /cn("p-[16px]")/.test(value); cn("h-[16px]")',
+    'if ((ready && check(value))) /cn("p-[16px]")/.test(value); cn("h-[16px]")',
+    'while (ready) /cn("p-[16px]")/.test(value); cn("h-[16px]")',
+    'const ratio = total / (count + 1); cn("h-[16px]")',
+    'const ratio = getTotal() / 2; cn("h-[16px]")',
+    'const ratio = total / fn("p-[16px]"); cn("h-[16px]")',
+  ]) {
+    assert.strictEqual(
+      fixContent(input, FN_OPTS).result,
+      input.replace('h-[16px]', 'h-4'),
+    );
+    assert.strictEqual(analyzeContent('example.ts', input, FN_OPTS).length, 1);
+  }
+});
+
+test('configured identifiers do not select unrelated object methods or identifier suffixes', () => {
+  for (const input of [
+    'business.cn("p-[16px]"); cn("h-[16px]")',
+    'business?.cn("p-[16px]"); cn("h-[16px]")',
+    'business . cn("p-[16px]"); cn("h-[16px]")',
+    '$cn("p-[16px]"); cn("h-[16px]")',
+    'data$cn("p-[16px]"); cn("h-[16px]")',
+  ]) {
+    assert.strictEqual(
+      fixContent(input, FN_OPTS).result,
+      input.replace('h-[16px]', 'h-4'),
+    );
+    assert.strictEqual(analyzeContent('example.ts', input, FN_OPTS).length, 1);
+  }
+});
+
+test('arbitrary content quotes and braces are part of one class token', () => {
+  for (const input of [
+    `<div className="before:content-['size-[12px]'] p-[16px]" />`,
+    String.raw`cn("before:content-[\"size-[12px]\"] p-[16px]")`,
+    `<div className="before:content-['{'] p-[16px]" />`,
+    `<div className="before:content-['text-gry-500'] text-gry-500 p-[16px]" />`,
+    `<div className="[--object:{foo}] p-[16px]" />`,
+  ]) {
+    const result = fixContent(input, FN_OPTS);
+    assert.strictEqual(result.result, input.replace('p-[16px]', 'p-4'));
+    assert.strictEqual(result.count, 1);
+    assert.deepStrictEqual(
+      analyzeContent('example.tsx', input, FN_OPTS).map(
+        ({ suggestion }) => suggestion.original,
+      ),
+      ['p-[16px]'],
+    );
+    const typos = analyzeTyposContent('example.tsx', input, FN_OPTS);
+    assert.deepStrictEqual(
+      typos.map(({ original }) => original),
+      input.includes(' text-gry-500 ') ? ['text-gry-500'] : [],
+    );
+  }
+});
+
+test('regex after statement blocks is opaque and object division does not hide later calls', () => {
+  for (const input of [
+    'if (ok) {} /cn("p-[16px]")/.test(value); cn("h-[16px]")',
+    'function f() {} /cn("p-[16px]")/.test(value); cn("h-[16px]")',
+    'const ratio = {value: 2} / 2; cn("h-[16px]")',
+    'const ratio = ({value: 2}) / 2; cn("h-[16px]")',
+  ]) {
+    assert.strictEqual(
+      fixContent(input, FN_OPTS).result,
+      input.replace('h-[16px]', 'h-4'),
+    );
+    assert.strictEqual(analyzeContent('example.ts', input, FN_OPTS).length, 1);
+  }
+});
+
+test('regex statement prefixes preserve literals and continue to the next helper call', () => {
+  for (const input of [
+    'if (ok) foo(); else /cn("p-[16px]")/.test(value); cn("h-[16px]")',
+    'do /cn("p-[16px]")/.test(value); while (ok); cn("h-[16px]")',
+    'function* f() { yield /cn("p-[16px]")/; } cn("h-[16px]")',
+  ]) {
+    assert.strictEqual(
+      fixContent(input, FN_OPTS).result,
+      input.replace('h-[16px]', 'h-4'),
+    );
+    assert.strictEqual(analyzeContent('example.ts', input, FN_OPTS).length, 1);
   }
 });

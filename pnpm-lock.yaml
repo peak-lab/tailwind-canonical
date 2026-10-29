@@ -16,7 +16,7 @@ importers:
         version: 10.9.1(jiti@2.7.0)
     devDependencies:
       '@biomejs/biome':
-        specifier: ^2.5.11
+        specifier: ^2.6.3
         version: 2.6.3
       '@types/estree':
         specifier: ^1.0.9

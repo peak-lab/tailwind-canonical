@@ -3,7 +3,11 @@ import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type TestContext, test } from 'node:test';
-import { dedupeFile, deduplicateClasses } from './deduplicator.js';
+import {
+  dedupeContent,
+  dedupeFile,
+  deduplicateClasses,
+} from './deduplicator.js';
 
 test('deduplicateClasses - exact duplicates', async (t: TestContext) => {
   await t.test('removes exact duplicate class', () => {
@@ -98,15 +102,23 @@ test('deduplicateClasses - padding shorthand', async (t: TestContext) => {
   });
 
   await t.test('pt-2 pb-2 → py-2 (same axis)', () => {
-    assert.strictEqual(deduplicateClasses('pt-2 pb-2'), 'py-2');
+    assert.strictEqual(
+      deduplicateClasses('pt-2 pb-2', { tailwindVersion: 3 }),
+      'py-2',
+    );
   });
 
   await t.test('pl-4 pr-4 → px-4', () => {
-    assert.strictEqual(deduplicateClasses('pl-4 pr-4'), 'px-4');
+    assert.strictEqual(
+      deduplicateClasses('pl-4 pr-4', { tailwindVersion: 3 }),
+      'px-4',
+    );
   });
 
   await t.test('pt-2 pb-4 pl-2 pr-2 → px-2 pt-2 pb-4', () => {
-    const result = deduplicateClasses('pt-2 pb-4 pl-2 pr-2');
+    const result = deduplicateClasses('pt-2 pb-4 pl-2 pr-2', {
+      tailwindVersion: 3,
+    });
     assert.ok(result.includes('px-2'));
     assert.ok(result.includes('pt-2'));
     assert.ok(result.includes('pb-4'));
@@ -145,21 +157,21 @@ test('deduplicateClasses - border-width shorthand', async (t: TestContext) => {
 
   await t.test('border-t-2 border-b-2 → border-y-2', () => {
     assert.strictEqual(
-      deduplicateClasses('border-t-2 border-b-2'),
+      deduplicateClasses('border-t-2 border-b-2', { tailwindVersion: 3 }),
       'border-y-2',
     );
   });
 
   await t.test('border-l-4 border-r-4 → border-x-4', () => {
     assert.strictEqual(
-      deduplicateClasses('border-l-4 border-r-4'),
+      deduplicateClasses('border-l-4 border-r-4', { tailwindVersion: 3 }),
       'border-x-4',
     );
   });
 
   await t.test('border-2 border-t-4 → border-x-2 border-b-2 border-t-4', () => {
     assert.strictEqual(
-      deduplicateClasses('border-2 border-t-4'),
+      deduplicateClasses('border-2 border-t-4', { tailwindVersion: 3 }),
       'border-x-2 border-b-2 border-t-4',
     );
   });
@@ -192,16 +204,22 @@ test('deduplicateClasses - inset shorthand', async (t: TestContext) => {
   });
 
   await t.test('top-4 bottom-4 → inset-y-4', () => {
-    assert.strictEqual(deduplicateClasses('top-4 bottom-4'), 'inset-y-4');
+    assert.strictEqual(
+      deduplicateClasses('top-4 bottom-4', { tailwindVersion: 3 }),
+      'inset-y-4',
+    );
   });
 
   await t.test('left-2 right-2 → inset-x-2', () => {
-    assert.strictEqual(deduplicateClasses('left-2 right-2'), 'inset-x-2');
+    assert.strictEqual(
+      deduplicateClasses('left-2 right-2', { tailwindVersion: 3 }),
+      'inset-x-2',
+    );
   });
 
   await t.test('inset-4 top-0 → override top via last-wins', () => {
     assert.strictEqual(
-      deduplicateClasses('inset-4 top-0'),
+      deduplicateClasses('inset-4 top-0', { tailwindVersion: 3 }),
       'inset-x-4 bottom-4 top-0',
     );
   });
@@ -247,7 +265,7 @@ test('deduplicateClasses - gap shorthand', async (t: TestContext) => {
 test('deduplicateClasses - scroll-p shorthand', async (t: TestContext) => {
   await t.test('scroll-pt-4 scroll-pb-4 → scroll-py-4', () => {
     assert.strictEqual(
-      deduplicateClasses('scroll-pt-4 scroll-pb-4'),
+      deduplicateClasses('scroll-pt-4 scroll-pb-4', { tailwindVersion: 3 }),
       'scroll-py-4',
     );
   });
@@ -263,7 +281,7 @@ test('deduplicateClasses - scroll-p shorthand', async (t: TestContext) => {
 test('deduplicateClasses - scroll-m shorthand', async (t: TestContext) => {
   await t.test('scroll-mt-2 scroll-mb-2 → scroll-my-2', () => {
     assert.strictEqual(
-      deduplicateClasses('scroll-mt-2 scroll-mb-2'),
+      deduplicateClasses('scroll-mt-2 scroll-mb-2', { tailwindVersion: 3 }),
       'scroll-my-2',
     );
   });
@@ -608,7 +626,9 @@ test('deduplicateClasses - preserves order when nothing is removed (#128)', asyn
     'collapsed shorthand takes the slot of the first replaced token',
     () => {
       assert.strictEqual(
-        deduplicateClasses('text-sm py-2 pr-5 bg-white pl-5'),
+        deduplicateClasses('text-sm py-2 pr-5 bg-white pl-5', {
+          tailwindVersion: 3,
+        }),
         'text-sm py-2 px-5 bg-white',
       );
     },
@@ -646,4 +666,61 @@ test('preserves logical radius utilities independently', () => {
 test('never deduplicates JavaScript inside interpolated class strings', () => {
   const input = 'p-4 ' + '$' + '{a + a + a}';
   assert.strictEqual(deduplicateClasses(input), input);
+});
+
+test('important declarations retain their priority during shorthand collapse', () => {
+  for (const input of [
+    'p-4! p-8',
+    'p-4! px-4',
+    'p-4 px-8!',
+    '!p-4 p-8',
+    'p-4 !px-8',
+    'gap-4! gap-8',
+    'rounded-lg! rounded-t-none',
+    '!rounded-lg rounded-t-none',
+    'hover:p-4! p-8',
+    'md:p-4! md:px-8',
+  ])
+    assert.strictEqual(deduplicateClasses(input), input);
+  assert.strictEqual(deduplicateClasses('p-4! p-4!'), 'p-4!');
+});
+
+test('v4 physical sides are not replaced by logical axes in vertical writing modes', () => {
+  for (const input of [
+    'pl-4 pr-4',
+    'pt-4 pb-4',
+    'ml-4 mr-4',
+    'mt-4 mb-4',
+    'left-4 right-4',
+    'top-4 bottom-4',
+    'border-l-4 border-r-4',
+    'border-t-4 border-b-4',
+    'scroll-pl-4 scroll-pr-4',
+    'scroll-pt-4 scroll-pb-4',
+    'scroll-ml-4 scroll-mr-4',
+    'scroll-mt-4 scroll-mb-4',
+    // In vertical-rl, py covers left/right while pt/pb cover top/bottom.
+    'pl-4 pr-4 py-4',
+    'px-4 pt-4 pb-4',
+    'p-4 pl-8',
+  ]) {
+    assert.strictEqual(deduplicateClasses(input), input);
+    assert.strictEqual(
+      deduplicateClasses(input, { tailwindVersion: 4 }),
+      input,
+    );
+  }
+  assert.strictEqual(deduplicateClasses('pl-4 pr-4 pl-4'), 'pl-4 pr-4');
+  assert.strictEqual(deduplicateClasses('pl-4 pr-4 pt-4 pb-4'), 'p-4');
+  assert.strictEqual(deduplicateClasses('px-4 py-4'), 'p-4');
+  assert.strictEqual(deduplicateClasses('p-4 px-8'), 'py-4 px-8');
+});
+
+test('content deduplication receives the target Tailwind version', () => {
+  const input = '<div className="pl-4 pr-4" />';
+  assert.strictEqual(dedupeContent(input).result, input);
+  assert.strictEqual(
+    dedupeContent(input, { tailwindVersion: 3 }).result,
+    '<div className="px-4" />',
+  );
 });

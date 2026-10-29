@@ -7,7 +7,7 @@ import {
   COLOR_FAMILIES,
   parseColorClass,
   SCALE_PROPERTIES,
-  stripVariants,
+  splitClassModifiers,
   TAILWIND_COLORS,
 } from './lexicon.js';
 import type { Config } from './rules.js';
@@ -81,7 +81,7 @@ function parseColor(
 ): { property: string; family: string; token: string } | null {
   const parsed = parseColorClass(cls);
   if (!parsed) return null;
-  const { property, color, shade } = parsed;
+  const { property, color, shade, opacity } = parsed;
   if (shade === '') return null;
   // A known color without an explicit family forms its own family, so colors
   // newly added to the palette are grouped rather than silently dropped.
@@ -91,7 +91,7 @@ function parseColor(
       ? color
       : null;
   if (!family) return null;
-  return { property, family, token: `${color}-${shade}` };
+  return { property, family, token: `${color}-${shade}${opacity}` };
 }
 
 // A scale value is a number, a fraction, or an arbitrary [..] value. Keyword
@@ -103,7 +103,7 @@ function parseScale(
   cls: string,
   scaleProperties: Set<string>,
 ): { property: string; value: string } | null {
-  const base = stripVariants(cls);
+  const { utility: base } = splitClassModifiers(cls);
   const negative = base.startsWith('-');
   const body = negative ? base.slice(1) : base;
   const bracket = body.indexOf('[');

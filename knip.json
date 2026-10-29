@@ -1,5 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "project": ["src/**/*.ts"],
-  "ignoreDependencies": ["eslint"]
+  "project": [
+    "src/**/*.ts"
+  ],
+  "ignoreDependencies": [
+    "eslint"
+  ],
+  "ignoreIssues": {
+    "scripts/css-semantics.mjs": [
+      "unlisted"
+    ]
+  }
 }

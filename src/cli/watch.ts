@@ -12,11 +12,13 @@ import type { Sink } from './types.js';
 type WatchRefresh = {
   files: string[];
   roots: string[];
+  explicitTargets?: string[];
   reprocessAll?: boolean;
 };
 type WatchOptions = {
   files: string[];
   roots: string[];
+  explicitTargets?: string[];
   sink: Sink;
   refresh: (changed: ReadonlySet<string>) => Promise<WatchRefresh>;
   processFile: (file: string) => void;
@@ -31,11 +33,17 @@ function contains(root: string, path: string): boolean {
 }
 
 /** Watch the existing ancestor of each target, including currently empty globs. */
-export function watchRoots(targets: string[], configDirs: string[]): string[] {
+export function watchRoots(
+  targets: string[],
+  configDirs: string[],
+  targetKinds?: ReadonlyMap<string, 'literal' | 'glob'>,
+): string[] {
   const dirs = [...configDirs];
   for (const target of targets) {
     if (target.startsWith('!')) continue;
-    const magic = existsSync(target) ? -1 : target.search(/[*?{[(]/);
+    const kind = targetKinds?.get(target.replace(/\\/g, '/'));
+    const literal = kind ? kind === 'literal' : existsSync(target);
+    const magic = literal ? -1 : target.search(/[*?{[(]/);
     const prefix = target.slice(0, magic);
     let dir =
       magic < 0 ? target : prefix.endsWith(sep) ? prefix : dirname(prefix);
@@ -56,6 +64,7 @@ export function watchRoots(targets: string[], configDirs: string[]): string[] {
 export function startWatch({
   files,
   roots,
+  explicitTargets = [],
   sink,
   refresh,
   processFile,
@@ -106,14 +115,21 @@ export function startWatch({
       try {
         const watcher = fsWatch(root, { recursive: true }, (_, filename) => {
           if (closed) return;
-          if (
+          const path = filename ? resolve(root, String(filename)) : root;
+          const ignored =
             filename &&
             String(filename)
               .split(/[\\/]/)
-              .some((part) => DEFAULT_IGNORE.includes(part))
-          )
-            return;
-          changed.add(filename ? resolve(root, String(filename)) : root);
+              .some((part) => DEFAULT_IGNORE.includes(part));
+          const explicitlyIncluded = explicitTargets.some(
+            (target) =>
+              contains(target, path) &&
+              !relative(target, path)
+                .split(/[\\/]/)
+                .some((part) => DEFAULT_IGNORE.includes(part)),
+          );
+          if (ignored && !explicitlyIncluded) return;
+          changed.add(path);
           schedule();
         });
         watchers.set(root, watcher);
@@ -146,6 +162,7 @@ export function startWatch({
     try {
       const next = await refresh(batch);
       if (closed) return;
+      explicitTargets = next.explicitTargets ?? [];
       synchronize(next.roots);
       if (closed) return;
       const nextFiles = new Set(next.files);

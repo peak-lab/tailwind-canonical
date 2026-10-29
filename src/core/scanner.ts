@@ -18,6 +18,10 @@ export const DEFAULT_IGNORE = [
 export type ScanOptions = {
   extensions?: string[];
   ignore?: string[];
+  /** Preserve target interpretations across repeated scans (e.g. watch mode).
+   * Keys use forward slashes and omit the leading exclusion marker.
+   */
+  targetKinds?: ReadonlyMap<string, 'literal' | 'glob'>;
 };
 
 export function isGlob(target: string): boolean {

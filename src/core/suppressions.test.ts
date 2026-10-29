@@ -79,7 +79,7 @@ test('positions preserve UTF-16 columns, CRLF and newline boundaries', () => {
 
 test('analyzeFile - skips findings on a disable-next-line', (_t: TestContext) => {
   const content =
-    '{/* tailwind-canonical-disable-next-line */}\n<span className="text-[12px]" />\n<span className="h-[64px]" />';
+    '{/* tailwind-canonical-disable-next-line */}\n<span className="size-[12px]" />\n<span className="h-[64px]" />';
   withFile(content, (path) => {
     const findings = analyzeFile(path);
     assert.strictEqual(findings.length, 1);
@@ -89,7 +89,7 @@ test('analyzeFile - skips findings on a disable-next-line', (_t: TestContext) =>
 
 test('analyzeFile - skips findings inside a disable/enable block', (_t: TestContext) => {
   const content =
-    '// tailwind-canonical-disable\n<a className="text-[12px]" />\n// tailwind-canonical-enable\n<a className="h-[64px]" />';
+    '// tailwind-canonical-disable\n<a className="size-[12px]" />\n// tailwind-canonical-enable\n<a className="h-[64px]" />';
   withFile(content, (path) => {
     const findings = analyzeFile(path);
     assert.strictEqual(findings.length, 1);
@@ -99,35 +99,35 @@ test('analyzeFile - skips findings inside a disable/enable block', (_t: TestCont
 
 test('fixFile - does not rewrite suppressed lines', (_t: TestContext) => {
   const content =
-    '{/* tailwind-canonical-disable-next-line */}\n<span className="text-[12px]" />\n<span className="h-[64px]" />';
+    '{/* tailwind-canonical-disable-next-line */}\n<span className="size-[12px]" />\n<span className="h-[64px]" />';
   withFile(content, (path) => {
     const count = fixFile(path);
     assert.strictEqual(count, 1);
     const after = readFileSync(path, 'utf8');
-    assert.ok(after.includes('text-[12px]'), 'suppressed class untouched');
+    assert.ok(after.includes('size-[12px]'), 'suppressed class untouched');
     assert.ok(after.includes('h-16'), 'non-suppressed class fixed');
   });
 });
 
 test('fixFile - block suppression leaves enclosed classes intact', (_t: TestContext) => {
   const content =
-    '// tailwind-canonical-disable\n<a className="text-[12px]" />\n// tailwind-canonical-enable\n<a className="text-[14px]" />';
+    '// tailwind-canonical-disable\n<a className="size-[12px]" />\n// tailwind-canonical-enable\n<a className="size-[20px]" />';
   withFile(content, (path) => {
     const count = fixFile(path);
     assert.strictEqual(count, 1);
     const after = readFileSync(path, 'utf8');
-    assert.ok(after.includes('text-[12px]'));
-    assert.ok(after.includes('text-sm'));
+    assert.ok(after.includes('size-[12px]'));
+    assert.ok(after.includes('size-5'));
   });
 });
 
 test('indexed positions preserve suppressions across attribute and call passes', () => {
   const content = [
-    '<div className = "text-[12px]" />',
+    '<div className = "size-[12px]" />',
     'const first = cn("h-[64px]");',
     '// tailwind-canonical-disable-next-line',
-    'const ignored = cn("text-[14px]");',
-    'const last = cn("text-[16px]");',
+    'const ignored = cn("size-[20px]");',
+    'const last = cn("size-[16px]");',
   ].join('\r\n');
   withFile(content, (path) => {
     const config = { functionNames: ['cn'] };
@@ -142,8 +142,8 @@ test('indexed positions preserve suppressions across attribute and call passes',
     );
     assert.strictEqual(fixFile(path, config), 3);
     const after = readFileSync(path, 'utf8');
-    assert.ok(after.includes('cn("text-[14px]")'));
-    assert.ok(after.includes('cn("text-base")'));
+    assert.ok(after.includes('cn("size-[20px]")'));
+    assert.ok(after.includes('cn("size-4")'));
     assert.strictEqual(analyzeFile(path, config).length, 0);
   });
 });

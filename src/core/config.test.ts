@@ -636,3 +636,81 @@ test('loadConfig reload bypasses ESM and CommonJS caches after edits', async () 
     }
   }
 });
+
+test('validateConfig - rejects instances and malformed custom tokens while accepting plain maps', () => {
+  class Settings {
+    useDefaultTheme = false;
+  }
+  for (const config of [new Date(), new Settings(), new Map()]) {
+    assert.throws(() => validateConfig(config), /plain objects only/);
+  }
+  for (const token of [
+    '',
+    'foo bar',
+    'foo\nbar',
+    'foo"bar',
+    "foo'bar",
+    'foo`bar',
+    'foo{bar}',
+    'hover:foo',
+    'foo\\bar',
+  ]) {
+    assert.throws(
+      () => validateConfig({ customTextTokens: { 12: token } }),
+      /nonempty token name/,
+      token,
+    );
+    assert.throws(
+      () => validateConfig({ customSpacingTokens: { 12: token } }),
+      /nonempty token name/,
+      token,
+    );
+  }
+  assert.deepStrictEqual(
+    validateConfig({
+      customTextTokens: { 12: 'heading-sm' },
+      customSpacingTokens: { 12: '1/2', 14: '3.5' },
+    }),
+    {
+      customTextTokens: { 12: 'heading-sm' },
+      customSpacingTokens: { 12: '1/2', 14: '3.5' },
+    },
+  );
+  assert.deepStrictEqual(
+    validateConfig(Object.create(null)),
+    Object.create(null),
+  );
+});
+
+test('loadConfig - existing config files require a non-null default export', async () => {
+  for (const declaration of [
+    'export const config = {}',
+    'export default null',
+    'export default new Date()',
+  ]) {
+    const dir = freshDir();
+    try {
+      writeFileSync(join(dir, 'tailwind-canonical.config.mjs'), declaration);
+      await assert.rejects(loadConfig(dir), /default export must be/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('validateConfig - text line-height changes require an explicit boolean opt-in', () => {
+  for (const value of [true, false]) {
+    assert.deepStrictEqual(
+      validateConfig({ allowTextSizeLineHeightChanges: value }),
+      {
+        allowTextSizeLineHeightChanges: value,
+      },
+    );
+  }
+  for (const value of ['true', 1, null, {}]) {
+    assert.throws(
+      () => validateConfig({ allowTextSizeLineHeightChanges: value }),
+      /allowTextSizeLineHeightChanges must be a boolean/,
+    );
+  }
+});

@@ -32,6 +32,14 @@ const COLOR_PROPERTIES = new Set([
   'text',
   'bg',
   'border',
+  'border-t',
+  'border-b',
+  'border-l',
+  'border-r',
+  'border-x',
+  'border-y',
+  'border-s',
+  'border-e',
   'ring',
   'ring-offset',
   'divide',
@@ -45,6 +53,8 @@ const COLOR_PROPERTIES = new Set([
   'accent',
   'caret',
   'shadow',
+  'text-shadow',
+  'inset-shadow',
   'placeholder',
 ]);
 
@@ -73,9 +83,37 @@ export const COLOR_FAMILIES: Record<string, string> = {
   stone: 'gray',
 };
 
-export function stripVariants(cls: string): string {
-  const idx = cls.lastIndexOf(':');
-  return idx === -1 ? cls : cls.slice(idx + 1);
+function stripVariants(cls: string): string {
+  let depth = 0;
+  let colon = -1;
+  for (let i = 0; i < cls.length; i++) {
+    const ch = cls[i];
+    if (ch === '\\') i++;
+    else if (ch === '[' || ch === '(') depth++;
+    else if (ch === ']' || ch === ')') depth--;
+    else if (ch === ':' && depth === 0) colon = i;
+  }
+  return cls.slice(colon + 1);
+}
+
+export function splitClassModifiers(cls: string): {
+  prefix: string;
+  utility: string;
+  importantBefore: string;
+  importantAfter: string;
+} {
+  const base = stripVariants(cls);
+  const importantBefore = base.startsWith('!') ? '!' : '';
+  const importantAfter = base.endsWith('!') ? '!' : '';
+  return {
+    prefix: cls.slice(0, cls.length - base.length),
+    utility: base.slice(
+      importantBefore.length,
+      base.length - importantAfter.length,
+    ),
+    importantBefore,
+    importantAfter,
+  };
 }
 
 /**
@@ -87,9 +125,12 @@ export function stripVariants(cls: string): string {
  */
 export function parseColorClass(
   cls: string,
-): { property: string; color: string; shade: string } | null {
-  const base = stripVariants(cls);
-  if (base.includes('[')) return null;
+): { property: string; color: string; shade: string; opacity: string } | null {
+  const { utility } = splitClassModifiers(cls);
+  const slash = utility.indexOf('/');
+  const base = slash === -1 ? utility : utility.slice(0, slash);
+  const opacity = slash === -1 ? '' : utility.slice(slash);
+  if (base.includes('[') || base.includes('(')) return null;
 
   const firstDash = base.indexOf('-');
   if (firstDash === -1) return null;
@@ -109,9 +150,10 @@ export function parseColorClass(
       property,
       color: rest.slice(0, lastDash),
       shade: rest.slice(lastDash + 1),
+      opacity,
     };
   }
-  return { property, color: rest, shade: '' };
+  return { property, color: rest, shade: '', opacity };
 }
 
 export const SCALE_PROPERTIES = new Set([

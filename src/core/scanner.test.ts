@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import {
+  chmodSync,
   mkdirSync,
   readFileSync,
   rmSync,
@@ -242,7 +243,7 @@ test('discovery skips symlinks outside the target while explicit file links rema
   const root = makeTmpTree();
   const external = `${root}-outside.tsx`;
   const link = join(root, 'src/external.tsx');
-  const content = '<div className="text-[12px]" />';
+  const content = '<div className="h-[12px]" />';
   try {
     writeFileSync(external, content);
     symlinkSync(external, link);
@@ -268,7 +269,7 @@ test('existing bracketed route paths take precedence over glob syntax, including
   try {
     mkdirSync(route, { recursive: true });
     mkdirSync(join(root, 'app', 'l'), { recursive: true });
-    writeFileSync(page, '<div className="text-[12px]" />');
+    writeFileSync(page, '<div className="h-[12px]" />');
     writeFileSync(decoy, '<div className="p-[16px]" />');
     assert.deepStrictEqual(await resolveTargets([page]), [page]);
     assert.deepStrictEqual(await resolveTargets([route]), [page]);
@@ -281,14 +282,86 @@ test('existing bracketed route paths take precedence over glob syntax, including
       [decoy],
     );
     for (const file of await resolveTargets([page])) fixFile(file);
-    assert.strictEqual(
-      readFileSync(page, 'utf8'),
-      '<div className="text-xs" />',
-    );
+    assert.strictEqual(readFileSync(page, 'utf8'), '<div className="h-3" />');
     assert.strictEqual(
       readFileSync(decoy, 'utf8'),
       '<div className="p-[16px]" />',
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('discovery reports unreadable directories instead of silently skipping their files', async (t) => {
+  if (process.getuid?.() === 0)
+    return t.skip('root bypasses directory permissions');
+  const root = makeTmpTree();
+  const blocked = join(root, 'src/components');
+  try {
+    chmodSync(blocked, 0);
+    assert.throws(() => scanFiles(join(root, 'src')), { code: 'EACCES' });
+    await assert.rejects(resolveTargets([join(root, 'src')]), {
+      code: 'EACCES',
+    });
+    await assert.rejects(resolveTargets([join(root, 'src/**/*.tsx')]), {
+      code: 'EACCES',
+    });
+    assert.throws(() => scanFiles(join(blocked, 'Button.tsx')), {
+      code: 'EACCES',
+    });
+  } finally {
+    chmodSync(blocked, 0o700);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('discovery still treats missing paths and non-directory ancestors as no match', async () => {
+  const root = makeTmpTree();
+  try {
+    assert.deepStrictEqual(scanFiles(join(root, 'missing.tsx')), []);
+    assert.deepStrictEqual(
+      await resolveTargets([join(root, 'src/App.tsx/child.tsx')]),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('repeated scans retain literal and glob identities after filesystem changes', async () => {
+  const root = makeTmpTree();
+  const route = join(root, 'app', '[locale]');
+  const page = join(route, 'page.tsx');
+  const decoy = join(root, 'app', 'l', 'page.tsx');
+  try {
+    mkdirSync(route, { recursive: true });
+    mkdirSync(join(root, 'app', 'l'), { recursive: true });
+    writeFileSync(page, '');
+    writeFileSync(decoy, '');
+    const options = {
+      targetKinds: new Map([[page.replace(/\\/g, '/'), 'literal' as const]]),
+    };
+    assert.deepStrictEqual(await resolveTargets([page], options), [page]);
+    rmSync(page);
+    assert.deepStrictEqual(await resolveTargets([page], options), []);
+    assert.deepStrictEqual(
+      await resolveTargets([join(root, 'app'), `!${page}`], options),
+      [decoy],
+    );
+    writeFileSync(page, '');
+    assert.deepStrictEqual(await resolveTargets([page], options), [page]);
+
+    const glob = join(root, 'app', '[ab]', 'page.tsx');
+    const match = join(root, 'app', 'a', 'page.tsx');
+    mkdirSync(join(root, 'app', 'a'), { recursive: true });
+    writeFileSync(match, '');
+    const globOptions = {
+      targetKinds: new Map([[glob.replace(/\\/g, '/'), 'glob' as const]]),
+    };
+    assert.deepStrictEqual(await resolveTargets([glob], globOptions), [match]);
+    mkdirSync(join(root, 'app', '[ab]'), { recursive: true });
+    writeFileSync(glob, '');
+    assert.deepStrictEqual(await resolveTargets([glob], globOptions), [match]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

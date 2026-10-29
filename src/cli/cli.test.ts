@@ -106,12 +106,12 @@ test('run - no targets prints usage and exits 1', async (_t: TestContext) => {
 
 test('run - check mode reports findings and exits 1', async (_t: TestContext) => {
   const dir = freshDir();
-  writeFileSync(join(dir, 'a.tsx'), '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(join(dir, 'a.tsx'), '<div className="w-[12px]" />', 'utf8');
   const { sink, out } = captureSink();
   try {
     const result = await run([dir], dir, sink);
     assert.strictEqual(result.exitCode, 1);
-    assert.ok(out.some((l) => l.includes('text-[12px] → text-xs')));
+    assert.ok(out.some((l) => l.includes('w-[12px] → w-3')));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -119,7 +119,7 @@ test('run - check mode reports findings and exits 1', async (_t: TestContext) =>
 
 test('run - clean files exit 0', async (_t: TestContext) => {
   const dir = freshDir();
-  writeFileSync(join(dir, 'a.tsx'), '<div className="flex text-xs" />', 'utf8');
+  writeFileSync(join(dir, 'a.tsx'), '<div className="flex w-3" />', 'utf8');
   const { sink, out } = captureSink();
   try {
     const result = await run([dir], dir, sink);
@@ -133,12 +133,12 @@ test('run - clean files exit 0', async (_t: TestContext) => {
 test('run - --fix rewrites file and prints summary', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
-  writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(file, '<div className="w-[12px]" />', 'utf8');
   const { sink, out } = captureSink();
   try {
     const result = await run(['--fix', dir], dir, sink);
     assert.strictEqual(result.exitCode, 0);
-    assert.ok(readFileSync(file, 'utf8').includes('text-xs'));
+    assert.ok(readFileSync(file, 'utf8').includes('w-3'));
     assert.ok(out.some((l) => l.includes('✓ Fixed')));
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -147,14 +147,14 @@ test('run - --fix rewrites file and prints summary', async (_t: TestContext) => 
 
 test('run - json reporter writes structured findings', async (_t: TestContext) => {
   const dir = freshDir();
-  writeFileSync(join(dir, 'a.tsx'), '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(join(dir, 'a.tsx'), '<div className="w-[12px]" />', 'utf8');
   const { sink, raw } = captureSink();
   try {
     const result = await run(['--reporter', 'json', dir], dir, sink);
     assert.strictEqual(result.exitCode, 1);
     const parsed = JSON.parse(raw.join(''));
     assert.strictEqual(parsed.total, 1);
-    assert.strictEqual(parsed.findings[0].canonical, 'text-xs');
+    assert.strictEqual(parsed.findings[0].canonical, 'w-3');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -162,14 +162,14 @@ test('run - json reporter writes structured findings', async (_t: TestContext) =
 
 test('run - --reporter=json (equals form) writes JSON', async (_t: TestContext) => {
   const dir = freshDir();
-  writeFileSync(join(dir, 'a.tsx'), '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(join(dir, 'a.tsx'), '<div className="w-[12px]" />', 'utf8');
   const { sink, raw } = captureSink();
   try {
     const result = await run(['--reporter=json', dir], dir, sink);
     assert.strictEqual(result.exitCode, 1);
     const parsed = JSON.parse(raw.join(''));
     assert.strictEqual(parsed.total, 1);
-    assert.strictEqual(parsed.findings[0].canonical, 'text-xs');
+    assert.strictEqual(parsed.findings[0].canonical, 'w-3');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -228,7 +228,7 @@ test('run - analyze mode reports cross-file inconsistencies', async (_t: TestCon
 
 test('run - sarif reporter emits results and exits 1', async (_t: TestContext) => {
   const dir = freshDir();
-  writeFileSync(join(dir, 'a.tsx'), '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(join(dir, 'a.tsx'), '<div className="w-[12px]" />', 'utf8');
   const { sink, raw } = captureSink();
   try {
     const result = await run(['--reporter', 'sarif', dir], dir, sink);
@@ -236,10 +236,7 @@ test('run - sarif reporter emits results and exits 1', async (_t: TestContext) =
     const sarif = JSON.parse(raw.join(''));
     assert.strictEqual(sarif.version, '2.1.0');
     assert.strictEqual(sarif.runs[0].results.length, 1);
-    assert.match(
-      sarif.runs[0].results[0].message.text,
-      /text-\[12px\] → text-xs/,
-    );
+    assert.match(sarif.runs[0].results[0].message.text, /w-\[12px\] → w-3/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -255,7 +252,7 @@ test('run - sarif reporter emits repo-relative URIs and no absolute path', async
   mkdirSync(join(dir, 'src', 'ui'), { recursive: true });
   writeFileSync(
     join(dir, 'src', 'ui', 'a b.tsx'),
-    '<div className="p-2 text-[12px]" />',
+    '<div className="p-2 w-[12px]" />',
     'utf8',
   );
   const { sink, raw } = captureSink();
@@ -274,7 +271,7 @@ test('run - sarif reporter emits repo-relative URIs and no absolute path', async
       startLine: 1,
       startColumn: 21,
       endLine: 1,
-      endColumn: 32,
+      endColumn: 29,
     });
     assert.strictEqual(result.level, 'warning');
     assert.match(
@@ -322,7 +319,7 @@ test('run - sarif URIs resolve from the git root when run from a subdirectory', 
 test('run - sarif fingerprints survive line shifts and separate duplicates', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
-  const line = '<div className="text-[12px]" />';
+  const line = '<div className="w-[12px]" />';
   const fingerprints = async (content: string) => {
     writeFileSync(file, content, 'utf8');
     const { sink, raw } = captureSink();
@@ -388,7 +385,7 @@ test('run - --sort rewrites file and reports summary', async (_t: TestContext) =
 
 test('run - check json on clean files exits 0', async (_t: TestContext) => {
   const dir = freshDir();
-  writeFileSync(join(dir, 'a.tsx'), '<div className="flex text-xs" />', 'utf8');
+  writeFileSync(join(dir, 'a.tsx'), '<div className="flex w-3" />', 'utf8');
   const { sink, raw } = captureSink();
   try {
     const result = await run(['--reporter', 'json', dir], dir, sink);
@@ -404,7 +401,7 @@ test(
   skipTsConfig,
   async (_t: TestContext) => {
     const dir = freshDir();
-    writeFileSync(join(dir, 'a.tsx'), '<div class="text-[12px]" />', 'utf8');
+    writeFileSync(join(dir, 'a.tsx'), '<div class="w-[12px]" />', 'utf8');
     writeFileSync(
       join(dir, 'tailwind-canonical.config.ts'),
       'export default { attributeNames: ["class"] }',
@@ -414,7 +411,7 @@ test(
     try {
       const result = await run([dir], dir, sink);
       assert.strictEqual(result.exitCode, 1);
-      assert.ok(out.some((l) => l.includes('text-[12px] → text-xs')));
+      assert.ok(out.some((l) => l.includes('w-[12px] → w-3')));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -429,7 +426,7 @@ test(
     const src = join(dir, 'src');
     mkdirSync(src, { recursive: true });
     const file = join(src, 'a.tsx');
-    writeFileSync(file, '<div className="text-[12px] text-sm flex" />', 'utf8');
+    writeFileSync(file, '<div className="w-[12px] text-sm flex" />', 'utf8');
     writeFileSync(
       join(dir, 'tailwind-canonical.config.ts'),
       'export default { defaultCommand: { fix: true, sort: true, targets: ["src"] } }',
@@ -439,7 +436,7 @@ test(
     try {
       const result = await run([], dir, sink);
       assert.strictEqual(result.exitCode, 0);
-      assert.ok(readFileSync(file, 'utf8').includes('flex text-xs text-sm'));
+      assert.ok(readFileSync(file, 'utf8').includes('flex w-3 text-sm'));
       assert.ok(out.some((l) => l.includes('✓ Fixed')));
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -458,8 +455,8 @@ test(
     mkdirSync(app, { recursive: true });
     const srcFile = join(src, 'a.tsx');
     const appFile = join(app, 'b.tsx');
-    writeFileSync(srcFile, '<div className="text-[12px]" />', 'utf8');
-    writeFileSync(appFile, '<div className="text-[14px]" />', 'utf8');
+    writeFileSync(srcFile, '<div className="w-[12px]" />', 'utf8');
+    writeFileSync(appFile, '<div className="w-[16px]" />', 'utf8');
     writeFileSync(
       join(dir, 'tailwind-canonical.config.ts'),
       'export default { defaultCommand: { fix: true, targets: ["src"] } }',
@@ -469,8 +466,8 @@ test(
     try {
       const result = await run(['app'], dir, sink);
       assert.strictEqual(result.exitCode, 0);
-      assert.ok(readFileSync(appFile, 'utf8').includes('text-sm'));
-      assert.ok(readFileSync(srcFile, 'utf8').includes('text-[12px]'));
+      assert.ok(readFileSync(appFile, 'utf8').includes('w-4'));
+      assert.ok(readFileSync(srcFile, 'utf8').includes('w-[12px]'));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -486,8 +483,8 @@ test(
     mkdirSync(src, { recursive: true });
     const included = join(src, 'included.tsx');
     const skipped = join(src, 'skipped.tsx');
-    writeFileSync(included, '<div className="text-[12px]" />', 'utf8');
-    writeFileSync(skipped, '<div className="text-[14px]" />', 'utf8');
+    writeFileSync(included, '<div className="w-[12px]" />', 'utf8');
+    writeFileSync(skipped, '<div className="w-[16px]" />', 'utf8');
     writeFileSync(
       join(dir, 'tailwind-canonical.config.ts'),
       'export default { defaultCommand: { fix: true, targets: ["src/**/*.tsx", "!src/skipped.tsx"] } }',
@@ -497,8 +494,8 @@ test(
     try {
       const result = await run([], dir, sink);
       assert.strictEqual(result.exitCode, 0);
-      assert.ok(readFileSync(included, 'utf8').includes('text-xs'));
-      assert.ok(readFileSync(skipped, 'utf8').includes('text-[14px]'));
+      assert.ok(readFileSync(included, 'utf8').includes('w-3'));
+      assert.ok(readFileSync(skipped, 'utf8').includes('w-[16px]'));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -511,7 +508,7 @@ test(
   async (_t: TestContext) => {
     const dir = freshDir();
     const file = join(dir, 'a.tsx');
-    writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
+    writeFileSync(file, '<div className="w-[12px]" />', 'utf8');
     writeFileSync(
       join(dir, 'tailwind-canonical.config.ts'),
       'export default { defaultCommand: { fix: true, targets: ["."] } }',
@@ -521,7 +518,7 @@ test(
     try {
       const result = await run(['--typos'], dir, sink);
       assert.strictEqual(result.exitCode, 0);
-      assert.ok(readFileSync(file, 'utf8').includes('text-[12px]'));
+      assert.ok(readFileSync(file, 'utf8').includes('w-[12px]'));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -533,11 +530,7 @@ test(
   skipTsConfig,
   async (_t: TestContext) => {
     const dir = freshDir();
-    writeFileSync(
-      join(dir, 'a.tsx'),
-      '<div className="text-[12px]" />',
-      'utf8',
-    );
+    writeFileSync(join(dir, 'a.tsx'), '<div className="w-[12px]" />', 'utf8');
     writeFileSync(
       join(dir, 'tailwind-canonical.config.ts'),
       'export default { defaultCommand: { reporter: "json", targets: ["."] } }',
@@ -548,7 +541,7 @@ test(
       const result = await run(['--reporter', 'text'], dir, sink);
       assert.strictEqual(result.exitCode, 1);
       assert.strictEqual(raw.length, 0);
-      assert.ok(out.some((l) => l.includes('text-[12px] → text-xs')));
+      assert.ok(out.some((l) => l.includes('w-[12px] → w-3')));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -593,14 +586,14 @@ test('run - one unreadable file does not abort the batch', async (t: TestContext
   const dir = freshDir();
   const good = join(dir, 'good.tsx');
   const bad = join(dir, 'bad.tsx');
-  writeFileSync(good, '<div className="text-[12px]" />', 'utf8');
-  writeFileSync(bad, '<div className="text-[14px]" />', 'utf8');
+  writeFileSync(good, '<div className="w-[12px]" />', 'utf8');
+  writeFileSync(bad, '<div className="w-[16px]" />', 'utf8');
   chmodSync(bad, 0o000);
   const { sink, out, err } = captureSink();
   try {
     const result = await run(['--fix', dir], dir, sink);
     assert.strictEqual(result.exitCode, 1);
-    assert.ok(readFileSync(good, 'utf8').includes('text-xs'));
+    assert.ok(readFileSync(good, 'utf8').includes('w-3'));
     assert.ok(err.some((l) => l.includes('bad.tsx')));
     assert.ok(out.some((l) => l.includes('good.tsx')));
   } finally {
@@ -685,7 +678,7 @@ test('run - --typos --watch warns about ignored watch and does not watch', async
 test('run - active watch rejects structured reporters instead of emitting text', async () => {
   const dir = freshDir();
   try {
-    writeFileSync(join(dir, 'a.tsx'), '<div className="text-[12px]" />');
+    writeFileSync(join(dir, 'a.tsx'), '<div className="w-[12px]" />');
     for (const reporter of ['json', 'sarif']) {
       const { sink, out, raw, err } = captureSink();
       const result = await run(
@@ -748,7 +741,7 @@ test('run - transforms chain with --typos and exit 0 when clean', async (_t: Tes
 test('run - --fix --typos --reporter json merges typos into the transform report', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
-  writeFileSync(file, '<div className="text-[12px] bg-slte-100" />', 'utf8');
+  writeFileSync(file, '<div className="w-[12px] bg-slte-100" />', 'utf8');
   const { sink, raw } = captureSink();
   try {
     const result = await run(
@@ -809,11 +802,11 @@ test('run - --fix --typos --watch drops watch and runs the combined pass', async
 test('run - --fix --reporter sarif emits an empty SARIF document', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
-  writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(file, '<div className="w-[12px]" />', 'utf8');
   const { sink, raw } = captureSink();
   try {
     const result = await run(['--fix', '--reporter', 'sarif', dir], dir, sink);
-    assert.ok(readFileSync(file, 'utf8').includes('text-xs'));
+    assert.ok(readFileSync(file, 'utf8').includes('w-3'));
     const sarif = JSON.parse(raw.join(''));
     assert.strictEqual(sarif.version, '2.1.0');
     assert.strictEqual(sarif.runs[0].results.length, 0);
@@ -826,7 +819,7 @@ test('run - --fix --reporter sarif emits an empty SARIF document', async (_t: Te
 test('run - --fix --typos --reporter sarif emits the typo document', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
-  writeFileSync(file, '<div className="text-[12px] bg-slte-100" />', 'utf8');
+  writeFileSync(file, '<div className="w-[12px] bg-slte-100" />', 'utf8');
   const { sink, raw } = captureSink();
   try {
     const result = await run(
@@ -834,7 +827,7 @@ test('run - --fix --typos --reporter sarif emits the typo document', async (_t: 
       dir,
       sink,
     );
-    assert.ok(readFileSync(file, 'utf8').includes('text-xs'));
+    assert.ok(readFileSync(file, 'utf8').includes('w-3'));
     const sarif = JSON.parse(raw.join(''));
     assert.strictEqual(sarif.runs[0].results.length, 1);
     assert.strictEqual(sarif.runs[0].results[0].ruleId, 'color-typo');
@@ -871,7 +864,7 @@ test(
 test('run - --fix --reporter json emits a transform summary', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
-  writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
+  writeFileSync(file, '<div className="w-[12px]" />', 'utf8');
   const { sink, raw } = captureSink();
   try {
     const result = await run(['--fix', '--reporter', 'json', dir], dir, sink);
@@ -880,7 +873,7 @@ test('run - --fix --reporter json emits a transform summary', async (_t: TestCon
     assert.strictEqual(parsed.files, 1);
     assert.strictEqual(parsed.fixed, 1);
     assert.deepEqual(parsed.changedFiles, [file]);
-    assert.ok(readFileSync(file, 'utf8').includes('text-xs'));
+    assert.ok(readFileSync(file, 'utf8').includes('w-3'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -889,11 +882,11 @@ test('run - --fix --reporter json emits a transform summary', async (_t: TestCon
 test('run - combined --fix --dedup --merge --sort runs the full pipeline', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
-  // text-[12px]→text-xs (fix), duplicate p-2 (dedup), bg conflict (merge),
+  // w-[12px]→w-3 (fix), duplicate p-2 (dedup), bg conflict (merge),
   // out-of-order classes (sort).
   writeFileSync(
     file,
-    '<div className="text-[12px] p-2 p-2 bg-red-500 bg-blue-500 flex" />',
+    '<div className="w-[12px] p-2 p-2 bg-red-500 bg-blue-500 flex" />',
     'utf8',
   );
   const { sink, out } = captureSink();
@@ -905,7 +898,7 @@ test('run - combined --fix --dedup --merge --sort runs the full pipeline', async
     );
     assert.strictEqual(result.exitCode, 0);
     const content = readFileSync(file, 'utf8');
-    assert.ok(content.includes('text-xs'), 'fix applied');
+    assert.ok(content.includes('w-3'), 'fix applied');
     assert.ok(content.includes('bg-blue-500'), 'merge kept last bg');
     assert.ok(!content.includes('bg-red-500'), 'merge dropped conflicting bg');
     assert.ok(!/p-2\s+p-2/.test(content), 'dedup collapsed duplicate padding');
@@ -920,7 +913,7 @@ test('run - combined pipeline json reports per-transform counts', async (_t: Tes
   const file = join(dir, 'a.tsx');
   writeFileSync(
     file,
-    '<div className="text-[12px] bg-red-500 bg-blue-500" />',
+    '<div className="w-[12px] bg-red-500 bg-blue-500" />',
     'utf8',
   );
   const { sink, raw } = captureSink();
@@ -1173,7 +1166,7 @@ test('run - --analyze text mode on clean files exits 0', async (_t: TestContext)
 
 test('run - sarif reporter on clean files emits empty results and exits 0', async (_t: TestContext) => {
   const dir = freshDir();
-  writeFileSync(join(dir, 'a.tsx'), '<div className="flex text-xs" />', 'utf8');
+  writeFileSync(join(dir, 'a.tsx'), '<div className="flex w-3" />', 'utf8');
   const { sink, raw } = captureSink();
   try {
     const result = await run(['--reporter', 'sarif', dir], dir, sink);
@@ -1282,7 +1275,7 @@ test('run - dangling --reporter exits 1 with the missing-value error', async (_t
 test('run - --check --fix reports pending changes without writing the file', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
-  const original = '<div className="text-[12px]" />';
+  const original = '<div className="w-[12px]" />';
   writeFileSync(file, original, 'utf8');
   const { sink, out } = captureSink();
   try {
@@ -1299,7 +1292,7 @@ test('run - --check --fix reports pending changes without writing the file', asy
 test('run - --check --dedup --sort on a clean file exits 0 with no pending changes', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
-  const original = '<div className="flex p-4 text-xs" />';
+  const original = '<div className="flex w-3 p-4" />';
   writeFileSync(file, original, 'utf8');
   const { sink, out } = captureSink();
   try {
@@ -1357,7 +1350,7 @@ test('run - a transform run writes nothing when --check reported no pending chan
 test('run - --check --fix --reporter json reports check:true and leaves file untouched', async (_t: TestContext) => {
   const dir = freshDir();
   const file = join(dir, 'a.tsx');
-  const original = '<div className="text-[12px]" />';
+  const original = '<div className="w-[12px]" />';
   writeFileSync(file, original, 'utf8');
   const { sink, raw } = captureSink();
   try {
@@ -1461,7 +1454,7 @@ test(
   async (_t: TestContext) => {
     const dir = freshDir();
     const file = join(dir, 'a.tsx');
-    const original = '<div className="text-[12px]" />';
+    const original = '<div className="w-[12px]" />';
     writeFileSync(file, original, 'utf8');
     writeFileSync(
       join(dir, 'tailwind-canonical.config.ts'),
@@ -1668,7 +1661,7 @@ test('CLI entry drains large structured reports before exiting', () => {
   try {
     writeFileSync(
       join(dir, 'large.tsx'),
-      '<div className="text-[12px]" />\n'.repeat(3000),
+      '<div className="w-[12px]" />\n'.repeat(3000),
     );
     for (const reporter of ['json', 'sarif']) {
       const child = spawnSync(
@@ -1693,5 +1686,121 @@ test('CLI entry drains large structured reports before exiting', () => {
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - typo output preserves important and opacity and accepts valid modified colors', async () => {
+  const dir = freshDir();
+  const { sink, raw } = captureSink();
+  try {
+    writeFileSync(
+      join(dir, 'a.tsx'),
+      '<div className="bg-black! hover:text-white! hover:!bg-reed-500/25" />',
+    );
+    const result = await run(['--typos', '--reporter', 'json', dir], dir, sink);
+    const report = JSON.parse(raw.join(''));
+    assert.strictEqual(result.exitCode, 1);
+    assert.strictEqual(report.total, 1);
+    assert.strictEqual(report.typos[0].original, 'hover:!bg-reed-500/25');
+    assert.strictEqual(report.typos[0].suggestion, 'hover:!bg-red-500/25');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - inaccessible source directories fail discovery before any transform or success output', async (t) => {
+  if (process.getuid?.() === 0)
+    return t.skip('root bypasses directory permissions');
+  const dir = freshDir();
+  const blocked = join(dir, 'blocked');
+  const file = join(dir, 'a.tsx');
+  mkdirSync(blocked);
+  writeFileSync(file, '<div className="w-[12px]"/>');
+  writeFileSync(join(blocked, 'b.tsx'), '<div className="w-[12px]"/>');
+  const { sink, out, raw, err } = captureSink();
+  try {
+    chmodSync(blocked, 0);
+    const result = await run(['--fix', '--reporter', 'json', '.'], dir, sink);
+    assert.strictEqual(result.exitCode, 1);
+    assert.match(err.join('\n'), /could not resolve targets.*EACCES/);
+    assert.deepStrictEqual(out, []);
+    assert.deepStrictEqual(raw, []);
+    assert.strictEqual(
+      readFileSync(file, 'utf8'),
+      '<div className="w-[12px]"/>',
+    );
+  } finally {
+    chmodSync(blocked, 0o700);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - present config without a valid default export fails before writing sources', async () => {
+  for (const config of [
+    'export const config = { useDefaultTheme: false }',
+    'export default null',
+  ]) {
+    const dir = freshDir();
+    const { sink, out, err } = captureSink();
+    try {
+      writeFileSync(join(dir, 'tailwind-canonical.config.mjs'), config);
+      writeFileSync(join(dir, 'a.tsx'), '<div className="w-[12px]"/>');
+      const result = await run(['--fix', 'a.tsx'], dir, sink);
+      assert.strictEqual(result.exitCode, 1);
+      assert.match(
+        err.join('\n'),
+        /default export must be a configuration object/,
+      );
+      assert.deepStrictEqual(out, []);
+      assert.strictEqual(
+        readFileSync(join(dir, 'a.tsx'), 'utf8'),
+        '<div className="w-[12px]"/>',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('run - font-size fixes preserve line-height by default and require explicit config opt-in', async () => {
+  for (const leading of ['', 'leading-6 ']) {
+    const dir = freshDir();
+    const file = join(dir, 'font.tsx');
+    const original = `<div className="${leading}text-[12px] hover:text-[0.75rem]! !text-[14px] p-[8px]" />`;
+    const strict = original.replace('p-[8px]', 'p-2');
+    try {
+      writeFileSync(file, original);
+      let captured = captureSink();
+      let result = await run(
+        ['--fix', '--reporter', 'json', file],
+        dir,
+        captured.sink,
+      );
+      assert.strictEqual(result.exitCode, 0);
+      assert.strictEqual(JSON.parse(captured.raw.join('')).fixed, 1);
+      assert.strictEqual(readFileSync(file, 'utf8'), strict);
+      captured = captureSink();
+      result = await run(['--check', '--fix', file], dir, captured.sink);
+      assert.strictEqual(result.exitCode, 0);
+      assert.ok(captured.out.includes('✓ No pending changes'));
+      writeFileSync(
+        join(dir, 'tailwind-canonical.config.mjs'),
+        'export default { allowTextSizeLineHeightChanges: true }',
+      );
+      captured = captureSink();
+      result = await run(
+        ['--fix', '--reporter', 'json', file],
+        dir,
+        captured.sink,
+      );
+      assert.strictEqual(result.exitCode, 0);
+      assert.strictEqual(JSON.parse(captured.raw.join('')).fixed, 3);
+      assert.strictEqual(
+        readFileSync(file, 'utf8'),
+        `<div className="${leading}text-xs hover:text-xs! !text-sm p-2" />`,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
 });

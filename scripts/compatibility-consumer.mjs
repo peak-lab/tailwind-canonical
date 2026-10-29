@@ -29,8 +29,16 @@ assert.equal(
 assert.equal(suggestCanonical('p-[16px]').canonical, 'p-4');
 
 writeFileSync('fixture.jsx', '<div className="text-[12px]" />');
-assert.equal(analyzeFile('fixture.jsx').length, 1);
-assert.equal(fixFile('fixture.jsx'), 1);
+assert.equal(suggestCanonical('text-[12px]'), null);
+assert.equal(analyzeFile('fixture.jsx').length, 0);
+assert.equal(fixFile('fixture.jsx'), 0);
+assert.equal(
+  readFileSync('fixture.jsx', 'utf8'),
+  '<div className="text-[12px]" />',
+);
+const allowFontChanges = { allowTextSizeLineHeightChanges: true };
+assert.equal(analyzeFile('fixture.jsx', allowFontChanges).length, 1);
+assert.equal(fixFile('fixture.jsx', allowFontChanges), 1);
 assert.equal(
   readFileSync('fixture.jsx', 'utf8'),
   '<div className="text-xs" />',
@@ -62,7 +70,7 @@ const configs = [
 for (const [source, expected] of [
   [
     'const x = <div className="text-[12px]" />;',
-    'const x = <div className="text-xs" />;',
+    'const x = <div className="text-[12px]" />;',
   ],
   [
     'const x = cn("p-2 p-4 leading-6 text-[13px]");',
@@ -84,6 +92,27 @@ for (const [source, expected] of [
   assert.deepEqual(result.messages, [], source);
   assert.equal(result.output, expected);
 }
+
+const fontSource = 'const x = <div className="text-[12px] p-[8px]" />;';
+const strictFont = linter.verifyAndFix(fontSource, configs);
+assert.deepEqual(strictFont.messages, []);
+assert.equal(
+  strictFont.output,
+  'const x = <div className="text-[12px] p-2" />;',
+);
+const permissiveFont = linter.verifyAndFix(fontSource, [
+  ...configs,
+  {
+    rules: {
+      'tailwind-canonical/no-arbitrary-canonical': ['error', allowFontChanges],
+    },
+  },
+]);
+assert.deepEqual(permissiveFont.messages, []);
+assert.equal(
+  permissiveFont.output,
+  'const x = <div className="text-xs p-2" />;',
+);
 
 const cli = join(
   'node_modules',
@@ -113,6 +142,28 @@ const fixed = spawnSync(process.execPath, [cli, '--fix', 'fixture.jsx'], {
 assert.equal(fixed.status, 0, fixed.stderr);
 assert.equal(readFileSync('fixture.jsx', 'utf8'), '<div className="p-4" />');
 
+writeFileSync('font.jsx', '<div className="leading-6 text-[12px] p-[8px]" />');
+const strictCli = spawnSync(process.execPath, [cli, '--fix', 'font.jsx'], {
+  encoding: 'utf8',
+});
+assert.equal(strictCli.status, 0, strictCli.stderr);
+assert.equal(
+  readFileSync('font.jsx', 'utf8'),
+  '<div className="leading-6 text-[12px] p-2" />',
+);
+writeFileSync(
+  'tailwind-canonical.config.mjs',
+  'export default { allowTextSizeLineHeightChanges: true };',
+);
+const permissiveCli = spawnSync(process.execPath, [cli, '--fix', 'font.jsx'], {
+  encoding: 'utf8',
+});
+assert.equal(permissiveCli.status, 0, permissiveCli.stderr);
+assert.equal(
+  readFileSync('font.jsx', 'utf8'),
+  '<div className="leading-6 text-xs p-2" />',
+);
+
 // Validate the declarations as a strict TypeScript consumer, including the
 // preset in ESLint's public configuration type; do not mask declaration errors.
 writeFileSync(
@@ -121,7 +172,7 @@ writeFileSync(
 import { Linter } from 'eslint';
 import plugin from 'tailwind-canonical/eslint';
 import { suggestCanonical, type Config } from 'tailwind-canonical';
-const config: Config = { tailwindVersion: 4 };
+const config: Config = { tailwindVersion: 4, allowTextSizeLineHeightChanges: true };
 const eslintConfig: Linter.FlatConfig = plugin.configs.recommended;
 new Linter({ configType: 'flat' }).verify('const x = 1;', [eslintConfig]);
 suggestCanonical('p-[16px]', config);

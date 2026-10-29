@@ -150,6 +150,11 @@ export async function loadConfig(
     }
     throw err;
   }
+  if (mod.default === undefined || mod.default === null) {
+    throw new Error(
+      `Invalid ${filename}: default export must be a configuration object`,
+    );
+  }
   const config = validateConfig(mod.default, filename);
   if (hash) reloadCache.set(path, { hash, config });
   return config;
