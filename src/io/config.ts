@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CONFIG_FILENAMES, validateConfig } from '../core/config.js';
@@ -54,7 +56,7 @@ export function resolveInitFilename(cwd: string): string {
     : 'tailwind-canonical.config.mjs';
 }
 
-function findConfigPath(cwd: string): string | undefined {
+export function findConfigPath(cwd: string): string | undefined {
   let dir = cwd;
   while (true) {
     const filename = CONFIG_FILENAMES.find((name) =>
@@ -68,13 +70,56 @@ function findConfigPath(cwd: string): string | undefined {
   }
 }
 
-export async function loadConfig(cwd: string): Promise<Config> {
+const reloadCache = new Map<string, { hash: string; config: Config }>();
+
+export async function loadConfig(
+  cwd: string,
+  options: { reload?: boolean } = {},
+): Promise<Config> {
   const path = findConfigPath(cwd);
   if (!path) return {};
   const filename = basename(path);
   let mod: { default: unknown };
+  let hash: string | undefined;
   try {
-    mod = await import(pathToFileURL(path).href);
+    const url = pathToFileURL(path);
+    if (options.reload) {
+      hash = createHash('sha256').update(readFileSync(path)).digest('hex');
+      const cached = reloadCache.get(path);
+      if (cached?.hash === hash) return cached.config;
+      // Content-based URLs avoid another ESM instance on unchanged source saves.
+      url.searchParams.set('version', hash);
+    }
+    if (
+      options.reload &&
+      /\.(?:js|ts)$/.test(filename) &&
+      nearestPackageType(dirname(path)) === 'commonjs'
+    ) {
+      // CJS has an additional require cache: query parameters only invalidate
+      // its ESM namespace wrapper. Read it via require after clearing that cache.
+      const require = createRequire(import.meta.url);
+      delete require.cache[require.resolve(path)];
+      try {
+        const loaded = require(path) as unknown;
+        mod =
+          typeof loaded === 'object' &&
+          loaded !== null &&
+          '__esModule' in loaded &&
+          'default' in loaded
+            ? (loaded as { default: unknown })
+            : { default: loaded };
+      } catch (error) {
+        if (
+          !['ERR_REQUIRE_ESM', 'ERR_REQUIRE_ASYNC_MODULE'].includes(
+            (error as NodeJS.ErrnoException).code ?? '',
+          )
+        )
+          throw error;
+        mod = await import(url.href);
+      }
+    } else {
+      mod = await import(url.href);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const type = nearestPackageType(dirname(path));
@@ -105,5 +150,7 @@ export async function loadConfig(cwd: string): Promise<Config> {
     }
     throw err;
   }
-  return validateConfig(mod.default, filename);
+  const config = validateConfig(mod.default, filename);
+  if (hash) reloadCache.set(path, { hash, config });
+  return config;
 }

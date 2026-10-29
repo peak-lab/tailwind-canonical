@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -10,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type TestContext, test } from 'node:test';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { flagWarnings, parseArgs, run, type Sink } from './cli.js';
 
 const canImportTsConfig = await (async () => {
@@ -676,6 +677,28 @@ test('run - --typos --watch warns about ignored watch and does not watch', async
     );
     assert.strictEqual(result.watching, undefined);
     assert.strictEqual(result.exitCode, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run - active watch rejects structured reporters instead of emitting text', async () => {
+  const dir = freshDir();
+  try {
+    writeFileSync(join(dir, 'a.tsx'), '<div className="text-[12px]" />');
+    for (const reporter of ['json', 'sarif']) {
+      const { sink, out, raw, err } = captureSink();
+      const result = await run(
+        ['--watch', '--reporter', reporter, dir],
+        dir,
+        sink,
+      );
+      assert.strictEqual(result.exitCode, 1);
+      assert.strictEqual(result.watching, undefined);
+      assert.match(err.join('\n'), /--watch requires --reporter text/);
+      assert.deepStrictEqual(out, []);
+      assert.deepStrictEqual(raw, []);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -1635,6 +1658,39 @@ test('run - init with an unknown flag errors and writes nothing', async (_t: Tes
     assert.strictEqual(result.exitCode, 1);
     assert.ok(err.some((l) => l.includes('init takes no flags')));
     assert.ok(!existsSync(join(dir, 'tailwind-canonical.config.ts')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('CLI entry drains large structured reports before exiting', () => {
+  const dir = freshDir();
+  try {
+    writeFileSync(
+      join(dir, 'large.tsx'),
+      '<div className="text-[12px]" />\n'.repeat(3000),
+    );
+    for (const reporter of ['json', 'sarif']) {
+      const child = spawnSync(
+        process.execPath,
+        [
+          '--import=tsx/esm',
+          fileURLToPath(new URL('./index.ts', import.meta.url)),
+          '--reporter',
+          reporter,
+          dir,
+        ],
+        { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 },
+      );
+      assert.ifError(child.error);
+      assert.strictEqual(child.status, 1, child.stderr);
+      assert.ok(child.stdout.length > 65536);
+      const report = JSON.parse(child.stdout);
+      assert.strictEqual(
+        reporter === 'json' ? report.total : report.runs[0].results.length,
+        3000,
+      );
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

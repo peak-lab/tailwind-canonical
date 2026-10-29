@@ -58,3 +58,29 @@ test('public barrel - internal plumbing stays out of the surface', (_t: TestCont
     assert.ok(!(internal in api), `${internal} must not be re-exported`);
   }
 });
+
+test('public API preserves a custom theme unless a pixel mapping is explicitly configured', async () => {
+  const { mkdtempSync, readFileSync, rmSync, writeFileSync } = await import(
+    'node:fs'
+  );
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'twc-custom-theme-'));
+  const file = join(dir, 'component.tsx');
+  const content = '<div className="text-[12px] p-[16px] rounded-[8px]" />';
+  try {
+    writeFileSync(file, content);
+    assert.deepEqual(api.analyzeFile(file, { useDefaultTheme: false }), []);
+    assert.equal(api.fixFile(file, { useDefaultTheme: false }), 0);
+    assert.equal(readFileSync(file, 'utf8'), content);
+    const config = { useDefaultTheme: false, customTextTokens: { 12: 'tiny' } };
+    assert.equal(api.analyzeFile(file, config).length, 1);
+    assert.equal(api.fixFile(file, config), 1);
+    assert.equal(
+      readFileSync(file, 'utf8'),
+      '<div className="text-tiny p-[16px] rounded-[8px]" />',
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

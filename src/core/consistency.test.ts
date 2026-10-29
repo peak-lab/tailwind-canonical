@@ -372,3 +372,63 @@ test('analyzeConsistencyFiles - skips unreadable file and reports via onError', 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('scale inconsistency - arbitrary values containing dashes stay attached to their property', () => {
+  const report = analyzeConsistency(
+    [
+      { file: 'a.tsx', classes: ['mt-[var(--space)]'] },
+      { file: 'b.tsx', classes: ['mt-[calc(1rem-2px)]'] },
+    ],
+    { minScaleOccurrences: 2 },
+  );
+  assert.deepEqual(
+    scaleOf(report, 'mt')
+      ?.values.map(({ value }) => value)
+      .sort(),
+    ['[calc(1rem-2px)]', '[var(--space)]'],
+  );
+});
+
+test('combinations - individual class strings do not become a synthetic file-wide pattern', () => {
+  const report = analyzeConsistency(
+    ['a', 'b', 'c'].map((file) => ({
+      file,
+      classes: ['flex', 'gap-2'],
+      classLists: [['flex'], ['gap-2']],
+    })),
+  );
+  assert.deepEqual(report.combinations, []);
+});
+
+test('analyzeConsistencyFiles - finds repeated elements inside otherwise different files', () => {
+  const dir = join(tmpdir(), `twc-patterns-${process.pid}-${Date.now()}`);
+  mkdirSync(dir, { recursive: true });
+  const files = ['a', 'b', 'c'].map((name) => join(dir, `${name}.tsx`));
+  try {
+    files.forEach((file, i) => {
+      writeFileSync(
+        file,
+        `<div className="flex gap-2" /><div className="unique-${i}" /><div className="flex gap-2" />`,
+      );
+    });
+    const report = analyzeConsistencyFiles(files);
+    assert.strictEqual(report.filesAnalyzed, 3);
+    assert.deepEqual(report.combinations, [
+      {
+        classes: ['flex', 'gap-2'],
+        count: 6,
+        files: [...files].sort(),
+      },
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('color families - Object prototype properties are not color families', () => {
+  const report = analyzeConsistency([
+    { file: 'a.tsx', classes: ['bg-constructor-500', 'bg-toString-500'] },
+    { file: 'b.tsx', classes: ['bg-constructor-600', 'bg-toString-600'] },
+  ]);
+  assert.deepEqual(report.colorVariants, []);
+});

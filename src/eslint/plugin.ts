@@ -1,6 +1,8 @@
 import { createRequire } from 'node:module';
 import type { Rule } from 'eslint';
 import type { Literal, TemplateLiteral } from 'estree';
+import { validateConfig } from '../core/config.js';
+import { mergeClasses } from '../core/merger.js';
 import {
   type Config,
   type Suggestion,
@@ -19,6 +21,8 @@ const _require = createRequire(import.meta.url);
 type StringNode = Literal & {
   quasiRange?: [number, number];
   valueIsRaw?: boolean;
+  templatePrefix?: string;
+  templateSuffix?: string;
   parent?: { type?: string };
 };
 
@@ -36,34 +40,121 @@ function quasiTextRange(
   return [start, start + quasi.value.raw.length];
 }
 
-/**
- * Builds the shared ESLint visitor that runs `checkLiteral` on every string
- * `Literal` and on each quasi of a `TemplateLiteral`. Both rules walk class
- * strings identically, so the traversal lives here once. Quasi nodes carry the
- * real `range`/`loc` so `context.report` and the fixer operate on actual source
- * positions instead of a detached synthetic node.
- */
+type ContextNode = {
+  type: string;
+  name?: string | { name?: string };
+  parent?: ContextNode;
+  callee?: ContextNode;
+  value?: ContextNode | string;
+  key?: ContextNode;
+  left?: ContextNode;
+  operator?: string;
+  consequent?: ContextNode;
+  alternate?: ContextNode;
+};
+
+/** Only inspect strings whose syntax establishes that they contain classes. */
+function isClassContext(node: ContextNode, config: Config): boolean {
+  const attributes = config.attributeNames?.length
+    ? config.attributeNames
+    : ['className'];
+  const functions = config.functionNames ?? ['cn', 'clsx', 'cva'];
+  const properties: Array<{ key: string; isKey: boolean }> = [];
+  let current = node;
+  while (current.parent) {
+    const parent = current.parent;
+    if (parent.type === 'JSXAttribute') {
+      const name = parent.name;
+      return (
+        properties.length === 0 &&
+        typeof name === 'object' &&
+        attributes.includes(name.name ?? '')
+      );
+    }
+    if (parent.type === 'CallExpression') {
+      if (parent.callee?.type !== 'Identifier') return false;
+      const name = String(parent.callee.name);
+      if (!functions.includes(name)) return false;
+      if (properties.length === 0) return true;
+      if (name === 'cva') {
+        if (properties.some((property) => property.isKey)) return false;
+        return (
+          (properties.length === 3 && properties[2].key === 'variants') ||
+          (properties.length === 2 &&
+            properties[1].key === 'compoundVariants' &&
+            ['class', 'className'].includes(properties[0].key))
+        );
+      }
+      // clsx-style object arguments emit their keys; values are predicates.
+      return properties.every((property) => property.isKey);
+    }
+    if (parent.type === 'Property') {
+      properties.push({
+        key: String(parent.key?.name ?? parent.key?.value ?? ''),
+        isKey: current === parent.key,
+      });
+    }
+    if (
+      parent.type === 'LogicalExpression' &&
+      parent.operator === '&&' &&
+      current === parent.left
+    )
+      return false;
+    if (
+      parent.type === 'ConditionalExpression' &&
+      current !== parent.consequent &&
+      current !== parent.alternate
+    )
+      return false;
+    if (
+      ![
+        'JSXExpressionContainer',
+        'ArrayExpression',
+        'ObjectExpression',
+        'Property',
+        'ConditionalExpression',
+        'LogicalExpression',
+      ].includes(parent.type)
+    )
+      return false;
+    current = parent;
+  }
+  return false;
+}
+
 function makeStringRuleVisitor(
   checkLiteral: (node: StringNode) => void,
+  config: Config = {},
 ): Rule.RuleListener {
   return {
-    Literal: (node) => checkLiteral(node as StringNode),
+    Literal: (node) => {
+      if (isClassContext(node as unknown as ContextNode, config)) {
+        checkLiteral(node as StringNode);
+      }
+    },
     TemplateLiteral(node: TemplateLiteral) {
-      const isTagged =
-        (node as TemplateLiteral & { parent?: { type?: string } }).parent
-          ?.type === 'TaggedTemplateExpression';
-      for (const quasi of node.quasis) {
-        const value = isTagged
-          ? quasi.value.raw
-          : (quasi.value.cooked ?? quasi.value.raw);
+      if (!isClassContext(node as unknown as ContextNode, config)) return;
+      for (const [index, quasi] of node.quasis.entries()) {
+        const value = quasi.value.cooked ?? quasi.value.raw;
+        // A token touching an interpolation is incomplete: e.g.
+        // `text-[12px]${suffix}` must not become `text-xs${suffix}`.
+        const start =
+          value.match(index > 0 ? /^\S*\s*/ : /^\s*/)?.[0].length ?? 0;
+        const trailing =
+          value.match(index < node.quasis.length - 1 ? /\s*\S*$/ : /\s*$/)?.[0]
+            .length ?? 0;
+        const end = Math.max(start, value.length - trailing);
+        const inner = value.slice(start, end);
         checkLiteral({
           type: 'Literal',
-          value,
+          value: inner,
           raw: quasi.value.raw,
           range: quasi.range,
           loc: quasi.loc,
           quasiRange: quasiTextRange(quasi),
-          valueIsRaw: isTagged || quasi.value.cooked === null,
+          valueIsRaw: quasi.value.cooked === null,
+          templatePrefix: value.slice(0, start),
+          templateSuffix: value.slice(end),
         } as StringNode);
       }
     },
@@ -101,7 +192,9 @@ function escapeTemplateText(value: string): string {
 
 function replacementText(node: StringNode, value: string): string {
   if (node.quasiRange) {
-    return node.valueIsRaw ? value : escapeTemplateText(value);
+    const full =
+      (node.templatePrefix ?? '') + value + (node.templateSuffix ?? '');
+    return node.valueIsRaw ? full : escapeTemplateText(full);
   }
   return quoteReplacement(node, value);
 }
@@ -125,8 +218,8 @@ const noArbitraryCanonical: Rule.RuleModule = {
     // config object can be passed as rule options without schema errors (#42).
     // Honored by this rule (via suggestCanonical): customTextTokens,
     // customSpacingTokens, ignorePatterns, tailwindVersion.
-    // Accepted but ignored here (CLI-only): functionNames, attributeNames,
-    // sortOrder.
+    // functionNames and attributeNames restrict class string detection.
+    // Other CLI-only keys are accepted for shared config objects.
     schema: [
       {
         type: 'object',
@@ -135,9 +228,18 @@ const noArbitraryCanonical: Rule.RuleModule = {
           customSpacingTokens: { type: 'object' },
           ignorePatterns: { type: 'array' },
           tailwindVersion: { enum: [3, 4] },
+          useDefaultTheme: { type: 'boolean' },
           functionNames: { type: 'array', items: { type: 'string' } },
           attributeNames: { type: 'array', items: { type: 'string' } },
           sortOrder: { type: 'array', items: { type: 'string' } },
+          extraColorFamilies: { type: 'object' },
+          extraScaleProperties: { type: 'array', items: { type: 'string' } },
+          extraColors: { type: 'array', items: { type: 'string' } },
+          analyze: { type: 'object' },
+          minRareScalePropertyOccurrences: { type: 'number' },
+          rareScaleMaxFiles: { type: 'number' },
+          rareScaleMaxCount: { type: 'number' },
+          defaultCommand: { type: 'object' },
         },
         additionalProperties: false,
       },
@@ -148,7 +250,7 @@ const noArbitraryCanonical: Rule.RuleModule = {
     },
   },
   create(context: Rule.RuleContext): Rule.RuleListener {
-    const config: Config = (context.options[0] as Config | undefined) ?? {};
+    const config = validateConfig(context.options[0], 'ESLint rule options');
 
     function checkLiteral(node: StringNode) {
       if (typeof node.value !== 'string') return;
@@ -173,17 +275,19 @@ const noArbitraryCanonical: Rule.RuleModule = {
       });
     }
 
-    return makeStringRuleVisitor(checkLiteral);
+    return makeStringRuleVisitor(checkLiteral, config);
   },
 };
 
 type TwMerge = (classes: string) => string;
 
-function loadTwMerge(): TwMerge | null {
+function loadTwMerge(): TwMerge {
   try {
     return (_require('tailwind-merge') as { twMerge: TwMerge }).twMerge;
   } catch {
-    return null;
+    throw new Error(
+      'The no-conflicting-classes rule requires the optional peer dependency "tailwind-merge". Install it with: pnpm add -D tailwind-merge',
+    );
   }
 }
 
@@ -191,7 +295,7 @@ const noConflictingClasses: Rule.RuleModule = {
   meta: {
     type: 'suggestion' as const,
     fixable: 'code' as const,
-    schema: [],
+    schema: noArbitraryCanonical.meta?.schema ?? [],
     messages: {
       conflicting:
         "Conflicting Tailwind classes detected. Use '{{merged}}' instead.",
@@ -199,11 +303,11 @@ const noConflictingClasses: Rule.RuleModule = {
   },
   create(context: Rule.RuleContext): Rule.RuleListener {
     const twMerge = loadTwMerge();
+    const config = validateConfig(context.options[0], 'ESLint rule options');
 
     function checkLiteral(node: StringNode) {
-      if (!twMerge) return;
       if (typeof node.value !== 'string') return;
-      const merged = twMerge(node.value);
+      const merged = mergeClasses(node.value, twMerge, config);
       if (merged === node.value) return;
       context.report({
         node,
@@ -212,7 +316,7 @@ const noConflictingClasses: Rule.RuleModule = {
       });
     }
 
-    return makeStringRuleVisitor(checkLiteral);
+    return makeStringRuleVisitor(checkLiteral, config);
   },
 };
 
@@ -224,7 +328,7 @@ interface TailwindCanonicalPlugin {
   configs: {
     recommended: {
       plugins: { 'tailwind-canonical': TailwindCanonicalPlugin };
-      rules: Record<string, string>;
+      rules: Record<string, 'warn'>;
     };
   };
 }

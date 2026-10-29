@@ -121,22 +121,29 @@ function restoreLeadingForUnsafeTextSizes(
   return restored.join(' ');
 }
 
+export function mergeClasses(
+  classes: string,
+  twMerge: (classes: string) => string,
+  opts: Pick<ClassStringOpts, 'customTextTokens'> = {},
+): string {
+  const customTextClasses = new Set(
+    Object.values(opts.customTextTokens ?? {}).map((token) => `text-${token}`),
+  );
+  return restoreLeadingForUnsafeTextSizes(
+    classes,
+    twMerge(classes),
+    customTextClasses,
+  );
+}
+
 export function mergeContent(
   content: string,
   twMerge: (classes: string) => string,
   opts: ClassStringOpts = {},
 ): { result: string; count: number } {
-  const customTextClasses = new Set(
-    Object.values(opts.customTextTokens ?? {}).map((token) => `text-${token}`),
-  );
   return replaceClassStrings(
     content,
-    (classes) =>
-      restoreLeadingForUnsafeTextSizes(
-        classes,
-        twMerge(classes),
-        customTextClasses,
-      ),
+    (classes) => mergeClasses(classes, twMerge, opts),
     {
       ...opts,
       isSuppressed: makeLineSuppressor(content),

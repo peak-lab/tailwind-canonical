@@ -45,8 +45,6 @@ const TEXT_SIZE_MAP: Record<number, string> = {
   128: '9xl',
 };
 
-const BUILT_IN_TEXT_PX = new Set(Object.keys(TEXT_SIZE_MAP).map(Number));
-
 /**
  * Radius px → token suffix. v4 renamed the small end (`rounded-sm` → `-xs`,
  * bare `rounded` → `-sm`) and added `4xl`; `''` is the bare v3 `rounded`.
@@ -373,6 +371,8 @@ const BLUR_MAP_V3: Record<number, string> = {
 };
 
 export type Config = {
+  /** Set false for custom themes: only explicitly configured px mappings apply. */
+  useDefaultTheme?: boolean;
   customTextTokens?: Record<number, string>;
   customSpacingTokens?: Record<number, string>;
   ignorePatterns?: RegExp[];
@@ -443,7 +443,7 @@ function textSuggestion(
   return {
     original: cls,
     canonical: `text-${token}`,
-    isCustomToken: !BUILT_IN_TEXT_PX.has(px),
+    isCustomToken: textTokens[px] !== TEXT_SIZE_MAP[px],
   };
 }
 
@@ -588,6 +588,29 @@ export function suggestCanonical(
 }
 
 function suggestUtility(cls: string, config: Config): Suggestion | null {
+  if (config.useDefaultTheme === false) {
+    const text = cls.match(/^text-\[(\d+)px\]$/);
+    if (text) {
+      const token = config.customTextTokens?.[Number(text[1])];
+      return token
+        ? { original: cls, canonical: `text-${token}`, isCustomToken: true }
+        : null;
+    }
+    const spacing = cls.match(SPACING_PX_RE);
+    if (spacing) {
+      const token = config.customSpacingTokens?.[Number(spacing[2])];
+      return token
+        ? {
+            original: cls,
+            canonical: `${spacing[1]}-${token}`,
+            isCustomToken: true,
+          }
+        : null;
+    }
+    // Even rem-to-px equivalences depend on the consumer's root font size.
+    // A custom theme must opt in through explicit mappings, never inference.
+    return null;
+  }
   const textTokens = { ...TEXT_SIZE_MAP, ...config.customTextTokens };
   const spacingTokens = config.customSpacingTokens ?? {};
   const v3 = config.tailwindVersion === 3;

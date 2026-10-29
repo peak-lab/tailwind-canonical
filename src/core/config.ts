@@ -10,6 +10,7 @@ export const CONFIG_FILENAMES = [
 ] as const;
 
 const KNOWN_KEYS = [
+  'useDefaultTheme',
   'customTextTokens',
   'customSpacingTokens',
   'ignorePatterns',
@@ -203,6 +204,9 @@ export function validateConfig(
   const cfg = input as Record<string, unknown>;
   assertKnownKeys(cfg, KNOWN_KEYS, 'unknown key', filename);
 
+  if ('useDefaultTheme' in cfg && typeof cfg.useDefaultTheme !== 'boolean')
+    fail(filename, 'useDefaultTheme must be a boolean');
+
   if ('customTextTokens' in cfg)
     assertPxTokenMap(cfg.customTextTokens, 'customTextTokens', filename);
   if ('customSpacingTokens' in cfg)
@@ -248,4 +252,8 @@ export function validateConfig(
   return cfg as Config;
 }
 
-export { loadConfig, resolveInitFilename } from '../io/config.js';
+export {
+  findConfigPath,
+  loadConfig,
+  resolveInitFilename,
+} from '../io/config.js';

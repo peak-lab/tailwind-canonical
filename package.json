@@ -1,6 +1,6 @@
 {
   "name": "tailwind-canonical",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Lint and auto-fix Tailwind CSS arbitrary values that have canonical equivalents",
   "type": "module",
   "packageManager": "pnpm@11.4.0",
@@ -45,11 +45,13 @@
     "dev": "tsc --watch",
     "test": "node --import=tsx/esm --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check src/",
-    "lint:fix": "biome check --write src/",
+    "lint": "biome check src/ scripts/",
+    "lint:fix": "biome check --write src/ scripts/",
     "prepare": "lefthook install || true",
     "prepublishOnly": "pnpm build",
-    "knip": "knip"
+    "knip": "knip",
+    "benchmark": "pnpm build && node scripts/benchmark.mjs",
+    "test:compat": "node scripts/compatibility.mjs"
   },
   "keywords": [
     "tailwind",
@@ -76,8 +78,8 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "eslint": ">=8.0.0",
-    "tailwind-merge": ">=2.0.0"
+    "eslint": ">=8.57.1 <11",
+    "tailwind-merge": ">=2.0.0 <4"
   },
   "peerDependenciesMeta": {
     "eslint": {

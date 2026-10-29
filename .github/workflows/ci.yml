@@ -25,8 +25,45 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm knip
       - run: pnpm test
+      - run: pnpm build
+      - name: Check benchmark corpus and pipeline invariants
+        run: node scripts/benchmark.mjs --files 6 --lines 5 --runs 1 --json
+
+  compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - eslint: '8.57.1'
+            tailwind-merge: '2.6.1'
+          - eslint: '8.57.1'
+            tailwind-merge: '3.7.0'
+          - eslint: '9.39.5'
+            tailwind-merge: '2.6.1'
+          - eslint: '9.39.5'
+            tailwind-merge: '3.7.0'
+          - eslint: '10.13.0'
+            tailwind-merge: '2.6.1'
+          - eslint: '10.13.0'
+            tailwind-merge: '3.7.0'
+          - eslint: '8.57.1'
+            tailwind-merge: '2.0.0'
+          - eslint: '9.0.0'
+            tailwind-merge: '3.0.0'
+          - eslint: '10.0.0'
+            tailwind-merge: '3.0.0'
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:compat '${{ matrix.eslint }}' '${{ matrix.tailwind-merge }}'

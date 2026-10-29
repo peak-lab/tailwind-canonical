@@ -217,6 +217,7 @@ const CORNER_MAP: Record<string, ReadonlyArray<Corner>> = {
 function parseRoundedCorner(
   cls: string,
 ): Partial<Record<Corner, string>> | null {
+  if (/^rounded-(?:s|e|ss|se|es|ee)(?:-|$)/.test(cls)) return null;
   const m =
     cls.match(/^rounded-(tl|tr|bl|br|t|b|l|r)(?:-(.+))?$/) ??
     cls.match(/^rounded()(?:-(.+))?$/);
@@ -363,6 +364,7 @@ function keepLastOf(slots: string[][], indices: number[]): void {
 }
 
 export function deduplicateClasses(classStr: string): string {
+  if (classStr.includes('${')) return classStr;
   const original = classStr.split(/\s+/).filter(Boolean);
   if (original.length <= 1) return classStr;
 
