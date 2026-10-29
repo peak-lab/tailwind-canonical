@@ -93,7 +93,7 @@ test('startWatch - announces watching and applies fix on edit (debounce + transf
     const started = await waitFor(() => out().includes('Watching'));
     assert.ok(started, 'watcher should announce it is watching');
 
-    writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
+    writeFileSync(file, '<div className="w-[12px]" />', 'utf8');
     const applied = await waitFor(
       () => out().includes('applied') && out().includes('change'),
     );
@@ -117,10 +117,8 @@ test('startWatch - check mode reports findings on edit', async (t: TestContext) 
     const started = await waitFor(() => out().includes('Watching'));
     assert.ok(started);
 
-    writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
-    const reported = await waitFor(() =>
-      out().includes('text-[12px] → text-xs'),
-    );
+    writeFileSync(file, '<div className="w-[12px]" />', 'utf8');
+    const reported = await waitFor(() => out().includes('w-[12px] → w-3'));
     if (!reported) {
       t.skip('filesystem watch event did not fire in this environment');
       return;
@@ -146,10 +144,8 @@ test('startWatch - handles removal and recreation without stopping', async () =>
     assert.strictEqual(child.exitCode, null, err());
     assert.strictEqual(err(), '');
 
-    writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
-    const resumed = await waitFor(() =>
-      out().includes('text-[12px] → text-xs'),
-    );
+    writeFileSync(file, '<div className="w-[12px]" />', 'utf8');
+    const resumed = await waitFor(() => out().includes('w-[12px] → w-3'));
     assert.ok(resumed, 'watcher should process the recreated file');
   } finally {
     await stop(child);
@@ -171,7 +167,7 @@ test('startWatch - transform mode surfaces processing errors', async (t: TestCon
     assert.ok(started);
     await sleep(300);
 
-    writeFileSync(file, '<div className="text-[12px]" />', 'utf8');
+    writeFileSync(file, '<div className="w-[12px]" />', 'utf8');
     chmodSync(file, 0o000);
     const errored = await waitFor(() => err().includes('error:'));
     chmodSync(file, 0o644);
@@ -219,15 +215,15 @@ test('watch discovers new nested files from an initially empty glob and respects
     mkdirSync(join(dir, 'src/excluded'), { recursive: true });
     const file = join(dir, 'src/nested/new.tsx');
     const excluded = join(dir, 'src/excluded/skipped.tsx');
-    writeFileSync(file, '<div className="text-[12px]" />');
-    writeFileSync(excluded, '<div className="text-[12px]" />');
+    writeFileSync(file, '<div className="w-[12px]" />');
+    writeFileSync(excluded, '<div className="w-[12px]" />');
     assert.ok(
-      await waitFor(() => readFileSync(file, 'utf8').includes('text-xs')),
+      await waitFor(() => readFileSync(file, 'utf8').includes('w-3')),
       err(),
     );
     assert.strictEqual(
       readFileSync(excluded, 'utf8'),
-      '<div className="text-[12px]" />',
+      '<div className="w-[12px]" />',
     );
     assert.strictEqual(child.exitCode, null, err());
   } finally {
@@ -248,40 +244,34 @@ test('watch reloads config tokens and targets, pauses on invalid config and reco
     'export default { defaultCommand: { fix: true, targets: ["src"] } }',
   );
   writeFileSync(a, '<div className="flex" />');
-  writeFileSync(b, '<div className="text-[11px]" />');
+  writeFileSync(b, '<div className="w-[11px]" />');
   const { child, out, err } = spawnWatcher(['--watch'], dir);
   try {
     assert.ok(await waitFor(() => out().includes('Watching')), err());
     writeFileSync(
       config,
-      'export default { customTextTokens: { 11: "tiny" }, defaultCommand: { fix: true, targets: ["next"] } }',
+      'export default { customSpacingTokens: { 11: "tiny" }, defaultCommand: { fix: true, targets: ["next"] } }',
     );
     assert.ok(
-      await waitFor(() => readFileSync(b, 'utf8').includes('text-tiny')),
+      await waitFor(() => readFileSync(b, 'utf8').includes('w-tiny')),
       err(),
     );
     writeFileSync(config, 'export default { unknownSetting: true }');
     assert.ok(await waitFor(() => err().includes('unknown key')), err());
-    writeFileSync(b, '<div className="text-[12px]" />');
+    writeFileSync(b, '<div className="w-[12px]" />');
     await sleep(150);
-    assert.strictEqual(
-      readFileSync(b, 'utf8'),
-      '<div className="text-[12px]" />',
-    );
+    assert.strictEqual(readFileSync(b, 'utf8'), '<div className="w-[12px]" />');
     writeFileSync(
       config,
-      'export default { customTextTokens: { 12: "small" }, defaultCommand: { fix: true, targets: ["next"] } }',
+      'export default { customSpacingTokens: { 12: "small" }, defaultCommand: { fix: true, targets: ["next"] } }',
     );
     assert.ok(
-      await waitFor(() => readFileSync(b, 'utf8').includes('text-small')),
+      await waitFor(() => readFileSync(b, 'utf8').includes('w-small')),
       err(),
     );
-    writeFileSync(a, '<div className="text-[12px]" />');
+    writeFileSync(a, '<div className="w-[12px]" />');
     await sleep(150);
-    assert.strictEqual(
-      readFileSync(a, 'utf8'),
-      '<div className="text-[12px]" />',
-    );
+    assert.strictEqual(readFileSync(a, 'utf8'), '<div className="w-[12px]" />');
     assert.strictEqual(child.exitCode, null, err());
   } finally {
     await stop(child);
@@ -415,6 +405,74 @@ test('watchRoots preserves existing bracketed route directories as literal roots
     assert.deepStrictEqual(watchRoots([route], []), [route]);
     assert.deepStrictEqual(watchRoots([page], []), [route]);
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('watch honors explicitly selected files and directories whose names are normally ignored', async () => {
+  for (const target of ['dist/a.tsx', 'dist']) {
+    const dir = freshDir();
+    mkdirSync(join(dir, 'dist'));
+    const file = join(dir, 'dist/a.tsx');
+    writeFileSync(file, '<div className="flex" />');
+    const { child, out, err } = spawnWatcher(['--fix', '--watch', target], dir);
+    try {
+      assert.ok(await waitFor(() => out().includes('Watching')), err());
+      writeFileSync(file, '<div className="w-[12px]" />');
+      assert.ok(
+        await waitFor(() => readFileSync(file, 'utf8').includes('w-3')),
+        err(),
+      );
+      if (target === 'dist') {
+        const added = join(dir, 'dist/new.tsx');
+        writeFileSync(added, '<div className="w-[16px]" />');
+        assert.ok(
+          await waitFor(() => readFileSync(added, 'utf8').includes('w-4')),
+          err(),
+        );
+      }
+    } finally {
+      await stop(child);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('watch keeps font-size and leading intact until an explicit config opt-in is saved', async () => {
+  const dir = freshDir();
+  const file = join(dir, 'font.tsx');
+  writeFileSync(file, '<div className="flex" />');
+  const { child, out, err } = spawnWatcher(['--fix', '--watch', '.'], dir);
+  try {
+    assert.ok(await waitFor(() => out().includes('Watching')), err());
+    writeFileSync(
+      file,
+      '<div className="leading-6 text-[12px] hover:text-[0.75rem]! p-[8px]" />',
+    );
+    assert.ok(
+      await waitFor(() => readFileSync(file, 'utf8').includes('p-2')),
+      err(),
+    );
+    assert.strictEqual(
+      readFileSync(file, 'utf8'),
+      '<div className="leading-6 text-[12px] hover:text-[0.75rem]! p-2" />',
+    );
+    writeFileSync(
+      join(dir, 'tailwind-canonical.config.mjs'),
+      'export default { allowTextSizeLineHeightChanges: true }',
+    );
+    assert.ok(
+      await waitFor(() =>
+        readFileSync(file, 'utf8').includes('hover:text-xs!'),
+      ),
+      err(),
+    );
+    assert.strictEqual(
+      readFileSync(file, 'utf8'),
+      '<div className="leading-6 text-xs hover:text-xs! p-2" />',
+    );
+  } finally {
+    await stop(child);
     rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -23,7 +23,7 @@ function integerOption(name, fallback) {
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--json') continue;
   assert.ok(
-    ['--files', '--lines', '--runs'].includes(args[i]),
+    ['--files', '--lines', '--runs', '--corpus'].includes(args[i]),
     `Unknown option: ${args[i]}`,
   );
   i++;
@@ -31,15 +31,27 @@ for (let i = 0; i < args.length; i++) {
 const fileCount = integerOption('--files', 90);
 const linesPerFile = integerOption('--lines', 40);
 const runs = integerOption('--runs', 5);
-const config = { attributeNames: ['className', 'class'] };
-const samples = [
-  ['tsx', '<div className="text-[12px] p-[16px] rounded-[8px] flex flex" />'],
-  ['vue', '<div class="text-[12px] p-[16px] rounded-[8px] flex flex" />'],
-  [
-    'svelte',
-    '<section class="text-[12px] p-[16px] rounded-[8px] flex flex" />',
-  ],
+const corpusAt = args.indexOf('--corpus');
+const corpusName = corpusAt < 0 ? 'markup' : args[corpusAt + 1];
+assert.ok(
+  ['markup', 'helpers'].includes(corpusName),
+  '--corpus must be markup or helpers',
+);
+const config = {
+  attributeNames: ['className', 'class'],
+  functionNames: ['cn', 'clsx', 'cva'],
+};
+const markupSamples = [
+  ['tsx', '<div className="m-[12px] p-[16px] rounded-[8px] flex flex" />'],
+  ['vue', '<div class="m-[12px] p-[16px] rounded-[8px] flex flex" />'],
+  ['svelte', '<section class="m-[12px] p-[16px] rounded-[8px] flex flex" />'],
 ];
+const helperSamples = [
+  ['tsx', 'cn("m-[12px] p-[16px] rounded-[8px] flex flex");'],
+  ['tsx', 'clsx(["m-[12px] p-[16px] rounded-[8px] flex flex"]);'],
+  ['tsx', 'cva("m-[12px] p-[16px] rounded-[8px] flex flex");'],
+];
+const samples = corpusName === 'helpers' ? helperSamples : markupSamples;
 const dir = mkdtempSync(join(tmpdir(), 'tailwind-canonical-bench-'));
 const corpus = Array.from({ length: fileCount }, (_, i) => {
   const [ext, line] = samples[i % samples.length];
@@ -83,7 +95,7 @@ try {
       'Transform pipeline must be idempotent',
     );
     assert.ok(
-      !result.includes('['),
+      !/\b[\w-]+-\[/.test(result),
       'All fixture arbitrary values must be canonicalized',
     );
   }
@@ -104,7 +116,10 @@ try {
       findings: findings.length,
       runs,
       warmupRuns: 1,
-      seed: 'static-jsx-vue-svelte-v1',
+      seed:
+        corpusName === 'helpers'
+          ? 'static-cn-clsx-cva-v2'
+          : 'static-jsx-vue-svelte-v2',
     },
     stages: [
       measure('discovery', () => scanFiles(dir)),

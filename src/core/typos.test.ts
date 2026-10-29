@@ -83,3 +83,52 @@ test('analyzeTyposFile - reports with line/col, honors suppression', (_t: TestCo
     unlinkSync(path);
   }
 });
+
+test('detectTypo - ignores valid important colors and preserves modifiers in suggestions', () => {
+  for (const cls of [
+    'bg-black!',
+    'hover:text-white!',
+    '!bg-black',
+    'bg-blue-500/50!',
+    'bg-black/[.4]!',
+  ]) {
+    assert.strictEqual(detectTypo(cls), null, cls);
+  }
+  for (const [original, suggestion] of [
+    ['bg-reed-500/50', 'bg-red-500/50'],
+    ['bg-reed-500!', 'bg-red-500!'],
+    ['hover:!bg-reed-500/25', 'hover:!bg-red-500/25'],
+    ['[&:hover]:bg-reed-500/[.4]!', '[&:hover]:bg-red-500/[.4]!'],
+    ['bg-blaack/(--alpha)!', 'bg-black/(--alpha)!'],
+  ])
+    assert.strictEqual(detectTypo(original)?.suggestion, suggestion, original);
+  assert.strictEqual(detectTypo('bg-bluu-500/50!', new Set(['bluu'])), null);
+});
+
+test('detectTypo - recognizes directional border colors and text or inset shadow colors', () => {
+  for (const property of [
+    'border-t',
+    'border-b',
+    'border-l',
+    'border-r',
+    'border-x',
+    'border-y',
+    'border-s',
+    'border-e',
+    'text-shadow',
+    'inset-shadow',
+  ]) {
+    assert.strictEqual(
+      detectTypo(`hover:${property}-gry-500/50!`)?.suggestion,
+      `hover:${property}-gray-500/50!`,
+    );
+    assert.strictEqual(detectTypo(`${property}-gray-500`), null);
+  }
+  for (const utility of [
+    'border-t-2',
+    'border-x-4',
+    'text-shadow-sm',
+    'inset-shadow-xs',
+  ])
+    assert.strictEqual(detectTypo(utility), null);
+});

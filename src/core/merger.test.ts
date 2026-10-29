@@ -3,7 +3,8 @@ import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type TestContext, test } from 'node:test';
-import { mergeContent, mergeFile } from './merger.js';
+import { twMerge } from 'tailwind-merge';
+import { mergeClasses, mergeContent, mergeFile } from './merger.js';
 
 test('mergeFile - conflicting classes', async (t: TestContext) => {
   await t.test('removes redundant bg color (last wins)', async () => {
@@ -262,7 +263,7 @@ test('mergeFile - combined with fixFile', async (t: TestContext) => {
         'utf8',
       );
       try {
-        const fixed = fixFile(file);
+        const fixed = fixFile(file, { allowTextSizeLineHeightChanges: true });
         assert.strictEqual(fixed, 2);
         const afterFix = readFileSync(file, 'utf8');
         assert.ok(afterFix.includes('text-xs'));
@@ -278,4 +279,67 @@ test('mergeFile - combined with fixFile', async (t: TestContext) => {
       }
     },
   );
+});
+
+test('line-height protection recognizes both important syntaxes and variant priorities', () => {
+  for (const input of [
+    'leading-6! text-[13px]!',
+    '!leading-6 !text-[13px]',
+    'hover:leading-6! hover:text-[13px]!',
+    '[&:hover]:!leading-6 [&:hover]:!text-[13px]',
+    'leading-6! text-tiny!',
+    '!leading-6 !text-tiny',
+  ])
+    assert.strictEqual(
+      mergeClasses(input, twMerge, { customTextTokens: { 13: 'tiny' } }),
+      input,
+    );
+  const mixed = 'leading-5! text-[12px]! leading-8 text-[13px]!';
+  assert.strictEqual(
+    mergeClasses(mixed, twMerge),
+    'leading-8 leading-5! text-[13px]!',
+  );
+  const reverse = '!leading-5 !text-[12px] leading-8 !text-[13px]';
+  assert.strictEqual(
+    mergeClasses(reverse, twMerge),
+    'leading-8 !leading-5 !text-[13px]',
+  );
+});
+
+test('arbitrary font-size functions, hints, percentages and variable shorthands preserve leading', () => {
+  for (const size of [
+    'text-[length:13px]',
+    'text-[length:var(--size)]',
+    'text-[calc(1rem+2px)]',
+    'text-[min(1rem,2rem)]',
+    'text-[max(1rem,2rem)]',
+    'text-[clamp(1rem,2vw,2rem)]',
+    'text-[120%]',
+    'text-(length:--size)',
+  ]) {
+    const input = `leading-6 ${size}`;
+    assert.strictEqual(mergeClasses(input, twMerge), input);
+    const important = `md:leading-6! md:${size}!`;
+    assert.strictEqual(mergeClasses(important, twMerge), important);
+  }
+});
+
+test('color variables do not restore leading removed by a named font size', () => {
+  for (const color of [
+    'text-[var(--color)]',
+    'text-(--color)',
+    'text-[color:var(--color)]',
+  ]) {
+    assert.strictEqual(
+      mergeClasses(`leading-6 text-sm ${color}`, twMerge),
+      `text-sm ${color}`,
+    );
+  }
+  for (const size of [
+    'text-[13px]/6',
+    'text-[length:var(--size)]/6',
+    'text-(length:--size)/6',
+  ]) {
+    assert.strictEqual(mergeClasses(`leading-6 ${size}`, twMerge), size);
+  }
 });

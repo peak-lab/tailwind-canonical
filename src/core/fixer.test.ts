@@ -10,7 +10,7 @@ test('fixFile', async (t) => {
     'fixes multiple arbitrary classes and returns correct count',
     () => {
       const tempFile = join(tmpdir(), `test-${Date.now()}.tsx`);
-      const content = '<div className="text-[12px] h-[64px] flex">Hello</div>';
+      const content = '<div className="size-[12px] h-[64px] flex">Hello</div>';
 
       try {
         writeFileSync(tempFile, content, 'utf8');
@@ -22,8 +22,8 @@ test('fixFile', async (t) => {
         const fixed = readFileSync(tempFile, 'utf8');
         assert.strictEqual(
           fixed,
-          '<div className="text-xs h-16 flex">Hello</div>',
-          'Should replace text-[12px] with text-xs and h-[64px] with h-16',
+          '<div className="size-3 h-16 flex">Hello</div>',
+          'Should replace size-[12px] with size-3 and h-[64px] with h-16',
         );
       } finally {
         unlinkSync(tempFile);
@@ -33,7 +33,7 @@ test('fixFile', async (t) => {
 
   await t.test('handles double-quoted className attributes', () => {
     const tempFile = join(tmpdir(), `test-${Date.now()}.tsx`);
-    const content = '<div className="text-[12px] w-[224px]">Content</div>';
+    const content = '<div className="size-[12px] w-[224px]">Content</div>';
 
     try {
       writeFileSync(tempFile, content, 'utf8');
@@ -43,7 +43,7 @@ test('fixFile', async (t) => {
       assert.strictEqual(count, 2);
 
       const fixed = readFileSync(tempFile, 'utf8');
-      assert.strictEqual(fixed, '<div className="text-xs w-56">Content</div>');
+      assert.strictEqual(fixed, '<div className="size-3 w-56">Content</div>');
     } finally {
       unlinkSync(tempFile);
     }
@@ -51,7 +51,7 @@ test('fixFile', async (t) => {
 
   await t.test('handles single-quoted className attributes', () => {
     const tempFile = join(tmpdir(), `test-${Date.now()}.tsx`);
-    const content = "<div className='text-[14px] m-[32px]'>Content</div>";
+    const content = "<div className='size-[20px] m-[32px]'>Content</div>";
 
     try {
       writeFileSync(tempFile, content, 'utf8');
@@ -61,7 +61,7 @@ test('fixFile', async (t) => {
       assert.strictEqual(count, 2);
 
       const fixed = readFileSync(tempFile, 'utf8');
-      assert.strictEqual(fixed, "<div className='text-sm m-8'>Content</div>");
+      assert.strictEqual(fixed, "<div className='size-5 m-8'>Content</div>");
     } finally {
       unlinkSync(tempFile);
     }
@@ -69,7 +69,7 @@ test('fixFile', async (t) => {
 
   await t.test('handles braced backtick-quoted className attributes', () => {
     const tempFile = join(tmpdir(), `test-${Date.now()}.tsx`);
-    const content = '<div className={`text-[18px] px-[16px]`}>Content</div>';
+    const content = '<div className={`size-[24px] px-[16px]`}>Content</div>';
 
     try {
       writeFileSync(tempFile, content, 'utf8');
@@ -79,10 +79,7 @@ test('fixFile', async (t) => {
       assert.strictEqual(count, 2);
 
       const fixed = readFileSync(tempFile, 'utf8');
-      assert.strictEqual(
-        fixed,
-        '<div className={`text-lg px-4`}>Content</div>',
-      );
+      assert.strictEqual(fixed, '<div className={`size-6 px-4`}>Content</div>');
     } finally {
       unlinkSync(tempFile);
     }
@@ -109,19 +106,19 @@ test('fixFile', async (t) => {
   await t.test('ignores classes that cannot be converted', () => {
     const tempFile = join(tmpdir(), `test-${Date.now()}.tsx`);
     const content =
-      '<div className="text-[12px] px-[7px] h-[64px]">Content</div>';
+      '<div className="size-[12px] px-[7px] h-[64px]">Content</div>';
 
     try {
       writeFileSync(tempFile, content, 'utf8');
 
       const count = fixFile(tempFile);
 
-      assert.strictEqual(count, 2, 'Should only fix text-[12px] and h-[64px]');
+      assert.strictEqual(count, 2, 'Should only fix size-[12px] and h-[64px]');
 
       const fixed = readFileSync(tempFile, 'utf8');
       assert.strictEqual(
         fixed,
-        '<div className="text-xs px-[7px] h-16">Content</div>',
+        '<div className="size-3 px-[7px] h-16">Content</div>',
       );
     } finally {
       unlinkSync(tempFile);
@@ -131,7 +128,7 @@ test('fixFile', async (t) => {
   await t.test('handles multiple className attributes in same file', () => {
     const tempFile = join(tmpdir(), `test-${Date.now()}.tsx`);
     const content = `
-      <div className="text-[12px]">First</div>
+      <div className="size-[12px]">First</div>
       <span className="h-[64px]">Second</span>
       <p className="w-[224px]">Third</p>
     `;
@@ -144,7 +141,7 @@ test('fixFile', async (t) => {
       assert.strictEqual(count, 3);
 
       const fixed = readFileSync(tempFile, 'utf8');
-      assert.match(fixed, /className="text-xs"/);
+      assert.match(fixed, /className="size-3"/);
       assert.match(fixed, /className="h-16"/);
       assert.match(fixed, /className="w-56"/);
     } finally {
@@ -155,7 +152,7 @@ test('fixFile', async (t) => {
   await t.test('preserves whitespace and formatting', () => {
     const tempFile = join(tmpdir(), `test-${Date.now()}.tsx`);
     const content =
-      '<div className="text-[12px]   h-[64px]   flex">Content</div>';
+      '<div className="size-[12px]   h-[64px]   flex">Content</div>';
 
     try {
       writeFileSync(tempFile, content, 'utf8');
@@ -167,7 +164,7 @@ test('fixFile', async (t) => {
       const fixed = readFileSync(tempFile, 'utf8');
       assert.strictEqual(
         fixed,
-        '<div className="text-xs   h-16   flex">Content</div>',
+        '<div className="size-3   h-16   flex">Content</div>',
       );
     } finally {
       unlinkSync(tempFile);
@@ -221,7 +218,10 @@ test('fixFile', async (t) => {
     try {
       writeFileSync(tempFile, content, 'utf8');
 
-      const count = fixFile(tempFile, { customTextTokens: { 11: '2xs' } });
+      const count = fixFile(tempFile, {
+        allowTextSizeLineHeightChanges: true,
+        customTextTokens: { 11: '2xs' },
+      });
 
       assert.strictEqual(count, 1);
 
@@ -255,8 +255,8 @@ test('fixFile', async (t) => {
     const content = `
       export function Component() {
         return (
-          <div className="text-[12px] p-[16px]">
-            <h1 className="text-[24px]">Title</h1>
+          <div className="size-[12px] p-[16px]">
+            <h1 className="size-[24px]">Title</h1>
             <p className="h-[64px]">Paragraph</p>
           </div>
         )
@@ -271,8 +271,8 @@ test('fixFile', async (t) => {
       assert.strictEqual(count, 4);
 
       const fixed = readFileSync(tempFile, 'utf8');
-      assert.match(fixed, /className="text-xs p-4"/);
-      assert.match(fixed, /className="text-2xl"/);
+      assert.match(fixed, /className="size-3 p-4"/);
+      assert.match(fixed, /className="size-6"/);
       assert.match(fixed, /className="h-16"/);
     } finally {
       unlinkSync(tempFile);
@@ -341,7 +341,7 @@ test('fixFile', async (t) => {
   await t.test('handles newlines and indentation in className', () => {
     const tempFile = join(tmpdir(), `test-${Date.now()}.tsx`);
     const content = `<div className="
-      text-[12px]
+      size-[12px]
       h-[64px]
       flex
     ">Content</div>`;
@@ -354,7 +354,7 @@ test('fixFile', async (t) => {
       assert.strictEqual(count, 2);
 
       const fixed = readFileSync(tempFile, 'utf8');
-      assert.match(fixed, /text-xs/);
+      assert.match(fixed, /size-3/);
       assert.match(fixed, /h-16/);
     } finally {
       unlinkSync(tempFile);
@@ -382,4 +382,26 @@ test('fixContent - rewrites keyword values', () => {
     '<div className="w-full h-screen mx-auto aspect-video top-0" />',
   );
   assert.strictEqual(count, 5);
+});
+
+test('font sizes preserve line-height semantics by default while spacing still fixes', () => {
+  const content =
+    '<div className="text-[12px] sm:!text-[0.75rem] leading-6 p-[16px]" />';
+  for (const config of [
+    {},
+    { allowTextSizeLineHeightChanges: false },
+    { customTextTokens: { 12: 'tiny' } },
+  ]) {
+    assert.deepStrictEqual(fixContent(content, config), {
+      result: content.replace('p-[16px]', 'p-4'),
+      count: 1,
+    });
+  }
+  assert.deepStrictEqual(
+    fixContent(content, { allowTextSizeLineHeightChanges: true }),
+    {
+      result: '<div className="text-xs sm:!text-xs leading-6 p-4" />',
+      count: 3,
+    },
+  );
 });

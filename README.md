@@ -94,7 +94,7 @@ npx tailwind-canonical --help
 npx tailwind-canonical --version
 ```
 
-An unmatched target exits `1` with `No files matched: <targets>`.
+If none of the targets match any supported files, the command exits `1` with `No files matched: <targets>`. A missing target does not fail a run when other targets match. Unreadable targets or subdirectories fail discovery before any file is changed.
 Directory and glob discovery skip symbolic links. An explicitly named file symlink remains supported and reads or changes its target.
 
 ### Watch behavior
@@ -111,7 +111,7 @@ with a nonzero exit code. Watch output is text only.
 
 | Flag | What it fixes | Example |
 |---|---|---|
-| `--fix` | Arbitrary values → canonical tokens | `text-[12px]` → `text-xs` |
+| `--fix` | Arbitrary values → canonical tokens | `p-[16px]` → `p-4` |
 | `--dedup` | Redundant classes, conflicts, shorthand collapse | `flex block` → `block`, `px-4 py-4` → `p-4`, `border-t-2 border-b-2` → `border-y-2` |
 | `--sort` | Canonical class order | `text-sm flex p-4` → `flex p-4 text-sm` |
 | `--merge` | tailwind-merge conflict resolution | `bg-red-500 bg-blue-500` → `bg-blue-500` |
@@ -131,9 +131,9 @@ npx tailwind-canonical --reporter json ./src
 ```json
 {
   "files": 3,
-  "total": 2,
+  "total": 1,
   "findings": [
-    { "file": "src/Button.tsx", "line": 12, "col": 17, "original": "text-[14px]", "canonical": "text-sm", "isCustomToken": false }
+    { "file": "src/Button.tsx", "line": 12, "col": 17, "original": "p-[16px]", "canonical": "p-4", "isCustomToken": false }
   ]
 }
 ```
@@ -214,11 +214,11 @@ Skip specific lines or blocks from check and all transforms (`--fix`, `--dedup`,
 
 ```jsx
 {/* tailwind-canonical-disable-next-line */}
-<div className="text-[13px]" />        {/* left untouched */}
+<div className="p-[16px]" />        {/* left untouched */}
 
 {/* tailwind-canonical-disable */}
-<div className="text-[13px] p-[7px]" /> {/* whole block untouched */}
-<div className="m-[9px]" />
+<div className="p-[16px] h-[24px]" /> {/* whole block untouched */}
+<div className="m-[8px]" />
 {/* tailwind-canonical-enable */}
 ```
 
@@ -335,13 +335,17 @@ flex block             → block  (last wins)
 relative absolute      → absolute
 ```
 
+Conflict resolution follows the last-token convention, which can change the
+result of Tailwind's stylesheet precedence. Important and normal utilities keep
+separate priorities.
+
 ### Padding / margin shorthand collapse
 
 ```
 px-4 py-4  → p-4
 p-4 px-2   → py-4 px-2
-pt-2 pb-2  → py-2
-pl-4 pr-4  → px-4
+pt-2 pb-2  → py-2  (v3 only)
+pl-4 pr-4  → px-4  (v3 only)
 mx-4 my-4  → m-4
 ```
 
@@ -349,24 +353,31 @@ mx-4 my-4  → m-4
 
 ```
 border-t-2 border-b-2 border-l-2 border-r-2  → border-2
-border-t-2 border-b-2                          → border-y-2
-border-l-4 border-r-4                          → border-x-4
+border-t-2 border-b-2                          → border-y-2  (v3 only)
+border-l-4 border-r-4                          → border-x-4  (v3 only)
 ```
 
 ### Inset shorthand collapse
 
 ```
 top-4 right-4 bottom-4 left-4  → inset-4
-top-4 bottom-4                  → inset-y-4
-left-2 right-2                  → inset-x-2
+top-4 bottom-4                  → inset-y-4  (v3 only)
+left-2 right-2                  → inset-x-2  (v3 only)
 ```
+
+With Tailwind v4 (the default), axis utilities use logical inline/block properties.
+Physical sides such as `pl-*` and `pr-*` are therefore not collapsed into `px-*`,
+and mixed physical/logical groups are preserved. Equal values covering all four
+sides can still collapse to the global utility. Set `tailwindVersion: 3` to enable
+v3's physical-side to axis shorthand rules. The pure API also accepts this option:
+`deduplicateClasses(classes, { tailwindVersion: 3 })`.
 
 ## Arbitrary value detection (`--fix`)
 
 | Arbitrary | Canonical | Notes |
 |---|---|---|
-| `text-[12px]` | `text-xs` | Built-in |
-| `text-[0.75rem]` | `text-xs` | rem values |
+| `text-[12px]` | `text-xs` | Explicit `allowTextSizeLineHeightChanges: true` only |
+| `text-[0.75rem]` | `text-xs` | Explicit opt-in only; default leaves the class unchanged |
 | `h-[64px]` | `h-16` | Spacing scale ÷4 |
 | `p-[1px]` / `gap-[1px]` | `p-px` / `gap-px` | 1px spacing step |
 | `w-[50%]` | `w-1/2` | Percentage fractions |
@@ -393,16 +404,19 @@ left-2 right-2                  → inset-x-2
 | `order-[1]` / `order-[0]` | `order-1` / `order-none` | Any integer on v4 |
 | `grow-[1]` / `shrink-[0]` | `grow` / `shrink-0` | |
 | `line-clamp-[3]`, `columns-[3]` | `line-clamp-3`, `columns-3` | Any integer ≥ 1 on v4 |
-| `text-[11px]` | `text-2xs` | Requires `customTextTokens` |
-| `text-[8px]`–`text-[10px]` | `text-3xs` | Requires `customTextTokens` |
+| `text-[11px]` | `text-2xs` | Requires `customTextTokens` and explicit text-size opt-in |
+| `text-[8px]`–`text-[10px]` | `text-3xs` | Requires `customTextTokens` and explicit text-size opt-in |
 | `hover:p-[16px]` | `hover:p-4` | Variants are preserved |
 | `!p-[16px]` / `p-[16px]!` | `!p-4` / `p-4!` | Important modifier kept in place |
 | `-mt-[8px]` / `mt-[-8px]` | `-mt-2` | Negative margin / inset / translate / space / scale / rotate / z / order only |
 
-`text-2xs` and `text-3xs` are not stock Tailwind tokens, so they are not in the built-in text size map — without config, `text-[11px]` and `text-[8px]`–`text-[10px]` are left untouched. Enable them with `customTextTokens`:
+`text-2xs` and `text-3xs` are not stock Tailwind tokens, so they are not in the built-in text size map — without config, `text-[11px]` and `text-[8px]`–`text-[10px]` are left untouched. Enable them only if the typography change is intended, using `customTextTokens` and the explicit opt-in:
 
 ```ts
-export default { customTextTokens: { 8: '3xs', 9: '3xs', 10: '3xs', 11: '2xs' } }
+export default {
+  allowTextSizeLineHeightChanges: true, // named sizes may also set line-height
+  customTextTokens: { 8: '3xs', 9: '3xs', 10: '3xs', 11: '2xs' },
+}
 ```
 
 Non-divisible values (`h-[22px]`, `px-[7px]`) are left untouched.
@@ -488,11 +502,40 @@ export default {
 }
 ```
 
-Only explicitly configured pixel mappings are suggested in this mode:
-`text-[12px]` becomes `text-tiny`, `p-[16px]` becomes `p-gutter`, and other
-arbitrary values (including rem values) stay unchanged. The option is shared by
-the CLI, library and ESLint canonicalization rule. It does not load your Tailwind
-theme or customize the separate `tailwind-merge` conflict resolver.
+Only explicitly configured pixel mappings are considered in this mode:
+`p-[16px]` becomes `p-gutter`, while other arbitrary values (including rem values)
+stay unchanged. Text-size mappings are also subject to the separate opt-in below:
+`customTextTokens` alone never enables them. The options are shared by the CLI,
+library and ESLint canonicalization rule. They do not load your Tailwind theme
+or customize the separate `tailwind-merge` conflict resolver.
+
+### Preserve text line-height (default)
+
+`text-[12px]` sets only font-size; `text-xs` also sets line-height. Equal font sizes
+therefore do not guarantee the same rendering. By default, pixel and rem text-size
+conversions are neither reported nor applied, including custom text tokens.
+Variants, important modifiers and nearby `leading-*` utilities do not bypass this
+protection: without the complete stylesheet, their presence cannot prove that the
+conversion preserves the cascade. No `leading-[inherit]` utility is inserted.
+
+```ts
+suggestCanonical('text-[12px]') // null
+suggestCanonical('p-[16px]')    // { original: 'p-[16px]', canonical: 'p-4', ... }
+```
+
+To deliberately adopt the named typography token, including its line-height,
+opt in explicitly in shared configuration:
+
+```ts
+export default {
+  allowTextSizeLineHeightChanges: true, // default: false
+}
+```
+
+With this option, `text-[12px]` becomes `text-xs` and custom text mappings become
+active. This restores the earlier behavior and can change rendering. With the
+option absent or `false`, text classes stay unchanged in lint, `--fix`, `--check`,
+watch, the programmatic API and ESLint; other utility families remain enabled.
 
 ## Config
 
@@ -500,10 +543,9 @@ Create `tailwind-canonical.config.ts` at the root:
 
 ```ts
 export default {
-  customTextTokens: {
-    10: '3xs',
-    11: '2xs',
-  },
+  // Text mappings are inactive unless the line-height change is intentional:
+  // allowTextSizeLineHeightChanges: true,
+  // customTextTokens: { 10: '3xs', 11: '2xs' },
   customSpacingTokens: {
     14: '3.5',
   },
@@ -537,7 +579,7 @@ export default {
 }
 ```
 
-`customTextTokens` merges with the built-in text size map. `customSpacingTokens` supplements the default ÷4 spacing logic. `ignorePatterns` makes `suggestCanonical` skip matching classes everywhere — CLI, analyzer, and the ESLint plugin.
+`customTextTokens` merges with the built-in text size map only when `allowTextSizeLineHeightChanges: true`; otherwise text-size suggestions stay disabled. `customSpacingTokens` supplements the default ÷4 spacing logic. `ignorePatterns` makes `suggestCanonical` skip matching classes everywhere — CLI, analyzer, and the ESLint plugin.
 
 `attributeNames` controls which HTML/JSX attributes are scanned (default: `['className']`). Use `['class']` for plain HTML/PHP/Jinja templates, `[':class']` for Vue, `['tw']` for styled-components.
 
@@ -612,13 +654,14 @@ ESLint without schema errors:
 ```js
 'tailwind-canonical/no-arbitrary-canonical': [
   'warn',
-  { customTextTokens: { 11: '2xs' }, ignorePatterns: [/^font-/] },
+  { customSpacingTokens: { 14: '3.5' }, ignorePatterns: [/^font-/] },
 ],
 ```
 
 The rule **honors**: `customTextTokens`, `customSpacingTokens`, `ignorePatterns`
 and `tailwindVersion` (all applied via `suggestCanonical`), plus
-`useDefaultTheme` to disable inferred mappings. It also uses
+`useDefaultTheme` to disable inferred mappings and
+`allowTextSizeLineHeightChanges` for the explicit typography opt-in. It also uses
 `attributeNames` (default: `['className']`) and `functionNames` (default:
 `['cn', 'clsx', 'cva']`) to identify class strings. Other `Config` fields are
 accepted for shared configuration and have no effect on this rule.
@@ -630,13 +673,13 @@ from an interpolation by whitespace are transformed; partial tokens such as
 `text-[12px]${suffix}` are preserved. `no-conflicting-classes` accepts the same
 shared configuration and uses its attribute/function names and custom text tokens. Enabling this rule without
 `tailwind-merge` installed raises an installation error. In `cn`/`clsx` object arguments,
-only keys contain classes; predicate values are preserved. For `cva`, base
+only keys contain classes; predicate values are preserved. To prevent renaming a key onto another property, objects with multiple properties, computed keys or spreads are left unchanged. For `cva`, base
 classes, variant classes and compound variant `class`/`className` values are checked.
 
 ## Known limits
 
 - **Source extraction is not a complete JavaScript/JSX parser** — ambiguous regex/division expressions and some nested templates are left intact. Quoted JSX prose can hide nested markup from CLI/API extraction; use the ESLint plugin when complete JSX syntax coverage is needed.
-- **CLI and content APIs extract static class positions** — strings, arrays, conditional result branches, `cn`/`clsx` object keys, and `cva` variant classes are supported. Predicates, variant identifiers, `defaultVariants`, computed keys, spreads and nested calls to unconfigured functions are preserved. Dynamic values are not evaluated.
+- **CLI and content APIs extract static class positions** — strings, arrays, conditional result branches, single-property `cn`/`clsx` object keys, and `cva` variant classes are supported. Objects with multiple properties, computed keys or spreads are kept unchanged to prevent key collisions. Vue `:class`/`v-bind:class` bindings are read as expressions; Svelte interpolations inside quoted attributes are kept intact. Predicates, variant identifiers, `defaultVariants` and nested calls to unconfigured functions are preserved. Dynamic values are not evaluated.
 - **Watch reloads the configuration entry file** — imported helper modules keep Node's normal module cache. Restart the watcher after changing a helper imported by your config.
 - **`--typos` covers Tailwind color names only** — color-name detection uses Levenshtein distance 1 against the built-in Tailwind color palette. Custom colors from your config are supported via `extraColors` in the config, but typo detection does not extend to properties, function names, or arbitrary modifiers.
 - **`--merge` requires `tailwind-merge` as a peer dependency** — the plugin is optional, so the CLI will error if you use `--merge` without installing `tailwind-merge`. Install with `pnpm add -D tailwind-merge`.
@@ -684,9 +727,13 @@ are exercised rather than relying only on source tests.
 
 ```bash
 pnpm test:compat 8.57.1 2.0.0
+# Compile regression cases against Tailwind v3 and v4 in temporary consumers:
+pnpm test:css
 pnpm benchmark
 # Tune the fixed JSX/Vue/Svelte corpus and emit machine-readable measurements:
 pnpm benchmark --files 300 --lines 40 --runs 7 --json
+# Helper-heavy corpus, including large files:
+pnpm benchmark --corpus helpers --files 1 --lines 8000 --runs 3 --json
 ```
 
 The benchmark checks expected findings and transform idempotence, then measures

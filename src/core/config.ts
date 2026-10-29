@@ -11,6 +11,7 @@ export const CONFIG_FILENAMES = [
 
 const KNOWN_KEYS = [
   'useDefaultTheme',
+  'allowTextSizeLineHeightChanges',
   'customTextTokens',
   'customSpacingTokens',
   'ignorePatterns',
@@ -64,7 +65,11 @@ function fail(filename: string, message: string): never {
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    [Object.prototype, null].includes(Object.getPrototypeOf(value))
+  );
 }
 
 function assertKnownKeys(
@@ -94,6 +99,11 @@ function assertPxTokenMap(value: unknown, key: string, filename: string): void {
     if (!/^\d+$/.test(k))
       fail(filename, `${key} keys must be integers (got "${k}")`);
     if (typeof v !== 'string') fail(filename, `${key}[${k}] must be a string`);
+    if (v.length === 0 || /[\s"'`{}:\\]/.test(v))
+      fail(
+        filename,
+        `${key}[${k}] must be a nonempty token name without whitespace, quotes, backticks, braces, colons or backslashes`,
+      );
   }
 }
 
@@ -197,8 +207,8 @@ export function validateConfig(
   filename = CONFIG_FILENAME,
 ): Config {
   if (input === undefined || input === null) return {};
-  if (typeof input !== 'object' || Array.isArray(input)) {
-    fail(filename, 'default export must be an object');
+  if (!isPlainObject(input)) {
+    fail(filename, 'default export must be an object (plain objects only)');
   }
 
   const cfg = input as Record<string, unknown>;
@@ -206,6 +216,12 @@ export function validateConfig(
 
   if ('useDefaultTheme' in cfg && typeof cfg.useDefaultTheme !== 'boolean')
     fail(filename, 'useDefaultTheme must be a boolean');
+
+  if (
+    'allowTextSizeLineHeightChanges' in cfg &&
+    typeof cfg.allowTextSizeLineHeightChanges !== 'boolean'
+  )
+    fail(filename, 'allowTextSizeLineHeightChanges must be a boolean');
 
   if ('customTextTokens' in cfg)
     assertPxTokenMap(cfg.customTextTokens, 'customTextTokens', filename);

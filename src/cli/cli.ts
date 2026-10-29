@@ -16,7 +16,7 @@ import { dedupeContent } from '../core/deduplicator.js';
 import { fixContent } from '../core/fixer.js';
 import { mergeContent } from '../core/merger.js';
 import type { Config } from '../core/rules.js';
-import { resolveTargets } from '../core/scanner.js';
+import { isGlob, resolveTargets } from '../core/scanner.js';
 import { sortContent } from '../core/sorter.js';
 import { analyzeTyposFile, type TypoFinding } from '../core/typos.js';
 import { errMsg, pluralize, timestamp } from './format.js';
@@ -45,6 +45,8 @@ const INIT_CONFIG_BODY = [
   '  // Run `tailwind-canonical` with no flags using these defaults:',
   "  // defaultCommand: { fix: true, dedup: true, sort: true, typos: true, targets: ['./src'] },",
   '  // px → token additions/overrides:',
+  '  // Text mappings can change line-height; enable only when intentional:',
+  '  // allowTextSizeLineHeightChanges: true,',
   "  // customTextTokens: { 11: '2xs' },",
   "  // customSpacingTokens: { 14: '3.5' },",
   '  // Never suggest replacements for classes matching:',
@@ -646,7 +648,15 @@ export async function run(
   }
 
   const targetPaths = flags.targets.map((target) => resolveTarget(cwd, target));
-  const files = await resolveTargets(targetPaths);
+  let files: string[];
+  try {
+    files = await resolveTargets(targetPaths);
+  } catch (error) {
+    sink.error(
+      `tailwind-canonical: could not resolve targets: ${errMsg(error)}`,
+    );
+    return { exitCode: 1 };
+  }
 
   if (
     files.length === 0 &&
@@ -673,8 +683,13 @@ export async function run(
       const path = findConfigPath(cwd);
       return path ? dirname(path) : cwd;
     };
+    const explicitTargets = (paths: string[]) =>
+      paths.filter(
+        (path) => !path.startsWith('!') && (!isGlob(path) || existsSync(path)),
+      );
     return startWatch({
       files,
+      explicitTargets: explicitTargets(targetPaths),
       roots: watchRoots(targetPaths, [cwd, configDirectory()]),
       sink,
       refresh: async (changed) => {
@@ -711,6 +726,7 @@ export async function run(
         return {
           files: nextFiles,
           roots: nextRoots,
+          explicitTargets: explicitTargets(paths),
           reprocessAll:
             configChanged ||
             [...changed].some((file) =>

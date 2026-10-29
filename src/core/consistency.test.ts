@@ -432,3 +432,81 @@ test('color families - Object prototype properties are not color families', () =
   ]);
   assert.deepEqual(report.colorVariants, []);
 });
+
+test('analyzeConsistency - includes important scale values and color opacity modifiers', () => {
+  const report = analyzeConsistency([
+    {
+      file: 'a.tsx',
+      classes: [
+        'p-4!',
+        '!p-4',
+        'p-8!',
+        '!-mt-2',
+        '-mt-2!',
+        '-mt-4!',
+        'bg-red-500/50!',
+        'hover:!bg-rose-600/75',
+      ],
+    },
+  ]);
+  assert.deepStrictEqual(
+    report.scaleInconsistencies.map(({ property, values }) => ({
+      property,
+      values: values.map(({ value, count }) => ({ value, count })),
+    })),
+    [
+      {
+        property: 'mt',
+        values: [
+          { value: '-2', count: 2 },
+          { value: '-4', count: 1 },
+        ],
+      },
+      {
+        property: 'p',
+        values: [
+          { value: '4', count: 2 },
+          { value: '8', count: 1 },
+        ],
+      },
+    ],
+  );
+  assert.deepStrictEqual(
+    report.colorVariants[0].variants.map(({ token }) => token),
+    ['red-500/50', 'rose-600/75'],
+  );
+});
+
+test('color variants - directional borders and text or inset shadows retain separate properties', () => {
+  const properties = [
+    'border-t',
+    'border-b',
+    'border-l',
+    'border-r',
+    'border-x',
+    'border-y',
+    'border-s',
+    'border-e',
+    'text-shadow',
+    'inset-shadow',
+  ];
+  const report = analyzeConsistency([
+    {
+      file: 'a.tsx',
+      classes: properties.map((property) => `${property}-red-500/50!`),
+    },
+    {
+      file: 'b.tsx',
+      classes: properties.map((property) => `hover:!${property}-rose-600/75`),
+    },
+  ]);
+  assert.deepStrictEqual(
+    report.colorVariants.map(({ property }) => property),
+    properties.toSorted(),
+  );
+  for (const group of report.colorVariants)
+    assert.deepStrictEqual(
+      group.variants.map(({ token }) => token),
+      ['red-500/50', 'rose-600/75'],
+    );
+});

@@ -373,6 +373,8 @@ const BLUR_MAP_V3: Record<number, string> = {
 export type Config = {
   /** Set false for custom themes: only explicitly configured px mappings apply. */
   useDefaultTheme?: boolean;
+  /** Opt in to named text sizes, whose bundled line-height can change rendering. */
+  allowTextSizeLineHeightChanges?: boolean;
   customTextTokens?: Record<number, string>;
   customSpacingTokens?: Record<number, string>;
   ignorePatterns?: RegExp[];
@@ -464,7 +466,8 @@ function spacingSuggestion(
   if (px === 1) {
     if (
       v3 &&
-      (V3_UNSCALED_SPACING_PREFIXES.has(prefix) ||
+      (prefix === 'leading' ||
+        V3_UNSCALED_SPACING_PREFIXES.has(prefix) ||
         V3_ZERO_ONLY_SPACING_PREFIXES.has(prefix))
     ) {
       return null;
@@ -588,6 +591,11 @@ export function suggestCanonical(
 }
 
 function suggestUtility(cls: string, config: Config): Suggestion | null {
+  if (
+    config.allowTextSizeLineHeightChanges !== true &&
+    /^text-\[\d+(?:\.\d+)?(?:px|rem)\]$/.test(cls)
+  )
+    return null;
   if (config.useDefaultTheme === false) {
     const text = cls.match(/^text-\[(\d+)px\]$/);
     if (text) {

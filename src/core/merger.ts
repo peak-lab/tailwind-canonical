@@ -14,8 +14,8 @@ function splitOutsideBrackets(value: string, separator: string): string[] {
 
   for (let i = 0; i < value.length; i += 1) {
     const ch = value[i];
-    if (ch === '[') depth += 1;
-    else if (ch === ']') depth = Math.max(0, depth - 1);
+    if (ch === '[' || ch === '(') depth += 1;
+    else if (ch === ']' || ch === ')') depth = Math.max(0, depth - 1);
     else if (ch === separator && depth === 0) {
       parts.push(value.slice(start, i));
       start = i + 1;
@@ -28,17 +28,19 @@ function splitOutsideBrackets(value: string, separator: string): string[] {
 
 function parseClassToken(token: string): ParsedClass {
   const parts = splitOutsideBrackets(token, ':');
+  const rawBase = parts.at(-1) ?? token;
+  const important = rawBase.startsWith('!') || rawBase.endsWith('!');
   return {
     token,
-    modifiers: parts.slice(0, -1).join(':'),
-    base: parts.at(-1) ?? token,
+    modifiers: `${parts.slice(0, -1).join(':')}${important ? '!' : ''}`,
+    base: rawBase.replace(/^!|!$/g, ''),
   };
 }
 
 const RE_LEADING = /^!?leading-/;
 
 const RE_ARBITRARY_TEXT_SIZE =
-  /^!?text-\[-?(?:\d+(?:\.\d+)?|\.\d+)(?:px|rem|em|ch|ex|lh|rlh|vw|vh|vmin|vmax|vi|vb|svw|lvw|dvw|svh|lvh|dvh)\]$/;
+  /^text-(?:\[(?:length:.+|-?(?:\d+(?:\.\d+)?|\.\d+)(?:px|rem|em|ch|ex|lh|rlh|vw|vh|vmin|vmax|vi|vb|svw|lvw|dvw|svh|lvh|dvh|%)|(?:calc|min|max|clamp)\(.+\))\]|\(length:--[^)]+\))$/;
 
 function isUnsafeTextSize(
   base: string,

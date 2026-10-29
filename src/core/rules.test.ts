@@ -4,7 +4,10 @@ import { type Config, suggestCanonical } from './rules.js';
 
 test('suggestCanonical - ignorePatterns', async (t: TestContext) => {
   await t.test('returns null for a class matching an ignore pattern', () => {
-    const config: Config = { ignorePatterns: [/^text-/] };
+    const config: Config = {
+      ignorePatterns: [/^text-/],
+      allowTextSizeLineHeightChanges: true,
+    };
     assert.strictEqual(suggestCanonical('text-[12px]', config), null);
   });
 
@@ -14,7 +17,10 @@ test('suggestCanonical - ignorePatterns', async (t: TestContext) => {
   });
 
   await t.test('global-flag patterns are deterministic across calls', () => {
-    const config: Config = { ignorePatterns: [/text/g] };
+    const config: Config = {
+      ignorePatterns: [/text/g],
+      allowTextSizeLineHeightChanges: true,
+    };
     assert.strictEqual(suggestCanonical('text-[12px]', config), null);
     assert.strictEqual(suggestCanonical('text-[12px]', config), null);
   });
@@ -22,7 +28,9 @@ test('suggestCanonical - ignorePatterns', async (t: TestContext) => {
 
 test('suggestCanonical - text sizes', async (t: TestContext) => {
   await t.test('text-[12px] maps to text-xs', () => {
-    const result = suggestCanonical('text-[12px]');
+    const result = suggestCanonical('text-[12px]', {
+      allowTextSizeLineHeightChanges: true,
+    });
     assert.deepEqual(result, {
       original: 'text-[12px]',
       canonical: 'text-xs',
@@ -31,13 +39,19 @@ test('suggestCanonical - text sizes', async (t: TestContext) => {
   });
 
   await t.test('text-[11px] without custom tokens returns null', () => {
-    assert.strictEqual(suggestCanonical('text-[11px]'), null);
+    assert.strictEqual(
+      suggestCanonical('text-[11px]', { allowTextSizeLineHeightChanges: true }),
+      null,
+    );
   });
 
   await t.test(
     'text-[11px] with custom text tokens maps to custom token',
     () => {
-      const config: Config = { customTextTokens: { 11: '2xs' } };
+      const config: Config = {
+        customTextTokens: { 11: '2xs' },
+        allowTextSizeLineHeightChanges: true,
+      };
       const result = suggestCanonical('text-[11px]', config);
       assert.deepEqual(result, {
         original: 'text-[11px]',
@@ -48,7 +62,9 @@ test('suggestCanonical - text sizes', async (t: TestContext) => {
   );
 
   await t.test('text-[14px] maps to text-sm', () => {
-    const result = suggestCanonical('text-[14px]');
+    const result = suggestCanonical('text-[14px]', {
+      allowTextSizeLineHeightChanges: true,
+    });
     assert.deepEqual(result, {
       original: 'text-[14px]',
       canonical: 'text-sm',
@@ -57,7 +73,9 @@ test('suggestCanonical - text sizes', async (t: TestContext) => {
   });
 
   await t.test('text-[18px] maps to text-lg', () => {
-    const result = suggestCanonical('text-[18px]');
+    const result = suggestCanonical('text-[18px]', {
+      allowTextSizeLineHeightChanges: true,
+    });
     assert.deepEqual(result, {
       original: 'text-[18px]',
       canonical: 'text-lg',
@@ -66,7 +84,9 @@ test('suggestCanonical - text sizes', async (t: TestContext) => {
   });
 
   await t.test('text-[96px] maps to text-8xl', () => {
-    const result = suggestCanonical('text-[96px]');
+    const result = suggestCanonical('text-[96px]', {
+      allowTextSizeLineHeightChanges: true,
+    });
     assert.deepEqual(result, {
       original: 'text-[96px]',
       canonical: 'text-8xl',
@@ -75,7 +95,9 @@ test('suggestCanonical - text sizes', async (t: TestContext) => {
   });
 
   await t.test('text-[128px] maps to text-9xl', () => {
-    const result = suggestCanonical('text-[128px]');
+    const result = suggestCanonical('text-[128px]', {
+      allowTextSizeLineHeightChanges: true,
+    });
     assert.deepEqual(result, {
       original: 'text-[128px]',
       canonical: 'text-9xl',
@@ -84,11 +106,15 @@ test('suggestCanonical - text sizes', async (t: TestContext) => {
   });
 
   await t.test('text-[13px] returns null (no canonical token)', () => {
-    assert.strictEqual(suggestCanonical('text-[13px]'), null);
+    assert.strictEqual(
+      suggestCanonical('text-[13px]', { allowTextSizeLineHeightChanges: true }),
+      null,
+    );
   });
 
   await t.test('text-[13px] honors a custom text token', () => {
     const result = suggestCanonical('text-[13px]', {
+      allowTextSizeLineHeightChanges: true,
       customTextTokens: { 13: 'sm-plus' },
     });
     assert.deepEqual(result, {
@@ -99,11 +125,15 @@ test('suggestCanonical - text sizes', async (t: TestContext) => {
   });
 
   await t.test('text-[9px] without custom tokens returns null', () => {
-    assert.strictEqual(suggestCanonical('text-[9px]'), null);
+    assert.strictEqual(
+      suggestCanonical('text-[9px]', { allowTextSizeLineHeightChanges: true }),
+      null,
+    );
   });
 
   await t.test('text-[9px] honors a custom text token', () => {
     const result = suggestCanonical('text-[9px]', {
+      allowTextSizeLineHeightChanges: true,
       customTextTokens: { 9: '3xs' },
     });
     assert.deepEqual(result, {
@@ -330,7 +360,9 @@ test('suggestCanonical - edge cases', async (t: TestContext) => {
   });
 
   await t.test('text-[0px] returns null (no matching token)', () => {
-    const result = suggestCanonical('text-[0px]');
+    const result = suggestCanonical('text-[0px]', {
+      allowTextSizeLineHeightChanges: true,
+    });
     assert.strictEqual(result, null);
   });
 
@@ -382,27 +414,40 @@ test('suggestCanonical - edge cases', async (t: TestContext) => {
 
 test('suggestCanonical - rem values', async (t: TestContext) => {
   await t.test('text-[0.75rem] maps to text-xs (0.75*16=12px)', () => {
-    assert.deepEqual(suggestCanonical('text-[0.75rem]'), {
-      original: 'text-[0.75rem]',
-      canonical: 'text-xs',
-      isCustomToken: false,
-    });
+    assert.deepEqual(
+      suggestCanonical('text-[0.75rem]', {
+        allowTextSizeLineHeightChanges: true,
+      }),
+      {
+        original: 'text-[0.75rem]',
+        canonical: 'text-xs',
+        isCustomToken: false,
+      },
+    );
   });
 
   await t.test('text-[0.875rem] maps to text-sm (0.875*16=14px)', () => {
-    assert.deepEqual(suggestCanonical('text-[0.875rem]'), {
-      original: 'text-[0.875rem]',
-      canonical: 'text-sm',
-      isCustomToken: false,
-    });
+    assert.deepEqual(
+      suggestCanonical('text-[0.875rem]', {
+        allowTextSizeLineHeightChanges: true,
+      }),
+      {
+        original: 'text-[0.875rem]',
+        canonical: 'text-sm',
+        isCustomToken: false,
+      },
+    );
   });
 
   await t.test('text-[1rem] maps to text-base (1*16=16px)', () => {
-    assert.deepEqual(suggestCanonical('text-[1rem]'), {
-      original: 'text-[1rem]',
-      canonical: 'text-base',
-      isCustomToken: false,
-    });
+    assert.deepEqual(
+      suggestCanonical('text-[1rem]', { allowTextSizeLineHeightChanges: true }),
+      {
+        original: 'text-[1rem]',
+        canonical: 'text-base',
+        isCustomToken: false,
+      },
+    );
   });
 
   await t.test('h-[4rem] maps to h-16 (4*16=64px, ÷4=16)', () => {
@@ -444,7 +489,9 @@ test('suggestCanonical - rem values', async (t: TestContext) => {
   await t.test(
     'text-[0.5rem] returns null (0.5*16=8px, no built-in text-3xs)',
     () => {
-      const result = suggestCanonical('text-[0.5rem]');
+      const result = suggestCanonical('text-[0.5rem]', {
+        allowTextSizeLineHeightChanges: true,
+      });
       assert.ok(result === null || result.isCustomToken === true);
     },
   );
@@ -757,7 +804,10 @@ test('suggestCanonical - tailwindVersion: 3', async (t: TestContext) => {
       'opacity-50',
     );
     assert.strictEqual(
-      suggestCanonical('text-[12px]', v3)?.canonical,
+      suggestCanonical('text-[12px]', {
+        ...v3,
+        allowTextSizeLineHeightChanges: true,
+      })?.canonical,
       'text-xs',
     );
   });
@@ -795,7 +845,11 @@ test('suggestCanonical - variants, important and sign', async (t: TestContext) =
     ['[&:hover]:p-[16px]', '[&:hover]:p-4'],
     ['data-[state=open]:h-[64px]', 'data-[state=open]:h-16'],
     ['supports-[display:grid]:gap-[8px]', 'supports-[display:grid]:gap-2'],
-    ['group-hover/item:text-[12px]', 'group-hover/item:text-xs'],
+    [
+      'group-hover/item:text-[12px]',
+      'group-hover/item:text-xs',
+      { allowTextSizeLineHeightChanges: true },
+    ],
     ['!p-[16px]', '!p-4'],
     ['md:!p-[16px]', 'md:!p-4'],
     ['p-[16px]!', 'p-4!'],
@@ -809,11 +863,15 @@ test('suggestCanonical - variants, important and sign', async (t: TestContext) =
     ['-p-[16px]', null],
     ['p-[-16px]', null],
     ['-w-[50%]', null],
-    ['-text-[12px]', null],
+    ['-text-[12px]', null, { allowTextSizeLineHeightChanges: true }],
     ['-opacity-[0.5]', null],
     ['hover:p-[13px]', null],
     ['hover:p-4', null],
-    ['md:text-[12px]', null, { ignorePatterns: [/^text-/] }],
+    [
+      'md:text-[12px]',
+      null,
+      { ignorePatterns: [/^text-/], allowTextSizeLineHeightChanges: true },
+    ],
   ];
   for (const [input, expected, config] of cases) {
     await t.test(`${input} → ${expected}`, () => {
@@ -1089,8 +1147,10 @@ test('suggestCanonical - unitless zero and aspect ratios', async (t: TestContext
 
 test('marks a configured override of a built-in text size as custom', () => {
   assert.strictEqual(
-    suggestCanonical('text-[12px]', { customTextTokens: { 12: 'tiny' } })
-      ?.isCustomToken,
+    suggestCanonical('text-[12px]', {
+      allowTextSizeLineHeightChanges: true,
+      customTextTokens: { 12: 'tiny' },
+    })?.isCustomToken,
     true,
   );
 });
@@ -1115,17 +1175,103 @@ test('custom themes disable inferred equivalences and honor only explicit px tok
     customTextTokens: { 12: 'tiny' },
     customSpacingTokens: { 16: 'gutter' },
   };
-  assert.deepEqual(suggestCanonical('hover:text-[12px]!', custom), {
-    original: 'hover:text-[12px]!',
-    canonical: 'hover:text-tiny!',
-    isCustomToken: true,
-  });
+  assert.deepEqual(
+    suggestCanonical('hover:text-[12px]!', {
+      ...custom,
+      allowTextSizeLineHeightChanges: true,
+    }),
+    {
+      original: 'hover:text-[12px]!',
+      canonical: 'hover:text-tiny!',
+      isCustomToken: true,
+    },
+  );
   assert.deepEqual(suggestCanonical('-mt-[16px]', custom), {
     original: '-mt-[16px]',
     canonical: '-mt-gutter',
     isCustomToken: true,
   });
-  assert.strictEqual(suggestCanonical('text-[0.75rem]', custom), null);
+  assert.strictEqual(
+    suggestCanonical('text-[0.75rem]', {
+      ...custom,
+      allowTextSizeLineHeightChanges: true,
+    }),
+    null,
+  );
   assert.strictEqual(suggestCanonical('p-[1rem]', custom), null);
-  assert.strictEqual(suggestCanonical('text-[14px]', custom), null);
+  assert.strictEqual(
+    suggestCanonical('text-[14px]', {
+      ...custom,
+      allowTextSizeLineHeightChanges: true,
+    }),
+    null,
+  );
+});
+
+test('one-pixel line-height has no named utility in the v3 stock scale', () => {
+  assert.strictEqual(
+    suggestCanonical('leading-[1px]', { tailwindVersion: 3 }),
+    null,
+  );
+  assert.strictEqual(
+    suggestCanonical('leading-[0.0625rem]', { tailwindVersion: 3 }),
+    null,
+  );
+  assert.strictEqual(
+    suggestCanonical('leading-[1px]', { tailwindVersion: 4 })?.canonical,
+    'leading-px',
+  );
+});
+
+test('text sizes preserve line-height unless changes are explicitly enabled', () => {
+  for (const cls of [
+    'text-[12px]',
+    'md:!text-[16px]',
+    'hover:text-[0.75rem]!',
+    'text-[1rem]',
+  ]) {
+    for (const custom of [
+      {},
+      { customTextTokens: { 12: 'tiny', 16: 'body' } },
+      { useDefaultTheme: false, customTextTokens: { 12: 'tiny', 16: 'body' } },
+    ]) {
+      assert.strictEqual(suggestCanonical(cls, custom), null, cls);
+      assert.strictEqual(
+        suggestCanonical(cls, {
+          ...custom,
+          allowTextSizeLineHeightChanges: false,
+        }),
+        null,
+        cls,
+      );
+    }
+  }
+  assert.strictEqual(
+    suggestCanonical('text-[12px]', { allowTextSizeLineHeightChanges: true })
+      ?.canonical,
+    'text-xs',
+  );
+  assert.strictEqual(
+    suggestCanonical('md:!text-[1rem]', {
+      allowTextSizeLineHeightChanges: true,
+    })?.canonical,
+    'md:!text-base',
+  );
+  assert.strictEqual(
+    suggestCanonical('hover:text-[12px]!', {
+      useDefaultTheme: false,
+      customTextTokens: { 12: 'tiny' },
+      allowTextSizeLineHeightChanges: true,
+    })?.canonical,
+    'hover:text-tiny!',
+  );
+  assert.strictEqual(
+    suggestCanonical('text-[0.75rem]', {
+      useDefaultTheme: false,
+      customTextTokens: { 12: 'tiny' },
+      allowTextSizeLineHeightChanges: true,
+    }),
+    null,
+  );
+  assert.strictEqual(suggestCanonical('p-[16px]')?.canonical, 'p-4');
 });

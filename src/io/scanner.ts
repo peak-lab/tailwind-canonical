@@ -1,18 +1,25 @@
 import {
+  accessSync,
+  constants,
   type Dirent,
   existsSync,
-  lstatSync,
   readdirSync,
   statSync,
 } from 'node:fs';
 import { glob } from 'node:fs/promises';
-import { isAbsolute, join, matchesGlob, resolve } from 'node:path';
+import { isAbsolute, join, matchesGlob, relative, resolve } from 'node:path';
 import {
   DEFAULT_EXTENSIONS,
   DEFAULT_IGNORE,
   isGlob,
   type ScanOptions,
 } from '../core/scanner.js';
+
+function missing(error: unknown): boolean {
+  return ['ENOENT', 'ENOTDIR'].includes(
+    (error as NodeJS.ErrnoException).code ?? '',
+  );
+}
 
 export function scanFiles(target: string, options: ScanOptions = {}): string[] {
   const ignore = options.ignore ?? DEFAULT_IGNORE;
@@ -23,8 +30,9 @@ export function scanFiles(target: string, options: ScanOptions = {}): string[] {
     let entries: Dirent[];
     try {
       entries = readdirSync(current, { withFileTypes: true });
-    } catch {
-      return;
+    } catch (error) {
+      if (missing(error)) return;
+      throw error;
     }
     for (const entry of entries) {
       if (ignore.includes(entry.name)) continue;
@@ -43,8 +51,9 @@ export function scanFiles(target: string, options: ScanOptions = {}): string[] {
   let stat: ReturnType<typeof statSync>;
   try {
     stat = statSync(target);
-  } catch {
-    return [];
+  } catch (error) {
+    if (missing(error)) return [];
+    throw error;
   }
   if (stat.isFile())
     return extensions.some((ext) => target.endsWith(ext)) ? [target] : [];
@@ -74,19 +83,38 @@ export async function resolveTargets(
 
   for (const pattern of positive) {
     if (isGlob(pattern) && !existsSync(pattern)) {
-      for await (const f of glob(pattern, {
-        exclude: (entry) =>
-          entry
-            .replace(/\\/g, '/')
-            .split('/')
-            .some((s) => ignore.includes(s)),
+      for await (const entry of glob(pattern, {
+        withFileTypes: true,
+        exclude: (entry) => {
+          const path = join(entry.parentPath, entry.name);
+          if (
+            path
+              .replace(/\\/g, '/')
+              .split('/')
+              .some((part) => ignore.includes(part))
+          )
+            return true;
+          if (entry.isDirectory()) {
+            try {
+              // fs.glob otherwise silently swallows unreadable directories,
+              // producing a falsely clean, partial scan.
+              accessSync(path, constants.R_OK | constants.X_OK);
+            } catch (error) {
+              if (missing(error)) return true;
+              throw error;
+            }
+          }
+          return false;
+        },
       })) {
         if (
-          extensions.some((ext) => f.endsWith(ext)) &&
-          lstatSync(f).isFile()
-        ) {
-          files.add(f);
-        }
+          !(
+            entry.isFile() && extensions.some((ext) => entry.name.endsWith(ext))
+          )
+        )
+          continue;
+        const path = join(entry.parentPath, entry.name);
+        files.add(isAbsolute(pattern) ? path : relative(process.cwd(), path));
       }
     } else {
       for (const f of scanFiles(pattern, options)) {

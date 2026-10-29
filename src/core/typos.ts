@@ -3,7 +3,11 @@ import {
   SINGLE_CLASS_REGEX,
   toClassStringOpts,
 } from './class-strings.js';
-import { parseColorClass, TAILWIND_COLORS } from './lexicon.js';
+import {
+  parseColorClass,
+  splitClassModifiers,
+  TAILWIND_COLORS,
+} from './lexicon.js';
 import type { Config } from './rules.js';
 import { createPositionLookup, getSuppressedLines } from './suppressions.js';
 
@@ -45,19 +49,18 @@ export function detectTypo(
   cls: string,
   extraColors: ReadonlySet<string> = new Set(),
 ): { suggestion: string } | null {
-  const colon = cls.lastIndexOf(':');
-  const prefix = colon === -1 ? '' : cls.slice(0, colon + 1);
+  const { prefix, importantBefore, importantAfter } = splitClassModifiers(cls);
 
   const parsed = parseColorClass(cls);
   if (!parsed) return null;
-  const { property, color, shade } = parsed;
+  const { property, color, shade, opacity } = parsed;
 
   if (TAILWIND_COLORS.has(color) || extraColors.has(color)) return null;
 
   const near = nearestColor(color);
   if (!near) return null;
 
-  const suggestion = `${prefix}${property}-${near}${shade ? `-${shade}` : ''}`;
+  const suggestion = `${prefix}${importantBefore}${property}-${near}${shade ? `-${shade}` : ''}${opacity}${importantAfter}`;
   return { suggestion };
 }
 

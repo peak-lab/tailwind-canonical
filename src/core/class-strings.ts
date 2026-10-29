@@ -4,6 +4,7 @@ export type ClassStringOpts = {
   functionNames?: string[];
   attributeNames?: string[];
   customTextTokens?: Record<number, string>;
+  tailwindVersion?: 3 | 4;
   isSuppressed?: (line: number) => boolean;
 };
 
@@ -12,17 +13,19 @@ export function toClassStringOpts(config: {
   functionNames?: string[];
   attributeNames?: string[];
   customTextTokens?: Record<number, string>;
+  tailwindVersion?: 3 | 4;
 }): ClassStringOpts {
   return {
     functionNames: config.functionNames,
     attributeNames: config.attributeNames,
     customTextTokens: config.customTextTokens,
+    tailwindVersion: config.tailwindVersion,
   };
 }
 
 const DEFAULT_ATTR_NAMES = ['className'];
 
-export const SINGLE_CLASS_REGEX = /[^\s"'`{}]+/g;
+export const SINGLE_CLASS_REGEX = /\S+/g;
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -33,47 +36,63 @@ function buildAttrRegex(names: string[]): RegExp {
   return new RegExp(`(^|[^\\w:$-])(${alts})\\s*=\\s*`, 'g');
 }
 
-type StringRange = { value: string; start: number; end: number };
+type StringRange = {
+  value: string;
+  start: number;
+  end: number;
+  /** Quoted markup attributes can contain Svelte-style {expression} holes. */
+  braceExpressions?: boolean;
+};
 
 function attributeStrings(
   content: string,
   names: string[],
+  functionNames: string[] = [],
 ): Array<StringRange & { attributeStart: number }> {
   const result: Array<StringRange & { attributeStart: number }> = [];
   for (const match of content.matchAll(buildAttrRegex(names))) {
     const attributeStart = (match.index ?? 0) + match[1].length;
-    let i = (match.index ?? 0) + match[0].length;
-    const braced = content[i] === '{';
-    if (braced) {
-      i++;
-      while (/\s/.test(content[i] ?? '') && i < content.length) i++;
-    }
-    if (content[i] !== '"' && content[i] !== "'" && content[i] !== '`')
+    const start = (match.index ?? 0) + match[0].length;
+    if (content[start] === '{') {
+      const expression = readCallTokens(content, start + 1, '}');
+      if (expression.complete) {
+        result.push(
+          ...classExpression(expression.tokens, functionNames).map(
+            (string) => ({ ...string, attributeStart }),
+          ),
+        );
+      }
       continue;
-    const quoted = readQuotedString(content, i);
-    if (!quoted) continue;
-    if (braced) {
-      i = quoted.next;
-      while (/\s/.test(content[i] ?? '') && i < content.length) i++;
-      // Only a single string expression is static. A concatenation, method
-      // call or tagged template can change the meaning of its string pieces.
-      if (content[i] !== '}') continue;
     }
-    result.push({
-      value: quoted.value,
-      start: quoted.start,
-      end: quoted.end,
-      attributeStart,
-    });
+    if (!['"', "'", '`'].includes(content[start])) continue;
+    const quoted = readQuotedString(content, start);
+    if (!quoted) continue;
+    if (match[2].startsWith(':') || match[2].startsWith('v-bind:')) {
+      // Vue bindings contain JavaScript, not a class list. Entities require an
+      // HTML decoder/source map, so leave those expressions intact for now.
+      if (/&(?:#\d+|#x[\da-f]+|[a-z]+);/i.test(quoted.value)) continue;
+      const expression = readCallTokens(content, quoted.start, content[start]);
+      if (expression.complete && expression.next === quoted.next) {
+        result.push(
+          ...classExpression(expression.tokens, functionNames).map(
+            (string) => ({ ...string, attributeStart }),
+          ),
+        );
+      }
+    } else result.push({ ...quoted, attributeStart, braceExpressions: true });
   }
   return result;
 }
 
 // A template expression is JavaScript, never a class list. Keep its adjacent
 // token fragments as well: `text-[12px]${suffix}` is not a static class.
-function interpolationEnd(content: string, start: number): number {
+function interpolationEnd(
+  content: string,
+  start: number,
+  openingLength = 2,
+): number {
   let depth = 1;
-  let i = start + 2;
+  let i = start + openingLength;
   while (i < content.length) {
     const ch = content[i];
     if (ch === '"' || ch === "'" || ch === '`') {
@@ -87,10 +106,7 @@ function interpolationEnd(content: string, start: number): number {
       const end = content.indexOf('*/', i + 2);
       i = end < 0 ? content.length : end + 2;
     } else if (ch === '/') {
-      const preceding = content
-        .slice(start + 2, i)
-        .trimEnd()
-        .match(/(?:[\w$]+|=>|&&|\|\||\?\?|.)$/)?.[0];
+      const preceding = previousToken(content, i);
       if (regexMayStart(preceding)) {
         const end = readRegex(content, i);
         if (!end) return content.length;
@@ -105,14 +121,27 @@ function interpolationEnd(content: string, start: number): number {
   return content.length;
 }
 
-function staticClassRanges(value: string): StringRange[] {
+function staticClassRanges(
+  value: string,
+  braceExpressions = false,
+): StringRange[] {
   const ranges: StringRange[] = [];
   let start = 0;
   let i = 0;
+  let bracketDepth = 0;
   while (i < value.length) {
     let escapes = 0;
     for (let j = i - 1; j >= 0 && value[j] === '\\'; j--) escapes++;
-    if (!value.startsWith('${', i) || escapes % 2 === 1) {
+    const openingLength = value.startsWith('${', i)
+      ? 2
+      : braceExpressions && bracketDepth === 0 && value[i] === '{'
+        ? 1
+        : 0;
+    if (!openingLength || escapes % 2 === 1) {
+      if (escapes % 2 === 0) {
+        if (value[i] === '[') bracketDepth++;
+        else if (value[i] === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+      }
       i++;
       continue;
     }
@@ -120,7 +149,7 @@ function staticClassRanges(value: string): StringRange[] {
     while (before > start && !/\s/.test(value[before - 1])) before--;
     if (before > start)
       ranges.push({ value: value.slice(start, before), start, end: before });
-    i = interpolationEnd(value, i);
+    i = interpolationEnd(value, i, openingLength);
     while (i < value.length && !/\s/.test(value[i])) i++;
     start = i;
   }
@@ -134,6 +163,7 @@ function transformStaticClasses(
   transform: (s: string) => string,
   isSuppressedAt?: (offset: number) => boolean,
   offset = 0,
+  braceExpressions = false,
 ): string {
   const suppressed: Array<{ start: number; end: number }> = [];
   if (isSuppressedAt) {
@@ -146,7 +176,7 @@ function transformStaticClasses(
       lineStart = end;
     }
   }
-  const ranges = staticClassRanges(value).flatMap((range) => {
+  const ranges = staticClassRanges(value, braceExpressions).flatMap((range) => {
     const safe: StringRange[] = [];
     let start = range.start;
     for (const line of suppressed) {
@@ -167,7 +197,10 @@ function transformStaticClasses(
       });
     return safe;
   });
-  const preserveEdges = value.includes('${') || suppressed.length > 0;
+  const preserveEdges =
+    value.includes('${') ||
+    (braceExpressions && value.includes('{')) ||
+    suppressed.length > 0;
   let out = '';
   let pos = 0;
   for (const range of ranges) {
@@ -277,7 +310,28 @@ const REGEX_PREFIX_TOKENS = new Set([
   'await',
   'in',
   'instanceof',
+  'else',
+  'do',
+  'new',
+  'of',
+  // A slash after a statement block may open a regex. Treat a valid-looking
+  // literal conservatively even when an object/division expression is ambiguous.
+  '}',
 ]);
+
+// Read only the token immediately before an offset. Searching an entire source
+// prefix with an end-anchored regexp once per helper call is quadratic.
+function previousToken(content: string, offset: number): string | undefined {
+  let end = offset;
+  while (end > 0 && /\s/.test(content[end - 1])) end--;
+  if (end === 0) return undefined;
+  let start = end;
+  while (start > 0 && /[\w$]/.test(content[start - 1])) start--;
+  if (start < end) return content.slice(start, end);
+  const pair = content.slice(Math.max(0, end - 2), end);
+  if (['=>', '&&', '||', '??'].includes(pair)) return pair;
+  return content[end - 1];
+}
 
 function regexMayStart(previous: string | undefined): boolean {
   return previous === undefined || REGEX_PREFIX_TOKENS.has(previous);
@@ -390,10 +444,17 @@ function classExpression(
       return splitTokens(token.children, ',').flatMap((part) =>
         classExpression(part, functionNames, objects),
       );
-    if (token.text === '{' && objects)
+    if (token.text === '{' && objects) {
+      // Rewriting keys of a multi-property object can create a duplicate key
+      // and discard a predicate. Unknown/spread properties can collide too.
+      const properties = splitTokens(token.children ?? [], ',').filter(
+        (property) => property.length > 0,
+      );
+      if (properties.length !== 1) return [];
       return objectProperties(token).flatMap(({ key }) =>
         key.string ? [key.string] : [],
       );
+    }
     // A grouping pair does not establish class context, but preserves one.
     if (token.text === '(' && token.children)
       return classExpression(token.children, functionNames, objects);
@@ -495,7 +556,7 @@ function scanCallStrings(
   complete: boolean;
 } {
   const scanned = readCallTokens(content, start);
-  const name = content.slice(0, start - 1).match(/([\w$]+)\s*$/)?.[1] ?? '';
+  const name = previousToken(content, start - 1) ?? '';
   return {
     strings: scanned.complete
       ? classCall(name, scanned.tokens, functionNames)
@@ -503,40 +564,6 @@ function scanCallStrings(
     consumed: scanned.next - start,
     complete: scanned.complete,
   };
-}
-
-function transformCallContent(
-  content: string,
-  start: number,
-  transform: (s: string) => string,
-  isSuppressedAt?: (offset: number) => boolean,
-  functionNames: string[] = [],
-): { processed: string; consumed: number; count: number } {
-  const scanned = scanCallStrings(content, start, functionNames);
-  const original = content.slice(start, start + scanned.consumed);
-  if (!scanned.complete) {
-    return { processed: original, consumed: scanned.consumed, count: 0 };
-  }
-
-  const parts: string[] = [];
-  let pos = start;
-  let count = 0;
-
-  for (const string of scanned.strings) {
-    parts.push(content.slice(pos, string.start));
-    const out = transformStaticClasses(
-      string.value,
-      transform,
-      isSuppressedAt,
-      string.start,
-    );
-    if (out !== string.value) count++;
-    parts.push(out);
-    pos = string.end;
-  }
-  parts.push(content.slice(pos, start + scanned.consumed));
-
-  return { processed: parts.join(''), consumed: scanned.consumed, count };
 }
 
 function offsetSuppressor(
@@ -560,6 +587,8 @@ function protectedSourceOffsets(content: string): (offset: number) => boolean {
     selfClosing: boolean;
   }> = [];
   let expressionEnd = 0;
+  const controlParens: boolean[] = [];
+  let lastControlParenEnd = -1;
   let i = 0;
   while (i < content.length) {
     const start = i;
@@ -575,7 +604,7 @@ function protectedSourceOffsets(content: string): (offset: number) => boolean {
     if (!tag && ch === '<' && !content.startsWith('<!--', i)) {
       const match: RegExpMatchArray | null = content
         .slice(i)
-        .match(/^<(\/?)([A-Za-z][\w:.-]*)(?=[\s/>])/);
+        .match(/^<(\/?)(?:([A-Za-z][\w:.-]*)(?=[\s/>])|(?=>))/);
       if (match) {
         let end: number = i + match[0].length;
         while (end < content.length && content[end] !== '>') {
@@ -591,8 +620,12 @@ function protectedSourceOffsets(content: string): (offset: number) => boolean {
           } else end++;
         }
         const closing: boolean = match[1] === '/';
-        const selfClosing = content[end - 1] === '/';
-        const name: string = match[2];
+        const selfClosing =
+          content[end - 1] === '/' ||
+          /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(
+            match[2] ?? '',
+          );
+        const name: string = match[2] ?? '';
         if (
           end < content.length &&
           (tags.length > 0 ||
@@ -602,7 +635,20 @@ function protectedSourceOffsets(content: string): (offset: number) => boolean {
           pendingTags.push({ end, name, closing, selfClosing });
       }
     }
-    if (!tag && tags.length > 0 && i >= expressionEnd && ch !== '<') {
+    const rawTag = tags.at(-1)?.toLowerCase();
+    if (!tag && rawTag === 'style' && !content.startsWith('</style', i)) {
+      const end = content.indexOf('</style', i);
+      i = end < 0 ? content.length : end;
+      ranges.push({ start, end: i });
+      continue;
+    }
+    if (
+      !tag &&
+      tags.length > 0 &&
+      rawTag !== 'script' &&
+      i >= expressionEnd &&
+      ch !== '<'
+    ) {
       if (ch === '{') expressionEnd = readCallTokens(content, i + 1, '}').next;
       else {
         while (i < content.length && content[i] !== '<' && content[i] !== '{')
@@ -622,17 +668,28 @@ function protectedSourceOffsets(content: string): (offset: number) => boolean {
       const end = content.indexOf(ending, i + (html ? 4 : 2));
       i = end < 0 ? content.length : end + ending.length;
     } else if (ch === '/' && content[i - 1] !== '<' && content[i + 1] !== '>') {
-      const preceding = content
-        .slice(0, i)
-        .trimEnd()
-        .match(/(?:[\w$]+|=>|&&|\|\||\?\?|.)$/)?.[0];
-      const end = regexMayStart(preceding) ? readRegex(content, i) : null;
+      const preceding = previousToken(content, i);
+      let before = i - 1;
+      while (before >= 0 && /\s/.test(content[before])) before--;
+      const afterControlCondition =
+        preceding === ')' && before === lastControlParenEnd;
+      const end =
+        regexMayStart(preceding) || afterControlCondition
+          ? readRegex(content, i)
+          : null;
       if (!end) {
         i++;
         continue;
       }
       i = end;
     } else {
+      if (ch === '(') {
+        controlParens.push(
+          ['if', 'while', 'for', 'with', 'switch', 'catch'].includes(
+            previousToken(content, i) ?? '',
+          ),
+        );
+      } else if (ch === ')' && controlParens.pop()) lastControlParenEnd = i;
       i++;
       continue;
     }
@@ -650,124 +707,101 @@ function protectedSourceOffsets(content: string): (offset: number) => boolean {
   };
 }
 
+/** Collect disjoint ranges against the original source before any rewrite.
+ * Source offsets and suppression line numbers must not depend on an earlier
+ * attribute transform changing the number of lines in the file.
+ */
+function collectClassStrings(
+  content: string,
+  opts: ClassStringOpts,
+): StringRange[] {
+  const attrNames = opts.attributeNames?.length
+    ? opts.attributeNames
+    : DEFAULT_ATTR_NAMES;
+  const isProtected = protectedSourceOffsets(content);
+  const strings: StringRange[] = attributeStrings(
+    content,
+    attrNames,
+    opts.functionNames,
+  ).filter((string) => !isProtected(string.attributeStart));
+  const funcNames = opts.functionNames;
+  if (funcNames?.length) {
+    const funcRe = new RegExp(
+      `\\b(?:${funcNames.map(escapeRegex).join('|')})\\s*\\(`,
+      'g',
+    );
+    let consumedUntil = 0;
+    for (const match of content.matchAll(funcRe)) {
+      const offset = match.index ?? 0;
+      // A configured identifier must not select a suffix of a member call or
+      // a larger JavaScript identifier (where `$` is also an identifier char).
+      if (
+        previousToken(content, offset) === '.' ||
+        /[\w$]/.test(content[offset - 1] ?? '')
+      )
+        continue;
+      if (isProtected(offset) || offset < consumedUntil) continue;
+      const start = (match.index ?? 0) + match[0].length;
+      const scanned = scanCallStrings(content, start, funcNames);
+      strings.push(...scanned.strings);
+      consumedUntil = start + scanned.consumed;
+    }
+  }
+  const seen = new Set<string>();
+  return strings
+    .filter((string) => {
+      const key = `${string.start}:${string.end}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((left, right) => left.start - right.start);
+}
+
 export function replaceClassStrings(
   content: string,
   transform: (s: string) => string,
   opts: ClassStringOpts = {},
 ): { result: string; count: number } {
-  const attrNames = opts.attributeNames?.length
-    ? opts.attributeNames
-    : DEFAULT_ATTR_NAMES;
-  let result = content;
+  const isSuppressedAt = offsetSuppressor(content, opts.isSuppressed);
+  const parts: string[] = [];
+  let cursor = 0;
   let count = 0;
-
-  const isSuppressed = opts.isSuppressed;
-  const isProtected = protectedSourceOffsets(content);
-  const isAttributeSuppressed = offsetSuppressor(content, isSuppressed);
-
-  const attributeParts: string[] = [];
-  let attributeCursor = 0;
-  for (const string of attributeStrings(content, attrNames)) {
-    if (isProtected(string.attributeStart)) continue;
+  for (const string of collectClassStrings(content, opts)) {
     const out = transformStaticClasses(
       string.value,
       transform,
-      isAttributeSuppressed,
+      isSuppressedAt,
       string.start,
+      string.braceExpressions,
     );
     if (out !== string.value) count++;
-    attributeParts.push(content.slice(attributeCursor, string.start), out);
-    attributeCursor = string.end;
+    parts.push(content.slice(cursor, string.start), out);
+    cursor = string.end;
   }
-  attributeParts.push(content.slice(attributeCursor));
-  result = attributeParts.join('');
-
-  const funcNames = opts.functionNames;
-  if (!funcNames?.length) return { result, count };
-
-  const funcRe = new RegExp(
-    `\\b(?:${funcNames.map(escapeRegex).join('|')})\\s*\\(`,
-    'g',
-  );
-  const buf: string[] = [];
-  let pos = 0;
-  const isCallSuppressed = offsetSuppressor(result, isSuppressed);
-  const isCallProtected = protectedSourceOffsets(result);
-
-  for (const m of result.matchAll(funcRe)) {
-    const callStart = (m.index ?? 0) + m[0].length;
-    if (callStart < pos || isCallProtected(m.index ?? 0)) continue;
-    buf.push(result.slice(pos, callStart));
-    const {
-      processed,
-      consumed,
-      count: c,
-    } = transformCallContent(
-      result,
-      callStart,
-      transform,
-      isCallSuppressed,
-      funcNames,
-    );
-    buf.push(processed);
-    pos = callStart + consumed;
-    count += c;
-    funcRe.lastIndex = pos;
-  }
-  buf.push(result.slice(pos));
-
-  return { result: buf.join(''), count };
+  parts.push(content.slice(cursor));
+  return { result: parts.join(''), count };
 }
 
 export function extractClassStrings(
   content: string,
   opts: ClassStringOpts = {},
 ): Array<{ value: string; start: number; end: number }> {
-  const attrNames = opts.attributeNames?.length
-    ? opts.attributeNames
-    : DEFAULT_ATTR_NAMES;
-  const results: Array<{ value: string; start: number; end: number }> = [];
-  const isProtected = protectedSourceOffsets(content);
-
-  for (const string of attributeStrings(content, attrNames)) {
-    if (!isProtected(string.attributeStart))
-      results.push({
-        value: string.value,
-        start: string.start,
-        end: string.end,
-      });
-  }
-
-  const funcNames = opts.functionNames;
-  if (!funcNames?.length) return staticRanges(results);
-
-  const funcRe = new RegExp(
-    `\\b(?:${funcNames.map(escapeRegex).join('|')})\\s*\\(`,
-    'g',
-  );
-
-  let consumedUntil = 0;
-  for (const m of content.matchAll(funcRe)) {
-    if (isProtected(m.index ?? 0) || (m.index ?? 0) < consumedUntil) continue;
-    const start = (m.index ?? 0) + m[0].length;
-    const scanned = scanCallStrings(content, start, funcNames);
-    results.push(...scanned.strings);
-    consumedUntil = start + scanned.consumed;
-  }
-
-  return staticRanges(results);
+  return staticRanges(collectClassStrings(content, opts));
 }
 
 function staticRanges(strings: StringRange[]): StringRange[] {
   const seen = new Set<string>();
   return strings.flatMap((string) =>
-    staticClassRanges(string.value).flatMap((range) => {
-      const start = string.start + range.start;
-      const end = string.start + range.end;
-      const key = `${start}:${end}`;
-      if (seen.has(key)) return [];
-      seen.add(key);
-      return [{ value: range.value, start, end }];
-    }),
+    staticClassRanges(string.value, string.braceExpressions).flatMap(
+      (range) => {
+        const start = string.start + range.start;
+        const end = string.start + range.end;
+        const key = `${start}:${end}`;
+        if (seen.has(key)) return [];
+        seen.add(key);
+        return [{ value: range.value, start, end }];
+      },
+    ),
   );
 }

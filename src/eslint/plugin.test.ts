@@ -57,26 +57,26 @@ function applyQuasiFix(
 }
 
 test('no-arbitrary-canonical rule', async (t) => {
-  await t.test('reports text-[12px] with canonical text-xs', () => {
+  await t.test('reports size-[12px] with canonical size-3', () => {
     const reports: unknown[] = [];
     const ctx = {
       options: [{}] as [object],
       report: (d: unknown) => reports.push(d),
     };
     const rule = noArbitraryCanonical.create(ctx as never);
-    (rule.Literal as (n: unknown) => void)(literal('text-[12px]'));
+    (rule.Literal as (n: unknown) => void)(literal('size-[12px]'));
     assert.strictEqual(reports.length, 1);
-    assert.ok(JSON.stringify(reports[0]).includes('text-xs'));
+    assert.ok(JSON.stringify(reports[0]).includes('size-3'));
   });
 
-  await t.test('reports nothing for plain text-xs', () => {
+  await t.test('reports nothing for plain size-3', () => {
     const reports: unknown[] = [];
     const ctx = {
       options: [{}] as [object],
       report: (d: unknown) => reports.push(d),
     };
     const rule = noArbitraryCanonical.create(ctx as never);
-    (rule.Literal as (n: unknown) => void)(literal('text-xs'));
+    (rule.Literal as (n: unknown) => void)(literal('size-3'));
     assert.strictEqual(reports.length, 0);
   });
 
@@ -105,10 +105,10 @@ test('no-arbitrary-canonical rule', async (t) => {
       };
       const rule = noArbitraryCanonical.create(ctx as never);
       (rule.Literal as (n: unknown) => void)(
-        literal('text-[12px] h-[64px] flex'),
+        literal('size-[12px] h-[64px] flex'),
       );
       assert.strictEqual(reports.length, 1);
-      assert.ok(JSON.stringify(reports[0]).includes('text-xs h-16'));
+      assert.ok(JSON.stringify(reports[0]).includes('size-3 h-16'));
     },
   );
 
@@ -121,11 +121,11 @@ test('no-arbitrary-canonical rule', async (t) => {
       report: (d: unknown) => reports.push(d as never),
     };
     const rule = noArbitraryCanonical.create(ctx as never);
-    const node = literal('text-[12px]');
+    const node = literal('size-[12px]');
     (rule.Literal as (n: unknown) => void)(node);
     assert.ok(reports[0].fix);
     const result = reports[0].fix?.({ replaceText: (_n, s) => s });
-    assert.ok((result as string).includes('text-xs'));
+    assert.ok((result as string).includes('size-3'));
   });
 
   await t.test('fix does not corrupt classes via substring collision', () => {
@@ -155,11 +155,11 @@ test('no-arbitrary-canonical rule', async (t) => {
     };
     const rule = noArbitraryCanonical.create(ctx as never);
     (rule.Literal as (n: unknown) => void)(
-      literal('text-[12px] flex h-[64px]'),
+      literal('size-[12px] flex h-[64px]'),
     );
     assert.strictEqual(reports.length, 1);
     const result = reports[0].fix?.({ replaceText: (_n, s) => s });
-    assert.strictEqual(result, '"text-xs flex h-16"');
+    assert.strictEqual(result, '"size-3 flex h-16"');
   });
 
   await t.test('fix preserves escaped quotes in string literals', () => {
@@ -170,12 +170,12 @@ test('no-arbitrary-canonical rule', async (t) => {
       options: [{}] as [object],
       report: (d: unknown) => reports.push(d as never),
     } as never);
-    const raw = String.raw`'don\'t text-[12px]'`;
-    (rule.Literal as (n: unknown) => void)(literal("don't text-[12px]", raw));
+    const raw = String.raw`'don\'t size-[12px]'`;
+    (rule.Literal as (n: unknown) => void)(literal("don't size-[12px]", raw));
 
     const output = applyLiteralFix(reports[0]?.fix);
-    assert.strictEqual(output, String.raw`'don\'t text-xs'`);
-    assert.strictEqual(Function(`return ${output}`)(), "don't text-xs");
+    assert.strictEqual(output, String.raw`'don\'t size-3'`);
+    assert.strictEqual(Function(`return ${output}`)(), "don't size-3");
   });
 
   await t.test('fix preserves JSX attribute entity escaping', () => {
@@ -186,21 +186,26 @@ test('no-arbitrary-canonical rule', async (t) => {
       options: [{}] as [object],
       report: (d: unknown) => reports.push(d as never),
     } as never);
-    const raw = '"before &quot; text-[12px]"';
+    const raw = '"before &quot; size-[12px]"';
     (rule.Literal as (n: unknown) => void)(
-      literal('before " text-[12px]', raw, classAttribute),
+      literal('before " size-[12px]', raw, classAttribute),
     );
 
     assert.strictEqual(
       applyLiteralFix(reports[0]?.fix),
-      '"before &quot; text-xs"',
+      '"before &quot; size-3"',
     );
   });
 
   await t.test('respects customTextTokens from config', () => {
     const reports: unknown[] = [];
     const ctx = {
-      options: [{ customTextTokens: { 11: 'tiny' } }] as [object],
+      options: [
+        {
+          allowTextSizeLineHeightChanges: true,
+          customTextTokens: { 11: 'tiny' },
+        },
+      ] as [object],
       report: (d: unknown) => reports.push(d),
     };
     const rule = noArbitraryCanonical.create(ctx as never);
@@ -212,11 +217,11 @@ test('no-arbitrary-canonical rule', async (t) => {
   await t.test('honors ignorePatterns from config', () => {
     const reports: unknown[] = [];
     const ctx = {
-      options: [{ ignorePatterns: [/^text-/] }] as [object],
+      options: [{ ignorePatterns: [/^size-/] }] as [object],
       report: (d: unknown) => reports.push(d),
     };
     const rule = noArbitraryCanonical.create(ctx as never);
-    (rule.Literal as (n: unknown) => void)(literal('text-[12px] h-[64px]'));
+    (rule.Literal as (n: unknown) => void)(literal('size-[12px] h-[64px]'));
     assert.strictEqual(reports.length, 1);
     assert.ok(JSON.stringify(reports[0]).includes('h-16'));
   });
@@ -276,16 +281,16 @@ test('no-arbitrary-canonical rule', async (t) => {
             functionNames: ['cn'],
             attributeNames: ['className'],
             sortOrder: ['display'],
-            ignorePatterns: [/^text-/],
+            ignorePatterns: [/^size-/],
           },
         ] as [object],
         report: (d: unknown) => reports.push(d),
       };
       const rule = noArbitraryCanonical.create(ctx as never);
-      (rule.Literal as (n: unknown) => void)(literal('text-[12px] h-[64px]'));
+      (rule.Literal as (n: unknown) => void)(literal('size-[12px] h-[64px]'));
       assert.strictEqual(reports.length, 1);
       assert.ok(JSON.stringify(reports[0]).includes('h-16'));
-      assert.ok(!JSON.stringify(reports[0]).includes('text-xs'));
+      assert.ok(!JSON.stringify(reports[0]).includes('size-3'));
     },
   );
 });
@@ -422,10 +427,10 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
     };
     const rule = noArbitraryCanonical.create(ctx as never);
     (rule.TemplateLiteral as (n: unknown) => void)(
-      templateLiteral('text-[12px] flex'),
+      templateLiteral('size-[12px] flex'),
     );
     assert.strictEqual(reports.length, 1);
-    assert.ok(JSON.stringify(reports[0]).includes('text-xs'));
+    assert.ok(JSON.stringify(reports[0]).includes('size-3'));
   });
 
   await t.test('walks every quasi of a multi-part template', () => {
@@ -436,7 +441,7 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
     };
     const rule = noArbitraryCanonical.create(ctx as never);
     (rule.TemplateLiteral as (n: unknown) => void)(
-      templateLiteral('text-[12px] ', ' h-[64px]'),
+      templateLiteral('size-[12px] ', ' h-[64px]'),
     );
     assert.strictEqual(reports.length, 2);
   });
@@ -461,10 +466,10 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
       // backtick and interpolation intact and only swap the arbitrary class.
       const interp = `$${'{0}'}`;
       const cases: Array<[ReturnType<typeof templateLiteral>, string]> = [
-        [templateLiteral('text-[12px] flex'), '`text-xs flex`'],
+        [templateLiteral('size-[12px] flex'), '`size-3 flex`'],
         [
-          templateLiteral('p-2 text-[12px] ', ' flex'),
-          `\`p-2 text-xs ${interp} flex\``,
+          templateLiteral('p-2 size-[12px] ', ' flex'),
+          `\`p-2 size-3 ${interp} flex\``,
         ],
       ];
 
@@ -502,7 +507,7 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
         options: [{}] as [object],
         report: (d: unknown) => reports.push(d as never),
       } as never);
-      const raw = String.raw`before \` \${ text-[12px]`;
+      const raw = String.raw`before \` \${ size-[12px]`;
       const source = `\`${raw}\``;
       (rule.TemplateLiteral as (n: unknown) => void)({
         type: 'TemplateLiteral',
@@ -510,7 +515,7 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
         quasis: [
           {
             type: 'TemplateElement',
-            value: { raw, cooked: 'before ` ${ text-[12px]' },
+            value: { raw, cooked: 'before ` ${ size-[12px]' },
             range: [0, source.length],
             loc: {
               start: { line: 1, column: 0 },
@@ -522,8 +527,8 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
       });
 
       const output = applyQuasiFix(source, reports[0]?.fix);
-      assert.strictEqual(output, `\`${String.raw`before \` \${ text-xs`}\``);
-      assert.strictEqual(Function(`return ${output}`)(), 'before ` ${ text-xs');
+      assert.strictEqual(output, `\`${String.raw`before \` \${ size-3`}\``);
+      assert.strictEqual(Function(`return ${output}`)(), 'before ` ${ size-3');
     },
   );
 
@@ -537,7 +542,7 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
       options: [{}] as [object],
       report: (d: unknown) => reports.push(d as never),
     } as never);
-    const raw = String.raw`before\rtext-[12px]`;
+    const raw = String.raw`before\rsize-[12px]`;
     const source = `\`${raw}\``;
     (rule.TemplateLiteral as (n: unknown) => void)({
       type: 'TemplateLiteral',
@@ -545,7 +550,7 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
       quasis: [
         {
           type: 'TemplateElement',
-          value: { raw, cooked: 'before\rtext-[12px]' },
+          value: { raw, cooked: 'before\rsize-[12px]' },
           range: [0, source.length],
           loc: {
             start: { line: 1, column: 0 },
@@ -557,8 +562,8 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
     });
 
     const output = applyQuasiFix(source, reports[0]?.fix);
-    assert.strictEqual(output, '`before\\rtext-xs`');
-    assert.strictEqual(Function(`return ${output}`)(), 'before\rtext-xs');
+    assert.strictEqual(output, '`before\\rsize-3`');
+    assert.strictEqual(Function(`return ${output}`)(), 'before\rsize-3');
   });
 
   await t.test('fix preserves raw tagged-template semantics', () => {
@@ -571,7 +576,7 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
       options: [{}] as [object],
       report: (d: unknown) => reports.push(d as never),
     } as never);
-    const node = taggedTemplateLiteral(String.raw`path\n text-[12px]`);
+    const node = taggedTemplateLiteral(String.raw`path\n size-[12px]`);
     (rule.TemplateLiteral as (n: unknown) => void)(node);
 
     assert.strictEqual(reports.length, 0);
@@ -719,20 +724,20 @@ test('real ESLint contexts preserve unrelated source and partial classes', () =>
   ] as const;
   for (const source of [
     'const message = "Hello  world";',
-    'const query = "SELECT text-[12px] FROM styles";',
-    'const node = <div title="text-[12px]" />;',
-    'const classes = cn(fetch("text-[12px]"));',
+    'const query = "SELECT size-[12px] FROM styles";',
+    'const node = <div title="size-[12px]" />;',
+    'const classes = cn(fetch("size-[12px]"));',
     'const classes = cn({ x: flag === "p-[16px]" });',
     'const classes = cn({ x: "p-[16px]" });',
     'const classes = cn("p-[16px]" && "block");',
     'const classes = cva("block", { defaultVariants: { size: "p-[16px]" } });',
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
-    'const node = <div className={`text-[12px]${suffix}`} />;',
+    'const node = <div className={`size-[12px]${suffix}`} />;',
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
-    'const node = <div className={`${prefix}text-[12px]`} />;',
+    'const node = <div className={`${prefix}size-[12px]`} />;',
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
     'const node = <div className={`p-4 p-2${suffix}`} />;',
-    'const node = <div className={String.raw`text-[12px]`} />;',
+    'const node = <div className={String.raw`size-[12px]`} />;',
     'const node = <div className="leading-6 text-[13px]" />;',
   ]) {
     const result = linter.verifyAndFix(source, config);
@@ -741,34 +746,34 @@ test('real ESLint contexts preserve unrelated source and partial classes', () =>
   }
   for (const [source, expected] of [
     [
-      'const node = <div className="text-[12px]" />;',
-      'const node = <div className="text-xs" />;',
+      'const node = <div className="size-[12px]" />;',
+      'const node = <div className="size-3" />;',
     ],
     [
-      'const classes = cn("text-[12px]", ["p-[16px]"]);',
-      'const classes = cn("text-xs", ["p-4"]);',
+      'const classes = cn("size-[12px]", ["p-[16px]"]);',
+      'const classes = cn("size-3", ["p-4"]);',
     ],
     [
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
-      'const node = <div className={`p-4 p-2 ${suffix} text-[12px]`} />;',
+      'const node = <div className={`p-4 p-2 ${suffix} size-[12px]`} />;',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
-      'const node = <div className={`p-2 ${suffix} text-xs`} />;',
+      'const node = <div className={`p-2 ${suffix} size-3`} />;',
     ],
     [
-      'const classes = clsx({ "text-[12px]": active });',
-      'const classes = clsx({ "text-xs": active });',
+      'const classes = clsx({ "size-[12px]": active });',
+      'const classes = clsx({ "size-3": active });',
     ],
     [
       'const classes = cn(value === "p-[16px]" && "px-[16px]");',
       'const classes = cn(value === "p-[16px]" && "px-4");',
     ],
     [
-      'const classes = cn({"p-[16px]": "text-[12px]"});',
-      'const classes = cn({"p-4": "text-[12px]"});',
+      'const classes = cn({"p-[16px]": "size-[12px]"});',
+      'const classes = cn({"p-4": "size-[12px]"});',
     ],
     [
-      'const classes = cva("p-[16px]", { variants: { size: { small: "text-[12px]" } }, compoundVariants: [{ size: "text-[12px]", class: "p-[16px]" }] });',
-      'const classes = cva("p-4", { variants: { size: { small: "text-xs" } }, compoundVariants: [{ size: "text-[12px]", class: "p-4" }] });',
+      'const classes = cva("p-[16px]", { variants: { size: { small: "size-[12px]" } }, compoundVariants: [{ size: "size-[12px]", class: "p-[16px]" }] });',
+      'const classes = cva("p-4", { variants: { size: { small: "size-3" } }, compoundVariants: [{ size: "size-[12px]", class: "p-4" }] });',
     ],
   ]) {
     const result = linter.verifyAndFix(source, config);
@@ -848,7 +853,11 @@ test('rule options support disabling default-theme mappings', () => {
   for (const [options, expected] of [
     [{ useDefaultTheme: false }, 'const x = cn("text-[12px]");'],
     [
-      { useDefaultTheme: false, customTextTokens: { 12: 'tiny' } },
+      {
+        useDefaultTheme: false,
+        allowTextSizeLineHeightChanges: true,
+        customTextTokens: { 12: 'tiny' },
+      },
       'const x = cn("text-tiny");',
     ],
   ] as const) {
@@ -859,6 +868,125 @@ test('rule options support disabling default-theme mappings', () => {
       },
     ]);
     assert.deepEqual(result.messages, []);
+    assert.strictEqual(result.output, expected);
+  }
+});
+
+test('object key rewrites preserve predicates and computed CVA options', () => {
+  const configs = [
+    {
+      plugins: { canonical: plugin },
+      rules: {
+        'canonical/no-arbitrary-canonical': 'error',
+        'canonical/no-conflicting-classes': 'error',
+      },
+    },
+  ] as const;
+  for (const input of [
+    'cn({"p-[16px]": enabled, "p-4": other})',
+    'cn({"p-2 p-4": enabled, "p-4": other})',
+    'cn({"p-[16px]": enabled, ...other})',
+    'cva("flex", {[variants]: {size: {sm: "size-[12px]"}}})',
+  ]) {
+    const result = new Linter().verifyAndFix(input, configs);
+    assert.deepEqual(result.messages, []);
+    assert.strictEqual(result.output, input);
+  }
+});
+
+test('template autofixes use source ranges even when CRLF is normalized in raw values', () => {
+  const config = [
+    {
+      plugins: { canonical: plugin },
+      rules: {
+        'canonical/no-arbitrary-canonical': 'error',
+      },
+    },
+  ] as const;
+  for (const input of [
+    'cn(`p-[16px]\r\nflex`)',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
+    'cn(`p-[16px]\r\nflex ${suffix} size-[12px]`)',
+  ]) {
+    const result = new Linter().verifyAndFix(input, config);
+    assert.deepEqual(result.messages, []);
+    assert.strictEqual(
+      result.output,
+      input
+        .replace('p-[16px]', 'p-4')
+        .replace('size-[12px]', 'size-3')
+        .replaceAll('\r\n', '\n'),
+    );
+  }
+});
+
+test('default font-size rules preserve line-height semantics without diagnostics or fixes', () => {
+  for (const options of [
+    {},
+    { allowTextSizeLineHeightChanges: false },
+    { customTextTokens: { 12: 'tiny' } },
+  ]) {
+    const configs = [
+      {
+        plugins: { canonical: plugin },
+        languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
+        rules: { 'canonical/no-arbitrary-canonical': ['error', options] },
+      },
+    ];
+    for (const source of [
+      'cn("text-[12px]")',
+      'cn("text-[0.75rem]")',
+      'cn("leading-6 text-[12px]")',
+      'cn("sm:!text-[12px] sm:leading-6")',
+      '<div className="hover:text-[1rem]! leading-none" />',
+    ]) {
+      const result = new Linter().verifyAndFix(source, configs);
+      assert.deepEqual(result.messages, [], source);
+      assert.strictEqual(result.fixed, false, source);
+      assert.strictEqual(result.output, source);
+    }
+    const source = 'cn("text-[12px] p-[16px] hover:text-[1rem]!")';
+    const messages = new Linter().verify(source, configs);
+    assert.strictEqual(messages.length, 1);
+    assert.match(messages[0].message, /p-4/);
+    const result = new Linter().verifyAndFix(source, configs);
+    assert.deepEqual(result.messages, []);
+    assert.strictEqual(
+      result.output,
+      'cn("text-[12px] p-4 hover:text-[1rem]!")',
+    );
+  }
+});
+
+test('font-size transformations require an explicit line-height opt-in', () => {
+  for (const [options, source, expected] of [
+    [
+      { allowTextSizeLineHeightChanges: true },
+      'cn("text-[12px] p-[16px]")',
+      'cn("text-xs p-4")',
+    ],
+    [
+      { allowTextSizeLineHeightChanges: true },
+      'cn("sm:!text-[0.75rem] leading-6")',
+      'cn("sm:!text-xs leading-6")',
+    ],
+    [
+      {
+        allowTextSizeLineHeightChanges: true,
+        customTextTokens: { 12: 'tiny' },
+      },
+      'cn("hover:text-[12px]!")',
+      'cn("hover:text-tiny!")',
+    ],
+  ]) {
+    const result = new Linter().verifyAndFix(source, [
+      {
+        plugins: { canonical: plugin },
+        rules: { 'canonical/no-arbitrary-canonical': ['error', options] },
+      },
+    ]);
+    assert.deepEqual(result.messages, []);
+    assert.strictEqual(result.fixed, true);
     assert.strictEqual(result.output, expected);
   }
 });

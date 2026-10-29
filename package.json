@@ -1,6 +1,6 @@
 {
   "name": "tailwind-canonical",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Lint and auto-fix Tailwind CSS arbitrary values that have canonical equivalents",
   "type": "module",
   "packageManager": "pnpm@11.4.0",
@@ -51,7 +51,8 @@
     "prepublishOnly": "pnpm build",
     "knip": "knip",
     "benchmark": "pnpm build && node scripts/benchmark.mjs",
-    "test:compat": "node scripts/compatibility.mjs"
+    "test:compat": "node scripts/compatibility.mjs",
+    "test:css": "node scripts/css-semantics.mjs"
   },
   "keywords": [
     "tailwind",
@@ -68,7 +69,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "@biomejs/biome": "^2.5.11",
+    "@biomejs/biome": "^2.6.3",
     "@types/estree": "^1.0.9",
     "@types/node": "^22.20.1",
     "knip": "^6.34.0",
