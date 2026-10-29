@@ -404,3 +404,17 @@ test('watch handles asynchronous filesystem errors and releases handles', (t: Te
     process.exitCode = previousCode;
   }
 });
+
+test('watchRoots preserves existing bracketed route directories as literal roots', () => {
+  const dir = freshDir();
+  const route = join(dir, 'app', '[locale]');
+  try {
+    mkdirSync(route, { recursive: true });
+    const page = join(route, 'page.tsx');
+    writeFileSync(page, '');
+    assert.deepStrictEqual(watchRoots([route], []), [route]);
+    assert.deepStrictEqual(watchRoots([page], []), [route]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

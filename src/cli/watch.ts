@@ -35,7 +35,7 @@ export function watchRoots(targets: string[], configDirs: string[]): string[] {
   const dirs = [...configDirs];
   for (const target of targets) {
     if (target.startsWith('!')) continue;
-    const magic = target.search(/[*?{[(]/);
+    const magic = existsSync(target) ? -1 : target.search(/[*?{[(]/);
     const prefix = target.slice(0, magic);
     let dir =
       magic < 0 ? target : prefix.endsWith(sep) ? prefix : dirname(prefix);

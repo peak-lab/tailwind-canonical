@@ -259,3 +259,37 @@ test('discovery skips symlinks outside the target while explicit file links rema
     rmSync(external, { force: true });
   }
 });
+
+test('existing bracketed route paths take precedence over glob syntax, including exclusions', async () => {
+  const root = makeTmpTree();
+  const route = join(root, 'app', '[locale]');
+  const decoy = join(root, 'app', 'l', 'page.tsx');
+  const page = join(route, 'page.tsx');
+  try {
+    mkdirSync(route, { recursive: true });
+    mkdirSync(join(root, 'app', 'l'), { recursive: true });
+    writeFileSync(page, '<div className="text-[12px]" />');
+    writeFileSync(decoy, '<div className="p-[16px]" />');
+    assert.deepStrictEqual(await resolveTargets([page]), [page]);
+    assert.deepStrictEqual(await resolveTargets([route]), [page]);
+    assert.deepStrictEqual(
+      await resolveTargets([join(root, 'app'), `!${page}`]),
+      [decoy],
+    );
+    assert.deepStrictEqual(
+      await resolveTargets([join(root, 'app'), `!${route}`]),
+      [decoy],
+    );
+    for (const file of await resolveTargets([page])) fixFile(file);
+    assert.strictEqual(
+      readFileSync(page, 'utf8'),
+      '<div className="text-xs" />',
+    );
+    assert.strictEqual(
+      readFileSync(decoy, 'utf8'),
+      '<div className="p-[16px]" />',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

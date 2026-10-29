@@ -1,6 +1,12 @@
-import { type Dirent, lstatSync, readdirSync, statSync } from 'node:fs';
+import {
+  type Dirent,
+  existsSync,
+  lstatSync,
+  readdirSync,
+  statSync,
+} from 'node:fs';
 import { glob } from 'node:fs/promises';
-import { isAbsolute, join, matchesGlob } from 'node:path';
+import { isAbsolute, join, matchesGlob, resolve } from 'node:path';
 import {
   DEFAULT_EXTENSIONS,
   DEFAULT_IGNORE,
@@ -67,7 +73,7 @@ export async function resolveTargets(
   const files = new Set<string>();
 
   for (const pattern of positive) {
-    if (isGlob(pattern)) {
+    if (isGlob(pattern) && !existsSync(pattern)) {
       for await (const f of glob(pattern, {
         exclude: (entry) =>
           entry
@@ -90,14 +96,28 @@ export async function resolveTargets(
   }
 
   if (negativePatterns.length > 0) {
+    const exclusions = negativePatterns.map((pattern) => ({
+      pattern,
+      literal: existsSync(pattern)
+        ? resolve(pattern).replace(/\\/g, '/')
+        : undefined,
+    }));
     for (const f of [...files]) {
       const normalized = f.replace(/\\/g, '/');
       if (
-        negativePatterns.some(
-          (pattern) =>
+        exclusions.some(({ pattern, literal }) => {
+          if (literal) {
+            const full = resolve(f).replace(/\\/g, '/');
+            return (
+              full === literal ||
+              full.startsWith(literal.endsWith('/') ? literal : `${literal}/`)
+            );
+          }
+          return (
             matchesGlob(normalized, pattern) ||
-            (!isAbsolute(pattern) && matchesGlob(normalized, `**/${pattern}`)),
-        )
+            (!isAbsolute(pattern) && matchesGlob(normalized, `**/${pattern}`))
+          );
+        })
       ) {
         files.delete(f);
       }
