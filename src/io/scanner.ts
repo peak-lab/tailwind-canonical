@@ -80,9 +80,15 @@ export async function resolveTargets(
   }
 
   const files = new Set<string>();
+  const isLiteral = (pattern: string, allowMissingLiteral = false): boolean => {
+    const kind = options.targetKinds?.get(pattern.replace(/\\/g, '/'));
+    return kind
+      ? kind === 'literal'
+      : existsSync(pattern) || (allowMissingLiteral && !isGlob(pattern));
+  };
 
   for (const pattern of positive) {
-    if (isGlob(pattern) && !existsSync(pattern)) {
+    if (!isLiteral(pattern, true)) {
       for await (const entry of glob(pattern, {
         withFileTypes: true,
         exclude: (entry) => {
@@ -126,7 +132,7 @@ export async function resolveTargets(
   if (negativePatterns.length > 0) {
     const exclusions = negativePatterns.map((pattern) => ({
       pattern,
-      literal: existsSync(pattern)
+      literal: isLiteral(pattern)
         ? resolve(pattern).replace(/\\/g, '/')
         : undefined,
     }));

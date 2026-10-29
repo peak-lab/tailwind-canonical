@@ -327,3 +327,42 @@ test('discovery still treats missing paths and non-directory ancestors as no mat
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('repeated scans retain literal and glob identities after filesystem changes', async () => {
+  const root = makeTmpTree();
+  const route = join(root, 'app', '[locale]');
+  const page = join(route, 'page.tsx');
+  const decoy = join(root, 'app', 'l', 'page.tsx');
+  try {
+    mkdirSync(route, { recursive: true });
+    mkdirSync(join(root, 'app', 'l'), { recursive: true });
+    writeFileSync(page, '');
+    writeFileSync(decoy, '');
+    const options = {
+      targetKinds: new Map([[page.replace(/\\/g, '/'), 'literal' as const]]),
+    };
+    assert.deepStrictEqual(await resolveTargets([page], options), [page]);
+    rmSync(page);
+    assert.deepStrictEqual(await resolveTargets([page], options), []);
+    assert.deepStrictEqual(
+      await resolveTargets([join(root, 'app'), `!${page}`], options),
+      [decoy],
+    );
+    writeFileSync(page, '');
+    assert.deepStrictEqual(await resolveTargets([page], options), [page]);
+
+    const glob = join(root, 'app', '[ab]', 'page.tsx');
+    const match = join(root, 'app', 'a', 'page.tsx');
+    mkdirSync(join(root, 'app', 'a'), { recursive: true });
+    writeFileSync(match, '');
+    const globOptions = {
+      targetKinds: new Map([[glob.replace(/\\/g, '/'), 'glob' as const]]),
+    };
+    assert.deepStrictEqual(await resolveTargets([glob], globOptions), [match]);
+    mkdirSync(join(root, 'app', '[ab]'), { recursive: true });
+    writeFileSync(glob, '');
+    assert.deepStrictEqual(await resolveTargets([glob], globOptions), [match]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

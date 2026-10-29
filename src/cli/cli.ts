@@ -648,9 +648,25 @@ export async function run(
   }
 
   const targetPaths = flags.targets.map((target) => resolveTarget(cwd, target));
+  const targetKinds = new Map<string, 'literal' | 'glob'>();
+  const rememberTargetKinds = (paths: string[]) => {
+    for (const path of paths) {
+      const target = path.startsWith('!') ? path.slice(1) : path;
+      const key = target.replace(/\\/g, '/');
+      if (!targetKinds.has(key))
+        targetKinds.set(
+          key,
+          existsSync(target) || !(path.startsWith('!') || isGlob(target))
+            ? 'literal'
+            : 'glob',
+        );
+    }
+    return targetKinds;
+  };
+  rememberTargetKinds(targetPaths);
   let files: string[];
   try {
-    files = await resolveTargets(targetPaths);
+    files = await resolveTargets(targetPaths, { targetKinds });
   } catch (error) {
     sink.error(
       `tailwind-canonical: could not resolve targets: ${errMsg(error)}`,
@@ -685,12 +701,14 @@ export async function run(
     };
     const explicitTargets = (paths: string[]) =>
       paths.filter(
-        (path) => !path.startsWith('!') && (!isGlob(path) || existsSync(path)),
+        (path) =>
+          !path.startsWith('!') &&
+          targetKinds.get(path.replace(/\\/g, '/')) === 'literal',
       );
     return startWatch({
       files,
       explicitTargets: explicitTargets(targetPaths),
-      roots: watchRoots(targetPaths, [cwd, configDirectory()]),
+      roots: watchRoots(targetPaths, [cwd, configDirectory()], targetKinds),
       sink,
       refresh: async (changed) => {
         const nextConfig = await loadConfig(cwd, { reload: true });
@@ -711,8 +729,14 @@ export async function run(
         const paths = nextFlags.targets.map((target) =>
           resolveTarget(cwd, target),
         );
-        const nextFiles = await resolveTargets(paths);
-        const nextRoots = watchRoots(paths, [cwd, configDirectory()]);
+        const nextFiles = await resolveTargets(paths, {
+          targetKinds: rememberTargetKinds(paths),
+        });
+        const nextRoots = watchRoots(
+          paths,
+          [cwd, configDirectory()],
+          targetKinds,
+        );
         const configChanged =
           JSON.stringify(config, (_key, value) =>
             value instanceof RegExp ? value.toString() : value,

@@ -476,3 +476,41 @@ test('watch keeps font-size and leading intact until an explicit config opt-in i
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('watch never reinterprets a deleted literal route as a glob matching another file', async () => {
+  const dir = freshDir();
+  const route = join(dir, 'app', '[locale]');
+  const page = join(route, 'page.tsx');
+  const decoy = join(dir, 'app', 'l', 'page.tsx');
+  mkdirSync(route, { recursive: true });
+  mkdirSync(join(dir, 'app', 'l'), { recursive: true });
+  writeFileSync(page, '<div className="flex" />');
+  writeFileSync(decoy, '<div className="p-[16px]" />');
+  const { child, out, err } = spawnWatcher(
+    ['--fix', '--watch', 'app/[locale]/page.tsx'],
+    dir,
+  );
+  try {
+    assert.ok(await waitFor(() => out().includes('Watching')), err());
+    rmSync(page);
+    writeFileSync(join(dir, 'tick.txt'), 'refresh discovery');
+    await sleep(300);
+    assert.strictEqual(child.exitCode, null, err());
+    assert.strictEqual(
+      readFileSync(decoy, 'utf8'),
+      '<div className="p-[16px]" />',
+    );
+    writeFileSync(page, '<div className="p-[8px]" />');
+    assert.ok(
+      await waitFor(() => readFileSync(page, 'utf8').includes('p-2')),
+      err(),
+    );
+    assert.strictEqual(
+      readFileSync(decoy, 'utf8'),
+      '<div className="p-[16px]" />',
+    );
+  } finally {
+    await stop(child);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

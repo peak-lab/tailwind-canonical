@@ -33,11 +33,17 @@ function contains(root: string, path: string): boolean {
 }
 
 /** Watch the existing ancestor of each target, including currently empty globs. */
-export function watchRoots(targets: string[], configDirs: string[]): string[] {
+export function watchRoots(
+  targets: string[],
+  configDirs: string[],
+  targetKinds?: ReadonlyMap<string, 'literal' | 'glob'>,
+): string[] {
   const dirs = [...configDirs];
   for (const target of targets) {
     if (target.startsWith('!')) continue;
-    const magic = existsSync(target) ? -1 : target.search(/[*?{[(]/);
+    const kind = targetKinds?.get(target.replace(/\\/g, '/'));
+    const literal = kind ? kind === 'literal' : existsSync(target);
+    const magic = literal ? -1 : target.search(/[*?{[(]/);
     const prefix = target.slice(0, magic);
     let dir =
       magic < 0 ? target : prefix.endsWith(sep) ? prefix : dirname(prefix);
