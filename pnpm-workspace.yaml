@@ -1,3 +1,7 @@
 allowBuilds:
   esbuild: true
   lefthook: true
+
+# Patch the ESLint toolchain transitively without adding a runtime dependency.
+overrides:
+  brace-expansion@5.0.9: 5.0.12

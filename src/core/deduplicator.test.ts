@@ -631,3 +631,19 @@ test('deduplicateClasses - preserves order when nothing is removed (#128)', asyn
     },
   );
 });
+
+test('preserves logical radius utilities independently', () => {
+  assert.strictEqual(
+    deduplicateClasses('rounded-s-lg rounded-e-lg'),
+    'rounded-s-lg rounded-e-lg',
+  );
+  assert.strictEqual(
+    deduplicateClasses('rounded-tl-lg rounded-s-sm'),
+    'rounded-tl-lg rounded-s-sm',
+  );
+});
+
+test('never deduplicates JavaScript inside interpolated class strings', () => {
+  const input = 'p-4 ' + '$' + '{a + a + a}';
+  assert.strictEqual(deduplicateClasses(input), input);
+});

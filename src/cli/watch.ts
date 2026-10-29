@@ -1,48 +1,182 @@
-import { watch as fsWatch } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import {
+  existsSync,
+  type FSWatcher,
+  watch as fsWatch,
+  statSync,
+} from 'node:fs';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { DEFAULT_IGNORE } from '../core/scanner.js';
 import { errMsg, pluralize, timestamp } from './format.js';
 import type { Sink } from './types.js';
 
+type WatchRefresh = {
+  files: string[];
+  roots: string[];
+  reprocessAll?: boolean;
+};
 type WatchOptions = {
   files: string[];
+  roots: string[];
   sink: Sink;
+  refresh: (changed: ReadonlySet<string>) => Promise<WatchRefresh>;
   processFile: (file: string) => void;
 };
 
-export function startWatch({ files, sink, processFile }: WatchOptions): {
+function contains(root: string, path: string): boolean {
+  const rel = relative(root, path);
+  return (
+    rel === '' ||
+    (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`))
+  );
+}
+
+/** Watch the existing ancestor of each target, including currently empty globs. */
+export function watchRoots(targets: string[], configDirs: string[]): string[] {
+  const dirs = [...configDirs];
+  for (const target of targets) {
+    if (target.startsWith('!')) continue;
+    const magic = target.search(/[*?{[(]/);
+    const prefix = target.slice(0, magic);
+    let dir =
+      magic < 0 ? target : prefix.endsWith(sep) ? prefix : dirname(prefix);
+    if (existsSync(dir) && !statSync(dir).isDirectory()) dir = dirname(dir);
+    while (!existsSync(dir)) {
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    dirs.push(dir);
+  }
+  const roots = [...new Set(dirs.map((dir) => resolve(dir)))];
+  return roots.filter(
+    (dir) => !roots.some((other) => other !== dir && contains(other, dir)),
+  );
+}
+
+export function startWatch({
+  files,
+  roots,
+  sink,
+  refresh,
+  processFile,
+}: WatchOptions): {
   exitCode: number;
-  watching: true;
+  watching: boolean;
+  close: () => void;
 } {
-  const fileSet = new Set(files);
-  const timers = new Map<string, ReturnType<typeof setTimeout>>();
-  const dirs = new Set(files.map((file) => dirname(file)));
+  let fileSet = new Set(files);
+  const watchers = new Map<string, FSWatcher>();
+  const changed = new Set<string>();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let running = false;
+  let closed = false;
 
-  sink.log(`Watching ${pluralize(files.length, 'file')}... (Ctrl+C to stop)`);
-
-  for (const dir of dirs) {
-    fsWatch(dir, { recursive: true }, (_, filename) => {
-      if (!filename) return;
-      const full = resolve(dir, filename);
-      if (!fileSet.has(full)) return;
-      clearTimeout(timers.get(full));
-      timers.set(
-        full,
-        setTimeout(() => {
-          timers.delete(full);
-          try {
-            processFile(full);
-          } catch (error) {
-            sink.error(`${timestamp()} ${full} — error: ${errMsg(error)}`);
-          }
-        }, 50),
-      );
-    });
+  function close(): void {
+    if (closed) return;
+    closed = true;
+    clearTimeout(timer);
+    changed.clear();
+    for (const watcher of watchers.values()) watcher.close();
+    watchers.clear();
+    process.removeListener('SIGINT', stop);
+    process.removeListener('SIGTERM', stop);
   }
 
-  process.once('SIGINT', () => {
+  function stop(): void {
+    close();
     sink.log('\nWatcher stopped.');
-    process.exit(0);
-  });
+  }
 
-  return { exitCode: 0, watching: true };
+  function fail(path: string, error: unknown): void {
+    sink.error(`${timestamp()} ${path} — error: ${errMsg(error)}`);
+  }
+
+  function schedule(): void {
+    if (closed || running) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      void flush();
+    }, 50);
+  }
+
+  function synchronize(nextRoots: string[]): void {
+    // Install replacements before closing the old set, so no event gap is added.
+    for (const root of nextRoots) {
+      if (watchers.has(root)) continue;
+      try {
+        const watcher = fsWatch(root, { recursive: true }, (_, filename) => {
+          if (closed) return;
+          if (
+            filename &&
+            String(filename)
+              .split(/[\\/]/)
+              .some((part) => DEFAULT_IGNORE.includes(part))
+          )
+            return;
+          changed.add(filename ? resolve(root, String(filename)) : root);
+          schedule();
+        });
+        watchers.set(root, watcher);
+        watcher.on('error', (error) => {
+          if (closed) return;
+          fail(root, error);
+          process.exitCode = 1;
+          close();
+        });
+      } catch (error) {
+        fail(root, error);
+        process.exitCode = 1;
+        close();
+        return;
+      }
+    }
+    for (const [root, watcher] of watchers) {
+      if (!nextRoots.includes(root)) {
+        watcher.close();
+        watchers.delete(root);
+      }
+    }
+  }
+
+  async function flush(): Promise<void> {
+    if (closed || running) return;
+    running = true;
+    const batch = new Set(changed);
+    changed.clear();
+    try {
+      const next = await refresh(batch);
+      if (closed) return;
+      synchronize(next.roots);
+      if (closed) return;
+      const nextFiles = new Set(next.files);
+      for (const file of nextFiles) {
+        if (closed) break;
+        if (
+          !next.reprocessAll &&
+          fileSet.has(file) &&
+          ![...batch].some((path) => contains(path, file))
+        )
+          continue;
+        try {
+          processFile(file);
+        } catch (error) {
+          fail(file, error);
+        }
+      }
+      fileSet = nextFiles;
+    } catch (error) {
+      if (!closed) fail('watch refresh', error);
+    } finally {
+      running = false;
+      if (changed.size > 0) schedule();
+    }
+  }
+
+  synchronize(roots);
+  if (!closed) {
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
+    sink.log(`Watching ${pluralize(files.length, 'file')}... (Ctrl+C to stop)`);
+  }
+  return { exitCode: closed ? 1 : 0, watching: !closed, close };
 }

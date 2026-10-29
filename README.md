@@ -95,6 +95,17 @@ npx tailwind-canonical --version
 ```
 
 An unmatched target exits `1` with `No files matched: <targets>`.
+Directory and glob discovery skip symbolic links. An explicitly named file symlink remains supported and reads or changes its target.
+
+### Watch behavior
+
+Watch mode discovers new and recreated files, including targets from initially
+empty globs. It applies the same exclusions and symlink policy as single-pass
+runs. Configuration entry-file changes reload mappings, defaults and targets;
+invalid configuration pauses processing until it is corrected. Watch roots are
+collapsed to avoid overlapping recursive watchers. SIGINT/SIGTERM close watchers
+and pending timers; filesystem watcher failures are reported and stop the session
+with a nonzero exit code. Watch output is text only.
 
 ## What each flag does
 
@@ -106,7 +117,7 @@ An unmatched target exits `1` with `No files matched: <targets>`.
 | `--merge` | tailwind-merge conflict resolution | `bg-red-500 bg-blue-500` → `bg-blue-500` |
 | `--check` | Dry-run: report what the combined transforms would change, write nothing (exit 1 on pending changes) | `would fix src/Button.tsx (1 replacement)` |
 | `--analyze` | Cross-file consistency (color variants, scale drift, repeated patterns) | `Warning: 3 red color variants used for text: text-red-500, text-rose-500, text-red-600` |
-| `--watch` | Re-run on every file save (debounced 50ms) | `[12:34:01] src/Button.tsx — 2 changes applied` |
+| `--watch` | Re-run on every file save (debounced 50ms; text reporter only) | `[12:34:01] src/Button.tsx — 2 changes applied` |
 | `--typos` | Likely misspelled color names (read-only; chains after transforms) | `text-gry-500` → `text-gray-500` [typo] |
 | `--reporter json` | JSON output (check mode) or fix summary | machine-readable for CI pipelines |
 | `--reporter sarif` | SARIF 2.1.0 output (findings in check/typos modes; transform mode emits an empty document unless `--typos` is chained) | GitHub Code Scanning / VS Code |
@@ -234,7 +245,7 @@ npx tailwind-canonical --analyze ./src
 #   - px-11: 3 uses in 1 file (608 px uses total); e.g. src/Dialog.tsx
 ```
 
-Three detectors:
+Four detectors:
 
 | Detector | What it flags |
 |---|---|
@@ -242,6 +253,11 @@ Three detectors:
 | Scale inconsistency | Competing values for the same spacing / `gap` / `z` property across files |
 | Rare scale values | Low-frequency scale values inside otherwise common properties (`ml-13`, `gap-24`, `px-11`, …) |
 | Repeated patterns | Identical class combinations recurring across 3+ files |
+
+Repeated patterns compare complete class strings, ignoring class order; they do not
+mine shared subsets inside larger strings. The programmatic `FileClasses` input
+can provide `classLists` to preserve those string boundaries. If omitted,
+`classes` is treated as one class string per file for backward compatibility.
 
 Pairs with `--reporter json` for machine-readable output. Exits `1` when any inconsistency is found.
 
@@ -459,6 +475,25 @@ discrete — `p-13` does not exist there either. So v3 mode is the safe setting
 and merely leaves a few v3.4-valid suggestions on the table; `tailwindVersion:
 4` would emit steps v3.4 cannot generate.
 
+### Custom themes (`useDefaultTheme`)
+
+The default mappings assume Tailwind's stock theme and a 16px root font size for
+px/rem equivalences. If your theme changes these values, disable inferred mappings:
+
+```ts
+export default {
+  useDefaultTheme: false,
+  customTextTokens: { 12: 'tiny' },
+  customSpacingTokens: { 16: 'gutter' },
+}
+```
+
+Only explicitly configured pixel mappings are suggested in this mode:
+`text-[12px]` becomes `text-tiny`, `p-[16px]` becomes `p-gutter`, and other
+arbitrary values (including rem values) stay unchanged. The option is shared by
+the CLI, library and ESLint canonicalization rule. It does not load your Tailwind
+theme or customize the separate `tailwind-merge` conflict resolver.
+
 ## Config
 
 Create `tailwind-canonical.config.ts` at the root:
@@ -582,15 +617,27 @@ ESLint without schema errors:
 ```
 
 The rule **honors**: `customTextTokens`, `customSpacingTokens`, `ignorePatterns`
-(all applied via `suggestCanonical`).
+and `tailwindVersion` (all applied via `suggestCanonical`), plus
+`useDefaultTheme` to disable inferred mappings. It also uses
+`attributeNames` (default: `['className']`) and `functionNames` (default:
+`['cn', 'clsx', 'cva']`) to identify class strings. Other `Config` fields are
+accepted for shared configuration and have no effect on this rule.
 
-It **accepts but ignores**: `functionNames`, `attributeNames`, `sortOrder`.
-These are CLI-only options, allowed in the schema purely so a single shared
-config object can be passed without errors.
+Both rules inspect class attributes and recognized utility calls, including
+arrays, object arguments and conditional branches. Unrelated strings and tagged
+templates are ignored. In interpolated templates, only complete tokens separated
+from an interpolation by whitespace are transformed; partial tokens such as
+`text-[12px]${suffix}` are preserved. `no-conflicting-classes` accepts the same
+shared configuration and uses its attribute/function names and custom text tokens. Enabling this rule without
+`tailwind-merge` installed raises an installation error. In `cn`/`clsx` object arguments,
+only keys contain classes; predicate values are preserved. For `cva`, base
+classes, variant classes and compound variant `class`/`className` values are checked.
 
 ## Known limits
 
-- **`--watch` does not pick up files created after start** — the watcher initializes a file list once and monitors only existing files for changes. New files in the target directories are not detected until the watcher is restarted.
+- **Source extraction is not a complete JavaScript/JSX parser** — ambiguous regex/division expressions and some nested templates are left intact. Quoted JSX prose can hide nested markup from CLI/API extraction; use the ESLint plugin when complete JSX syntax coverage is needed.
+- **CLI and content APIs extract static class positions** — strings, arrays, conditional result branches, `cn`/`clsx` object keys, and `cva` variant classes are supported. Predicates, variant identifiers, `defaultVariants`, computed keys, spreads and nested calls to unconfigured functions are preserved. Dynamic values are not evaluated.
+- **Watch reloads the configuration entry file** — imported helper modules keep Node's normal module cache. Restart the watcher after changing a helper imported by your config.
 - **`--typos` covers Tailwind color names only** — color-name detection uses Levenshtein distance 1 against the built-in Tailwind color palette. Custom colors from your config are supported via `extraColors` in the config, but typo detection does not extend to properties, function names, or arbitrary modifiers.
 - **`--merge` requires `tailwind-merge` as a peer dependency** — the plugin is optional, so the CLI will error if you use `--merge` without installing `tailwind-merge`. Install with `pnpm add -D tailwind-merge`.
 
@@ -627,6 +674,26 @@ npx tailwind-canonical --fix --dedup --sort ./src ./app
 }
 ```
 
+## Compatibility and performance checks
+
+The supported ESLint range is `>=8.57.1 <11` (flat configuration), and the optional
+`tailwind-merge` range is `>=2.0.0 <4`. CI tests the built tarball in isolated
+consumer projects across ESLint 8/9/10 and tailwind-merge 2/3, including minimum
+versions. Imports, the installed binary, ESLint fixes and TypeScript consumers
+are exercised rather than relying only on source tests.
+
+```bash
+pnpm test:compat 8.57.1 2.0.0
+pnpm benchmark
+# Tune the fixed JSX/Vue/Svelte corpus and emit machine-readable measurements:
+pnpm benchmark --files 300 --lines 40 --runs 7 --json
+```
+
+The benchmark checks expected findings and transform idempotence, then measures
+file discovery, file analysis, fix/dedup/sort and cross-file consistency. Results
+include Node/CPU/platform, corpus size, median and p95 after warmup. Compare on the
+same machine; this synthetic corpus is not a promise about every project.
+
 ## Dead code detection (knip)
 
 ```bash
@@ -636,6 +703,11 @@ pnpm knip
 Detects unused exports, files, and dependencies. Config in `knip.json`. Enforced in CI and in the `pre-push` git hook.
 
 ## Programmatic API
+
+This package targets Node.js. Some exported functions are pure transformations,
+but the package entry and `core` re-exports also load Node I/O modules. They are
+not browser entry points. “Pure” describes the function's behavior, not the
+entire import graph.
 
 ```ts
 import {

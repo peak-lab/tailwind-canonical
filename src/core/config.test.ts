@@ -589,3 +589,50 @@ test('loadConfig - a real ESM error is not blamed on CommonJS loading', async (_
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('validateConfig - custom theme switch is an explicit boolean', () => {
+  assert.deepEqual(validateConfig({ useDefaultTheme: false }), {
+    useDefaultTheme: false,
+  });
+  assert.deepEqual(validateConfig({ useDefaultTheme: true }), {
+    useDefaultTheme: true,
+  });
+  assert.throws(
+    () => validateConfig({ useDefaultTheme: 'false' }),
+    /useDefaultTheme must be a boolean/,
+  );
+});
+
+test('loadConfig reload bypasses ESM and CommonJS caches after edits', async () => {
+  for (const [extension, declaration] of [
+    ['mjs', 'export default'],
+    ['js', 'module.exports ='],
+  ]) {
+    const dir = freshDir();
+    const file = join(dir, `tailwind-canonical.config.${extension}`);
+    try {
+      writeFileSync(join(dir, 'package.json'), '{"type":"commonjs"}');
+      writeFileSync(
+        file,
+        `${declaration} { customTextTokens: { 11: 'small' } }`,
+      );
+      assert.deepStrictEqual((await loadConfig(dir)).customTextTokens, {
+        11: 'small',
+      });
+      writeFileSync(
+        file,
+        `${declaration} { customTextTokens: { 11: 'tiny' } }`,
+      );
+      assert.deepStrictEqual(
+        (await loadConfig(dir, { reload: true })).customTextTokens,
+        { 11: 'tiny' },
+      );
+      assert.deepStrictEqual(
+        (await loadConfig(dir, { reload: true })).customTextTokens,
+        { 11: 'tiny' },
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});

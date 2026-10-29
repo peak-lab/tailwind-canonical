@@ -1,10 +1,13 @@
 import { readFileSync } from 'node:fs';
-import { toClassStringOpts } from '../core/class-strings.js';
+import {
+  extractClassStrings,
+  SINGLE_CLASS_REGEX,
+  toClassStringOpts,
+} from '../core/class-strings.js';
 import {
   analyzeConsistency,
   type ConsistencyOptions,
   type ConsistencyReport,
-  collectClasses,
   type FileClasses,
 } from '../core/consistency.js';
 import type { Config } from '../core/rules.js';
@@ -19,10 +22,13 @@ export function analyzeConsistencyFiles(
   const input: FileClasses[] = [];
   for (const file of filePaths) {
     try {
-      input.push({
-        file,
-        classes: collectClasses(readFileSync(file, 'utf8'), opts),
-      });
+      const classLists = extractClassStrings(
+        readFileSync(file, 'utf8'),
+        opts,
+      ).map(({ value }) =>
+        [...value.matchAll(SINGLE_CLASS_REGEX)].map((match) => match[0]),
+      );
+      input.push({ file, classes: classLists.flat(), classLists });
     } catch (err) {
       if (onError) onError(file, err);
     }

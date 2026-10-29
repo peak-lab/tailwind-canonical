@@ -1,10 +1,9 @@
-import { type Dirent, readdirSync, statSync } from 'node:fs';
+import { type Dirent, lstatSync, readdirSync, statSync } from 'node:fs';
 import { glob } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, join, matchesGlob } from 'node:path';
 import {
   DEFAULT_EXTENSIONS,
   DEFAULT_IGNORE,
-  globToRegex,
   isGlob,
   type ScanOptions,
 } from '../core/scanner.js';
@@ -26,7 +25,10 @@ export function scanFiles(target: string, options: ScanOptions = {}): string[] {
       const full = join(current, entry.name);
       if (entry.isDirectory()) {
         walk(full);
-      } else if (extensions.some((ext) => entry.name.endsWith(ext))) {
+      } else if (
+        entry.isFile() &&
+        extensions.some((ext) => entry.name.endsWith(ext))
+      ) {
         files.push(full);
       }
     }
@@ -52,11 +54,11 @@ export async function resolveTargets(
   const extensions = options.extensions ?? DEFAULT_EXTENSIONS;
 
   const positive: string[] = [];
-  const negativeRegexes: RegExp[] = [];
+  const negativePatterns: string[] = [];
 
   for (const p of patterns) {
     if (p.startsWith('!')) {
-      negativeRegexes.push(globToRegex(p.slice(1)));
+      negativePatterns.push(p.slice(1).replace(/\\/g, '/'));
     } else {
       positive.push(p);
     }
@@ -73,7 +75,10 @@ export async function resolveTargets(
             .split('/')
             .some((s) => ignore.includes(s)),
       })) {
-        if (extensions.some((ext) => f.endsWith(ext))) {
+        if (
+          extensions.some((ext) => f.endsWith(ext)) &&
+          lstatSync(f).isFile()
+        ) {
           files.add(f);
         }
       }
@@ -84,10 +89,16 @@ export async function resolveTargets(
     }
   }
 
-  if (negativeRegexes.length > 0) {
+  if (negativePatterns.length > 0) {
     for (const f of [...files]) {
       const normalized = f.replace(/\\/g, '/');
-      if (negativeRegexes.some((re) => re.test(normalized))) {
+      if (
+        negativePatterns.some(
+          (pattern) =>
+            matchesGlob(normalized, pattern) ||
+            (!isAbsolute(pattern) && matchesGlob(normalized, `**/${pattern}`)),
+        )
+      ) {
         files.delete(f);
       }
     }

@@ -4,6 +4,7 @@ import { analyzeFile, type Finding } from '../core/analyzer.js';
 import { toClassStringOpts } from '../core/class-strings.js';
 import {
   CONFIG_FILENAMES,
+  findConfigPath,
   loadConfig,
   resolveInitFilename,
 } from '../core/config.js';
@@ -33,7 +34,7 @@ import {
   writeJson,
 } from './reporters.js';
 import type { FileCounts, Reporter, RunResult, Sink } from './types.js';
-import { startWatch } from './watch.js';
+import { startWatch, watchRoots } from './watch.js';
 
 export type { RunResult, Sink } from './types.js';
 
@@ -78,7 +79,7 @@ const HELP_TEXT = [
   '  --check            Dry-run: report what transforms would change, write nothing (exit 1 on pending changes)',
   '  --analyze          Cross-file consistency analysis (read-only)',
   '  --typos            Flag likely misspelled color names (read-only)',
-  '  --watch            Re-run on every file save (transform/check mode; ignored with --typos)',
+  '  --watch            Re-run on every file save (text reporter only; ignored with --typos/--check)',
   '  --reporter <type>  Output format: text|json|sarif',
   '  --help, -h         Show this help message',
   '  --version, -V      Show the installed version',
@@ -602,6 +603,7 @@ export async function run(
     return { exitCode: 1 };
   }
 
+  const cliFlags = flags;
   flags = applyDefaultCommand(flags, config);
 
   if (flags.targets.length === 0) {
@@ -612,6 +614,19 @@ export async function run(
   if (flags.check && !flags.analyze && !isTransforming(flags)) {
     sink.error(
       '--check requires at least one of --fix, --dedup, --merge, --sort',
+    );
+    return { exitCode: 1 };
+  }
+
+  if (
+    flags.watch &&
+    !flags.analyze &&
+    !flags.typos &&
+    !flags.check &&
+    flags.reporter !== 'text'
+  ) {
+    sink.error(
+      '--watch requires --reporter text; JSON and SARIF support single-pass runs only',
     );
     return { exitCode: 1 };
   }
@@ -633,7 +648,10 @@ export async function run(
   const targetPaths = flags.targets.map((target) => resolveTarget(cwd, target));
   const files = await resolveTargets(targetPaths);
 
-  if (files.length === 0) {
+  if (
+    files.length === 0 &&
+    !(flags.watch && !flags.analyze && !flags.typos && !flags.check)
+  ) {
     sink.error(`No files matched: ${flags.targets.join(' ')}`);
     return { exitCode: 1 };
   }
@@ -651,11 +669,60 @@ export async function run(
   }
 
   if (flags.watch && !flags.typos && !flags.check) {
+    const configDirectory = () => {
+      const path = findConfigPath(cwd);
+      return path ? dirname(path) : cwd;
+    };
     return startWatch({
       files,
+      roots: watchRoots(targetPaths, [cwd, configDirectory()]),
       sink,
+      refresh: async (changed) => {
+        const nextConfig = await loadConfig(cwd, { reload: true });
+        const nextFlags = applyDefaultCommand(cliFlags, nextConfig);
+        if (
+          nextFlags.analyze ||
+          nextFlags.typos ||
+          nextFlags.check ||
+          nextFlags.reporter !== 'text'
+        ) {
+          throw new Error(
+            'Watch configuration must use text output without --analyze, --typos or --check',
+          );
+        }
+        let nextMerge = twMerge;
+        if (nextFlags.merge && !nextMerge)
+          ({ twMerge: nextMerge } = await import('tailwind-merge'));
+        const paths = nextFlags.targets.map((target) =>
+          resolveTarget(cwd, target),
+        );
+        const nextFiles = await resolveTargets(paths);
+        const nextRoots = watchRoots(paths, [cwd, configDirectory()]);
+        const configChanged =
+          JSON.stringify(config, (_key, value) =>
+            value instanceof RegExp ? value.toString() : value,
+          ) !==
+          JSON.stringify(nextConfig, (_key, value) =>
+            value instanceof RegExp ? value.toString() : value,
+          );
+        config = nextConfig;
+        flags = nextFlags;
+        twMerge = nextMerge;
+        return {
+          files: nextFiles,
+          roots: nextRoots,
+          reprocessAll:
+            configChanged ||
+            [...changed].some((file) =>
+              CONFIG_FILENAMES.some(
+                (name) =>
+                  file.endsWith(`/${name}`) || file.endsWith(`\\${name}`),
+              ),
+            ),
+        };
+      },
       processFile: (file) =>
-        transforming
+        isTransforming(flags)
           ? watchTransform(file, flags, config, sink, twMerge)
           : logWatchFindings(
               file,

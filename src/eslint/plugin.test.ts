@@ -1,5 +1,7 @@
 import assert from 'node:assert';
+import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
+import { Linter } from 'eslint';
 import plugin from './plugin.js';
 
 const {
@@ -16,7 +18,15 @@ function makeContext(reports: unknown[]) {
   };
 }
 
-function literal(value: string, raw = `"${value}"`, parent?: { type: string }) {
+const classAttribute = {
+  type: 'JSXAttribute',
+  name: { type: 'JSXIdentifier', name: 'className' },
+};
+const classExpression = {
+  type: 'JSXExpressionContainer',
+  parent: classAttribute,
+};
+function literal(value: string, raw = `"${value}"`, parent = classExpression) {
   return { type: 'Literal' as const, value, raw, parent };
 }
 
@@ -178,7 +188,7 @@ test('no-arbitrary-canonical rule', async (t) => {
     } as never);
     const raw = '"before &quot; text-[12px]"';
     (rule.Literal as (n: unknown) => void)(
-      literal('before " text-[12px]', raw, { type: 'JSXAttribute' }),
+      literal('before " text-[12px]', raw, classAttribute),
     );
 
     assert.strictEqual(
@@ -232,7 +242,7 @@ test('no-arbitrary-canonical rule', async (t) => {
       options: [
         {
           functionNames: ['cn'],
-          attributeNames: ['class'],
+          attributeNames: ['className'],
           sortOrder: ['display'],
           ignorePatterns: [/^z-/],
         },
@@ -257,14 +267,14 @@ test('no-arbitrary-canonical rule', async (t) => {
   });
 
   await t.test(
-    'honors ignorePatterns and no-ops CLI-only keys from a shared config',
+    'honors ignorePatterns and accepts shared context options',
     () => {
       const reports: unknown[] = [];
       const ctx = {
         options: [
           {
             functionNames: ['cn'],
-            attributeNames: ['class'],
+            attributeNames: ['className'],
             sortOrder: ['display'],
             ignorePatterns: [/^text-/],
           },
@@ -374,6 +384,7 @@ function templateLiteral(...raws: string[]) {
   });
   return {
     type: 'TemplateLiteral' as const,
+    parent: classExpression,
     quasis,
     expressions: [],
     source,
@@ -452,8 +463,8 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
       const cases: Array<[ReturnType<typeof templateLiteral>, string]> = [
         [templateLiteral('text-[12px] flex'), '`text-xs flex`'],
         [
-          templateLiteral('p-2 text-[12px]', ' flex'),
-          `\`p-2 text-xs${interp} flex\``,
+          templateLiteral('p-2 text-[12px] ', ' flex'),
+          `\`p-2 text-xs ${interp} flex\``,
         ],
       ];
 
@@ -495,6 +506,7 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
       const source = `\`${raw}\``;
       (rule.TemplateLiteral as (n: unknown) => void)({
         type: 'TemplateLiteral',
+        parent: classExpression,
         quasis: [
           {
             type: 'TemplateElement',
@@ -529,6 +541,7 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
     const source = `\`${raw}\``;
     (rule.TemplateLiteral as (n: unknown) => void)({
       type: 'TemplateLiteral',
+      parent: classExpression,
       quasis: [
         {
           type: 'TemplateElement',
@@ -561,12 +574,7 @@ test('no-arbitrary-canonical - TemplateLiteral visitor', async (t) => {
     const node = taggedTemplateLiteral(String.raw`path\n text-[12px]`);
     (rule.TemplateLiteral as (n: unknown) => void)(node);
 
-    const output = applyQuasiFix(node.source, reports[0]?.fix);
-    assert.strictEqual(output, `String.raw\`${String.raw`path\n text-xs`}\``);
-    assert.strictEqual(
-      Function(`return ${output}`)(),
-      String.raw`path\n text-xs`,
-    );
+    assert.strictEqual(reports.length, 0);
   });
 });
 
@@ -604,6 +612,7 @@ test('no-conflicting-classes - TemplateLiteral visitor', async (t) => {
     const source = `\`${raw}\``;
     (rule.TemplateLiteral as (n: unknown) => void)({
       type: 'TemplateLiteral',
+      parent: classExpression,
       quasis: [
         {
           type: 'TemplateElement',
@@ -641,27 +650,36 @@ test('no-conflicting-classes - TemplateLiteral visitor', async (t) => {
     );
     (rule.TemplateLiteral as (n: unknown) => void)(node);
 
-    const output = applyQuasiFix(node.source, reports[0]?.fix);
-    assert.strictEqual(
-      output,
-      `String.raw\`${String.raw`path\n bg-blue-500`}\``,
-    );
-    assert.strictEqual(
-      Function(`return ${output}`)(),
-      String.raw`path\n bg-blue-500`,
-    );
+    assert.strictEqual(reports.length, 0);
   });
 });
 
-test('no-conflicting-classes - twMerge peer is wired (peerMissing branch is false when installed)', () => {
-  // tailwind-merge is installed in this repo, so create() resolves twMerge and
-  // does NOT set peerMissing. This locks in that the rule activates rather than
-  // silently no-opping. The peerMissing early-return only triggers when the
-  // optional peer dep is absent, which cannot be reproduced while it is installed.
-  const reports: unknown[] = [];
-  const rule = noConflictingClasses.create(makeContext(reports) as never);
-  (rule.Literal as (n: unknown) => void)(literal('p-2 p-4'));
-  assert.strictEqual(reports.length, 1);
+test('conflict rule fails clearly when its optional peer is unavailable', () => {
+  // Isolate module interception so other tests still use the installed peer.
+  const script = `
+    import { createRequire } from 'node:module';
+    const require = createRequire(import.meta.url);
+    const Module = require('node:module');
+    const load = Module._load;
+    Module._load = function (id, ...args) {
+      if (id === 'tailwind-merge') throw new Error('simulated missing peer');
+      return load.call(this, id, ...args);
+    };
+    const { default: plugin } = await import(${JSON.stringify(new URL('./plugin.ts', import.meta.url).href)});
+    try {
+      plugin.rules['no-conflicting-classes'].create({ options: [] });
+      process.exitCode = 1;
+    } catch (error) {
+      process.stdout.write(error.message);
+    }
+  `;
+  const output = execFileSync(
+    process.execPath,
+    ['--import=tsx/esm', '--input-type=module', '-e', script],
+    { encoding: 'utf8' },
+  );
+  assert.match(output, /no-conflicting-classes.*requires.*tailwind-merge/);
+  assert.match(output, /pnpm add -D tailwind-merge/);
 });
 
 test('plugin exports', async (t) => {
@@ -685,4 +703,162 @@ test('plugin exports', async (t) => {
       plugin,
     );
   });
+});
+
+test('real ESLint contexts preserve unrelated source and partial classes', () => {
+  const linter = new Linter();
+  const config = [
+    {
+      languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
+      plugins: { canonical: plugin },
+      rules: {
+        'canonical/no-arbitrary-canonical': 'error',
+        'canonical/no-conflicting-classes': 'error',
+      },
+    },
+  ] as const;
+  for (const source of [
+    'const message = "Hello  world";',
+    'const query = "SELECT text-[12px] FROM styles";',
+    'const node = <div title="text-[12px]" />;',
+    'const classes = cn(fetch("text-[12px]"));',
+    'const classes = cn({ x: flag === "p-[16px]" });',
+    'const classes = cn({ x: "p-[16px]" });',
+    'const classes = cn("p-[16px]" && "block");',
+    'const classes = cva("block", { defaultVariants: { size: "p-[16px]" } });',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
+    'const node = <div className={`text-[12px]${suffix}`} />;',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
+    'const node = <div className={`${prefix}text-[12px]`} />;',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
+    'const node = <div className={`p-4 p-2${suffix}`} />;',
+    'const node = <div className={String.raw`text-[12px]`} />;',
+    'const node = <div className="leading-6 text-[13px]" />;',
+  ]) {
+    const result = linter.verifyAndFix(source, config);
+    assert.deepEqual(result.messages, [], source);
+    assert.strictEqual(result.output, source);
+  }
+  for (const [source, expected] of [
+    [
+      'const node = <div className="text-[12px]" />;',
+      'const node = <div className="text-xs" />;',
+    ],
+    [
+      'const classes = cn("text-[12px]", ["p-[16px]"]);',
+      'const classes = cn("text-xs", ["p-4"]);',
+    ],
+    [
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
+      'const node = <div className={`p-4 p-2 ${suffix} text-[12px]`} />;',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
+      'const node = <div className={`p-2 ${suffix} text-xs`} />;',
+    ],
+    [
+      'const classes = clsx({ "text-[12px]": active });',
+      'const classes = clsx({ "text-xs": active });',
+    ],
+    [
+      'const classes = cn(value === "p-[16px]" && "px-[16px]");',
+      'const classes = cn(value === "p-[16px]" && "px-4");',
+    ],
+    [
+      'const classes = cn({"p-[16px]": "text-[12px]"});',
+      'const classes = cn({"p-4": "text-[12px]"});',
+    ],
+    [
+      'const classes = cva("p-[16px]", { variants: { size: { small: "text-[12px]" } }, compoundVariants: [{ size: "text-[12px]", class: "p-[16px]" }] });',
+      'const classes = cva("p-4", { variants: { size: { small: "text-xs" } }, compoundVariants: [{ size: "text-[12px]", class: "p-4" }] });',
+    ],
+  ]) {
+    const result = linter.verifyAndFix(source, config);
+    assert.deepEqual(result.messages, [], source);
+    assert.strictEqual(result.output, expected);
+  }
+});
+
+test('real ESLint accepts the entire shared Config and custom contexts', () => {
+  const result = new Linter().verifyAndFix('const classes = tw("p-[16px]");', [
+    {
+      plugins: { canonical: plugin },
+      rules: {
+        'canonical/no-arbitrary-canonical': [
+          'error',
+          {
+            functionNames: ['tw'],
+            attributeNames: ['class'],
+            extraColors: ['brand'],
+            extraColorFamilies: { brand: 'blue' },
+            extraScaleProperties: ['custom'],
+            analyze: { maxPatterns: 4 },
+            minRareScalePropertyOccurrences: 4,
+            rareScaleMaxFiles: 1,
+            rareScaleMaxCount: 2,
+            defaultCommand: { fix: true },
+          },
+        ],
+      },
+    },
+  ]);
+  assert.deepEqual(result.messages, []);
+  assert.strictEqual(result.output, 'const classes = tw("p-4");');
+});
+
+test('conflict rule honors custom class contexts and preserves custom text leading', () => {
+  const result = new Linter().verifyAndFix(
+    'const x = tw("p-2 p-4 leading-6 text-tiny");',
+    [
+      {
+        plugins: { canonical: plugin },
+        rules: {
+          'canonical/no-conflicting-classes': [
+            'error',
+            {
+              functionNames: ['tw'],
+              customTextTokens: { 11: 'tiny' },
+            },
+          ],
+        },
+      },
+    ],
+  );
+  assert.deepEqual(result.messages, []);
+  assert.strictEqual(result.output, 'const x = tw("p-4 leading-6 text-tiny");');
+});
+
+test('rule options reject malformed regular expressions with a clear error', () => {
+  assert.throws(
+    () =>
+      new Linter().verify('const x = cn("p-[16px]");', [
+        {
+          plugins: { canonical: plugin },
+          rules: {
+            'canonical/no-arbitrary-canonical': [
+              'error',
+              { ignorePatterns: ['p-'] },
+            ],
+          },
+        },
+      ]),
+    /ignorePatterns.*RegExp/,
+  );
+});
+
+test('rule options support disabling default-theme mappings', () => {
+  for (const [options, expected] of [
+    [{ useDefaultTheme: false }, 'const x = cn("text-[12px]");'],
+    [
+      { useDefaultTheme: false, customTextTokens: { 12: 'tiny' } },
+      'const x = cn("text-tiny");',
+    ],
+  ] as const) {
+    const result = new Linter().verifyAndFix('const x = cn("text-[12px]");', [
+      {
+        plugins: { canonical: plugin },
+        rules: { 'canonical/no-arbitrary-canonical': ['error', options] },
+      },
+    ]);
+    assert.deepEqual(result.messages, []);
+    assert.strictEqual(result.output, expected);
+  }
 });

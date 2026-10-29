@@ -14,13 +14,13 @@ Ships three artifacts from one codebase:
 ## Tech Stack
 
 - Node `>=22.6`, ESM-only (`"type": "module"`) — CI runs Node 22 and 24
-- TypeScript `^6.0.3`, target ES2022, module NodeNext
+- TypeScript `^7.0.2`, target ES2022, module NodeNext
 - pnpm `11.4.0` (pinned via `packageManager` field)
 - Biome `^2.5.11` — internal linter/formatter
 - `node:test` + `tsx` `^4.23.13` — test runner (no Jest, no Vitest)
 - Lefthook `^2.1.12` — git hook manager (pre-commit: biome + typecheck, pre-push: test + knip)
 - knip `^6.34.0` — dead code/dependency detection (`pnpm knip`; enforced in CI and the pre-push hook)
-- ESLint `>=8.0.0` — peer dep only, for plugin consumers
+- ESLint `>=8.57.1 <11` — peer dep only, for plugin consumers
 
 ## Commands
 
@@ -29,8 +29,8 @@ pnpm build        # tsc → dist/
 pnpm dev          # tsc --watch
 pnpm test         # node --import=tsx/esm --test "src/**/*.test.ts"
 pnpm typecheck    # tsc --noEmit
-pnpm lint         # biome check src/
-pnpm lint:fix     # biome check --write src/
+pnpm lint         # biome check src/ scripts/
+pnpm lint:fix     # biome check --write src/ scripts/
 pnpm knip         # dead code/dependency detection
 ```
 
@@ -71,7 +71,9 @@ src/
   index.ts             # Public library exports (barrel over core/)
 ```
 
-**Key invariant**: `core/` is pure — no file under `src/core/` imports `node:fs`.
+**Key invariant**: core transformations are pure — no file under `src/core/` imports `node:fs` directly.
+The re-exports below load Node modules transitively; the package is Node-only,
+not a browser-safe import graph.
 All file I/O lives in `src/io/` (9 wrappers, one per side-effecting `core/` module).
 Each of those `core/X.ts` files re-exports its `io/X.ts` wrapper as its last line
 (e.g. `fixer.ts` ends with `export { fixFile } from '../io/fixer.js';`), so the
@@ -99,9 +101,9 @@ or a non-built-in mapping. CLI appends `[custom token]` to the output line.
 
 ### ESLint plugin path
 
-The plugin (`src/eslint/plugin.ts`) calls `suggestCanonical` directly on AST
-`Literal` / `TemplateLiteral` nodes — there is no I/O on this path, so there is
-nothing to share with `src/io/`. Don't refactor it to route through `src/io/`.
+The plugin (`src/eslint/plugin.ts`) scopes AST `Literal` / `TemplateLiteral` nodes
+to class attributes and utility calls, then calls `suggestCanonical` directly.
+There is no I/O on this path, so there is nothing to share with `src/io/`. Don't refactor it to route through `src/io/`.
 
 ## Publishing
 

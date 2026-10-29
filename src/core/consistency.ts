@@ -12,7 +12,15 @@ import {
 } from './lexicon.js';
 import type { Config } from './rules.js';
 
-export type FileClasses = { file: string; classes: string[] };
+export type FileClasses = {
+  file: string;
+  /** All class occurrences, used for color and scale statistics. */
+  classes: string[];
+  /** Individual class strings, used for repeated-pattern detection.
+   * When omitted, `classes` is treated as one class string for compatibility.
+   */
+  classLists?: string[][];
+};
 
 export type ColorVariant = { token: string; count: number; files: string[] };
 
@@ -77,7 +85,11 @@ function parseColor(
   if (shade === '') return null;
   // A known color without an explicit family forms its own family, so colors
   // newly added to the palette are grouped rather than silently dropped.
-  const family = families[color] ?? (knownColors.has(color) ? color : null);
+  const family = Object.hasOwn(families, color)
+    ? families[color]
+    : knownColors.has(color)
+      ? color
+      : null;
   if (!family) return null;
   return { property, family, token: `${color}-${shade}` };
 }
@@ -94,7 +106,8 @@ function parseScale(
   const base = stripVariants(cls);
   const negative = base.startsWith('-');
   const body = negative ? base.slice(1) : base;
-  const dash = body.lastIndexOf('-');
+  const bracket = body.indexOf('[');
+  const dash = body.lastIndexOf('-', bracket === -1 ? body.length : bracket);
   if (dash === -1) return null;
   const property = body.slice(0, dash);
   if (!scaleProperties.has(property)) return null;
@@ -271,18 +284,20 @@ function detectCombinations(
     { classes: string[]; count: number; files: Set<string> }
   >();
 
-  for (const { file, classes } of input) {
-    if (classes.length < minSize) continue;
-    const unique = [...new Set(classes)].sort();
-    if (unique.length < minSize) continue;
-    const key = unique.join(' ');
-    let entry = combos.get(key);
-    if (!entry) {
-      entry = { classes: unique, count: 0, files: new Set() };
-      combos.set(key, entry);
+  for (const { file, classes: allClasses, classLists } of input) {
+    for (const classes of classLists ?? [allClasses]) {
+      if (classes.length < minSize) continue;
+      const unique = [...new Set(classes)].sort();
+      if (unique.length < minSize) continue;
+      const key = unique.join(' ');
+      let entry = combos.get(key);
+      if (!entry) {
+        entry = { classes: unique, count: 0, files: new Set() };
+        combos.set(key, entry);
+      }
+      entry.count++;
+      entry.files.add(file);
     }
-    entry.count++;
-    entry.files.add(file);
   }
 
   return [...combos.values()]

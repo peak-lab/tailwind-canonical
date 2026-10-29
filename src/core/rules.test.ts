@@ -1086,3 +1086,46 @@ test('suggestCanonical - unitless zero and aspect ratios', async (t: TestContext
     });
   }
 });
+
+test('marks a configured override of a built-in text size as custom', () => {
+  assert.strictEqual(
+    suggestCanonical('text-[12px]', { customTextTokens: { 12: 'tiny' } })
+      ?.isCustomToken,
+    true,
+  );
+});
+
+test('custom themes disable inferred equivalences and honor only explicit px tokens', () => {
+  const config = { useDefaultTheme: false };
+  for (const cls of [
+    'text-[12px]',
+    'p-[16px]',
+    'rounded-[8px]',
+    'font-[700]',
+    'blur-[8px]',
+    'opacity-[0.5]',
+    'leading-[1.5]',
+    'w-[100%]',
+    'text-[0.75rem]',
+  ]) {
+    assert.strictEqual(suggestCanonical(cls, config), null, cls);
+  }
+  const custom = {
+    ...config,
+    customTextTokens: { 12: 'tiny' },
+    customSpacingTokens: { 16: 'gutter' },
+  };
+  assert.deepEqual(suggestCanonical('hover:text-[12px]!', custom), {
+    original: 'hover:text-[12px]!',
+    canonical: 'hover:text-tiny!',
+    isCustomToken: true,
+  });
+  assert.deepEqual(suggestCanonical('-mt-[16px]', custom), {
+    original: '-mt-[16px]',
+    canonical: '-mt-gutter',
+    isCustomToken: true,
+  });
+  assert.strictEqual(suggestCanonical('text-[0.75rem]', custom), null);
+  assert.strictEqual(suggestCanonical('p-[1rem]', custom), null);
+  assert.strictEqual(suggestCanonical('text-[14px]', custom), null);
+});

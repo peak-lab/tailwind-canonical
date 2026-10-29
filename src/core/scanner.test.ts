@@ -1,8 +1,15 @@
 import assert from 'node:assert';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fixFile } from './fixer.js';
 import { resolveTargets, scanFiles } from './scanner.js';
 
 function makeTmpTree(): string {
@@ -56,6 +63,32 @@ test('resolveTargets - glob patterns', async (t) => {
     assert.ok(!names.includes('src/App.tsx'));
     assert.ok(!names.includes('src/pages/Home.tsx'));
   });
+
+  await t.test(
+    'character classes and extglobs use the same grammar in exclusions',
+    async () => {
+      for (const pattern of ['[BI]*.tsx', '@(Button|Input).tsx']) {
+        const positive = await resolveTargets([
+          `${root}/src/components/${pattern}`,
+        ]);
+        assert.strictEqual(positive.length, 2);
+        const remaining = await resolveTargets([
+          `${root}/src/components`,
+          `!${root}/src/components/${pattern}`,
+        ]);
+        assert.deepStrictEqual(remaining, []);
+      }
+    },
+  );
+
+  await t.test(
+    'glob results contain files rather than directories with source extensions',
+    async () => {
+      mkdirSync(join(root, 'src/directory.tsx'));
+      const files = await resolveTargets([`${root}/src/**/*.tsx`]);
+      assert.ok(!files.includes(join(root, 'src/directory.tsx')));
+    },
+  );
 
   await t.test('negation pattern excludes matched files', async () => {
     const files = await resolveTargets([
@@ -203,4 +236,26 @@ test('scanFiles - directory and file targets', async (t) => {
   });
 
   rmSync(root, { recursive: true, force: true });
+});
+
+test('discovery skips symlinks outside the target while explicit file links remain supported', async () => {
+  const root = makeTmpTree();
+  const external = `${root}-outside.tsx`;
+  const link = join(root, 'src/external.tsx');
+  const content = '<div className="text-[12px]" />';
+  try {
+    writeFileSync(external, content);
+    symlinkSync(external, link);
+    const scanned = scanFiles(join(root, 'src'));
+    const globbed = await resolveTargets([`${root}/src/**/*.tsx`]);
+    assert.ok(!scanned.includes(link));
+    assert.ok(!globbed.includes(link));
+    for (const file of new Set([...scanned, ...globbed])) fixFile(file);
+    assert.strictEqual(readFileSync(external, 'utf8'), content);
+    assert.deepStrictEqual(scanFiles(link), [link]);
+    assert.deepStrictEqual(await resolveTargets([link]), [link]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(external, { force: true });
+  }
 });
