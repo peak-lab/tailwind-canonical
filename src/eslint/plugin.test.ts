@@ -26,7 +26,11 @@ const classExpression = {
   type: 'JSXExpressionContainer',
   parent: classAttribute,
 };
-function literal(value: string, raw = `"${value}"`, parent = classExpression) {
+function literal(
+  value: string,
+  raw = `"${value}"`,
+  parent: typeof classExpression | typeof classAttribute = classExpression,
+) {
   return { type: 'Literal' as const, value, raw, parent };
 }
 
@@ -227,8 +231,10 @@ test('no-arbitrary-canonical rule', async (t) => {
   });
 
   await t.test('accepts a shared Config without schema errors', () => {
+    const schema = noArbitraryCanonical.meta?.schema;
+    assert.ok(Array.isArray(schema));
     const props = (
-      noArbitraryCanonical.meta.schema[0] as {
+      schema[0] as {
         properties: Record<string, unknown>;
       }
     ).properties;
@@ -712,7 +718,7 @@ test('plugin exports', async (t) => {
 
 test('real ESLint contexts preserve unrelated source and partial classes', () => {
   const linter = new Linter();
-  const config = [
+  const config: Linter.Config[] = [
     {
       languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
       plugins: { canonical: plugin },
@@ -721,7 +727,7 @@ test('real ESLint contexts preserve unrelated source and partial classes', () =>
         'canonical/no-conflicting-classes': 'error',
       },
     },
-  ] as const;
+  ];
   for (const source of [
     'const message = "Hello  world";',
     'const query = "SELECT size-[12px] FROM styles";',
@@ -873,7 +879,7 @@ test('rule options support disabling default-theme mappings', () => {
 });
 
 test('object key rewrites preserve predicates and computed CVA options', () => {
-  const configs = [
+  const configs: Linter.Config[] = [
     {
       plugins: { canonical: plugin },
       rules: {
@@ -881,7 +887,7 @@ test('object key rewrites preserve predicates and computed CVA options', () => {
         'canonical/no-conflicting-classes': 'error',
       },
     },
-  ] as const;
+  ];
   for (const input of [
     'cn({"p-[16px]": enabled, "p-4": other})',
     'cn({"p-2 p-4": enabled, "p-4": other})',
@@ -895,14 +901,14 @@ test('object key rewrites preserve predicates and computed CVA options', () => {
 });
 
 test('template autofixes use source ranges even when CRLF is normalized in raw values', () => {
-  const config = [
+  const config: Linter.Config[] = [
     {
       plugins: { canonical: plugin },
       rules: {
         'canonical/no-arbitrary-canonical': 'error',
       },
     },
-  ] as const;
+  ];
   for (const input of [
     'cn(`p-[16px]\r\nflex`)',
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source fixture.
@@ -926,7 +932,7 @@ test('default font-size rules preserve line-height semantics without diagnostics
     { allowTextSizeLineHeightChanges: false },
     { customTextTokens: { 12: 'tiny' } },
   ]) {
-    const configs = [
+    const configs: Linter.Config[] = [
       {
         plugins: { canonical: plugin },
         languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
@@ -978,7 +984,7 @@ test('font-size transformations require an explicit line-height opt-in', () => {
       'cn("hover:text-[12px]!")',
       'cn("hover:text-tiny!")',
     ],
-  ]) {
+  ] as const) {
     const result = new Linter().verifyAndFix(source, [
       {
         plugins: { canonical: plugin },

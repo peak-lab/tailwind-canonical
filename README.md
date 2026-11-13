@@ -1,51 +1,114 @@
 # tailwind-canonical
 
-Lint and auto-fix Tailwind CSS classes: arbitrary values → canonical, deduplication, shorthand collapsing, and class sorting.
+**Turn Tailwind arbitrary values into familiar utility classes.** Find `p-[16px]`, suggest `p-4`, and apply the fix from your terminal or ESLint.
 
-> Compatible with Tailwind CSS v4 out of the box, and with v3.3+ via [`tailwindVersion: 3`](#tailwind-v3-vs-v4-tailwindversion) — the ÷4 spacing rule assumes v4's dynamic scale, so v3 projects must set it. Zero `tailwindcss` dependency (conventions are built in). Custom theme tokens are supported via config.
+```jsx
+// Before
+<div className="flex gap-[8px] p-[16px] rounded-[9999px] hover:p-[24px]" />
 
-## Install
-
-```bash
-pnpm add -D tailwind-canonical
-npm install -D tailwind-canonical
-yarn add -D tailwind-canonical
+// After running --fix (or eslint --fix)
+<div className="flex gap-2 p-4 rounded-full hover:p-6" />
 ```
+
+A *canonical* class is Tailwind's named utility for a value you wrote in brackets.
+The tool reads static class strings in your source files and replaces supported
+values with those utilities. Variants such as `hover:` and responsive prefixes
+are preserved.
+
+Arbitrary values still have their place: `h-[22px]` stays as written when there
+is no supported mapping. Text sizes such as `text-[12px]` also stay unchanged by
+default, because switching to `text-xs` can change line-height.
+
+Works with **Tailwind CSS v4 by default** and **v3.3+ with
+[`tailwindVersion: 3`](#tailwind-v3-vs-v4-tailwindversion)**. Requires Node.js
+22.6+; Node.js 24 is recommended. The core package has zero runtime dependencies
+and does not need `tailwindcss` installed. Mappings use built-in conventions;
+[configure your tokens](#config) if your theme differs.
+
+## Choose how to use it
+
+| You want to… | Use | What you get |
+|---|---|---|
+| Scan or clean up an existing project | [CLI](#quick-start) | Reports, automatic fixes, deduplication and sorting |
+| Catch issues while editing or running ESLint | [ESLint plugin](#eslint-plugin) | Warnings and fixes through your existing ESLint setup |
+| Build your own tooling | [Node.js API](#programmatic-api) | Functions to inspect classes and transform files |
+
+The CLI also offers optional conflict resolution, color typo detection and
+project-wide consistency reports. These are separate operations you enable
+explicitly; the recommended ESLint config only checks canonical equivalents.
 
 ## Quick start
 
-First scan to see what needs fixing:
+### 1. Install
+
+Use your project's package manager:
+
+```bash
+pnpm add -D tailwind-canonical
+# or: npm install -D tailwind-canonical
+# or: yarn add -D tailwind-canonical
+```
+
+### 2. Preview the findings
+
+Run from your project root. No config is needed for a default Tailwind v4 theme:
+
 ```bash
 npx tailwind-canonical ./src
 ```
 
-Create a config file to make the full pipeline re-runnable:
+This reports classes with canonical equivalents **without changing files**.
+It exits with code `1` when findings exist, so you can also use it in CI.
+For Tailwind v3, [set `tailwindVersion: 3`](#tailwind-v3-vs-v4-tailwindversion)
+before scanning or fixing.
+
+### 3. Apply the fixes
+
+```bash
+npx tailwind-canonical --fix ./src
+```
+
+Want to remove duplicates and sort classes too? Enable those transforms:
+
+```bash
+npx tailwind-canonical --fix --dedup --sort ./src
+```
+
+`--dedup` also resolves supported conflicts using a last-class-wins convention,
+which can change rendering. See [deduplication](#deduplication---dedup) before
+applying it to conflicting classes.
+
+To preview the combined changes without writing files, add `--check`:
+
+```bash
+npx tailwind-canonical --check --fix --dedup --sort ./src
+```
+
+### 4. Save your workflow (optional)
+
+Create `tailwind-canonical.config.ts` to reuse your preferred operations:
+
 ```ts
-// tailwind-canonical.config.ts
 export default {
   defaultCommand: {
     fix: true,
     dedup: true,
     sort: true,
-    typos: true,
     targets: ['./src'],
   },
 }
 ```
 
-Now run the whole pipeline with a single command:
-```bash
-npx tailwind-canonical
-```
+Now `npx tailwind-canonical` runs that pipeline. You can also wire it into a
+[pre-commit hook](#pre-commit-hook-husky--lefthook), or use the
+[ESLint plugin](#eslint-plugin) for feedback in your editor.
 
-For ESLint integration, add to your flat config:
-```js
-import tailwindCanonical from 'tailwind-canonical/eslint'
+## Reference
 
-export default [tailwindCanonical.configs.recommended]
-```
-
-For pre-commit automation, see the [Pre-commit hook](#pre-commit-hook-husky--lefthook) section below.
+[CLI commands](#cli) · [Flag guide](#what-each-flag-does) ·
+[Configuration](#config) · [ESLint rules](#eslint-plugin) ·
+[Supported conversions](#arbitrary-value-detection---fix) ·
+[Known limits](#known-limits) · [Node.js API](#programmatic-api)
 
 ## CLI
 
@@ -620,30 +683,82 @@ every package.
 
 ## ESLint plugin
 
+Get warnings for classes with canonical equivalents anywhere you already run
+ESLint. With an ESLint editor integration, the same warnings appear while you
+edit; `eslint --fix` applies the replacements.
+
+### Add it to your existing config
+
+The plugin uses ESLint flat config (ESLint `>=8.57.1 <11`). Install
+`tailwind-canonical` as shown above, then add the recommended config alongside
+your existing framework and parser configuration:
+
 ```js
-// eslint.config.js
+// eslint.config.js (ESM)
 import tailwindCanonical from 'tailwind-canonical/eslint'
 
 export default [
+  // Keep your existing configs here (including JSX/TypeScript parser setup).
+  tailwindCanonical.configs.recommended,
+]
+```
+
+The preset enables **`no-arbitrary-canonical` at warning level**. It does not
+enable conflict resolution, sorting, typo detection or the CLI's other modes.
+It does not configure a JSX or TypeScript parser; keep your project's existing
+ESLint support for those files.
+
+```jsx
+// Warning: Use canonical class 'p-4' instead of 'p-[16px]'
+<div className="p-[16px]" />
+
+// After eslint --fix
+<div className="p-4" />
+```
+
+Run ESLint with the same targets as your existing project scripts, for example:
+
+```bash
+npx eslint ./src
+npx eslint ./src --fix
+```
+
+### Available rules
+
+| Rule | Behavior | In recommended config? |
+|---|---|---|
+| `tailwind-canonical/no-arbitrary-canonical` | Suggests and fixes supported arbitrary values: `p-[16px]` → `p-4` | Yes, as a warning |
+| `tailwind-canonical/no-conflicting-classes` | Uses `tailwind-merge` to remove conflicting classes: `bg-red-500 bg-blue-500` → `bg-blue-500` | No, opt-in |
+
+Both rules support automatic fixes. To enable the conflict rule, install its
+optional dependency (`pnpm add -D tailwind-merge`) and configure it explicitly:
+
+```js
+// eslint.config.js (ESM)
+import tailwindCanonical from 'tailwind-canonical/eslint'
+
+export default [
+  // Keep your existing framework and parser configs here.
+  tailwindCanonical.configs.recommended,
   {
-    plugins: { 'tailwind-canonical': tailwindCanonical },
     rules: {
-      'tailwind-canonical/no-arbitrary-canonical': 'warn',
-      // Optional: flag tailwind-merge conflicts (requires tailwind-merge peer dep)
       'tailwind-canonical/no-conflicting-classes': 'warn',
     },
   },
 ]
 ```
 
-Or use the bundled flat-config shortcut:
+### What gets checked?
 
-```js
-// eslint.config.js
-import tailwindCanonical from 'tailwind-canonical/eslint'
+By default, the rules inspect `className` attributes and calls to `cn`, `clsx`
+and `cva`. For example, both `className="p-[16px]"` and
+`cn('p-[16px]', active && 'mt-[8px]')` are checked. Unrelated strings are ignored.
+Use `attributeNames` and `functionNames` in rule options to match your project.
 
-export default [tailwindCanonical.configs.recommended]
-```
+The plugin does **not** automatically load `tailwind-canonical.config.ts`.
+Pass your options to the rules explicitly, either inline or by importing a
+shared config object. Text-size conversion requires the same explicit
+`allowTextSizeLineHeightChanges: true` opt-in as the CLI.
 
 ### Rule options
 
@@ -740,6 +855,29 @@ The benchmark checks expected findings and transform idempotence, then measures
 file discovery, file analysis, fix/dedup/sort and cross-file consistency. Results
 include Node/CPU/platform, corpus size, median and p95 after warmup. Compare on the
 same machine; this synthetic corpus is not a promise about every project.
+
+## Contributing: quality checks
+
+Run the local quality gate before submitting a change:
+
+```bash
+pnpm check   # lint, typecheck source and tests, detect dead code, run tests
+pnpm build   # compile the published artifacts (tests are excluded)
+```
+
+TypeScript checks return paths, switch fallthrough, explicit overrides and unused
+declarations in addition to strict typing. `tsconfig.test.json` checks the test
+suite without emitting it; the build keeps using `tsconfig.json`.
+
+Biome enforces the filesystem boundary: production files in `src/core/` cannot
+import `fs`, `fs/promises` or their `node:` equivalents directly. Put filesystem
+access in `src/io/`. Integration tests may use the filesystem, and the existing
+re-exports of I/O wrappers remain supported.
+
+Lefthook runs staged-source formatting and typechecking before a commit, checks
+compiler/package changes too, and runs the full linter when `biome.json` changes.
+Before a push, it runs tests and Knip. CI and publishing both run the expanded
+typecheck, so test typing errors block delivery too.
 
 ## Dead code detection (knip)
 
