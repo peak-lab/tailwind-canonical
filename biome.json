@@ -52,5 +52,30 @@
 				"organizeImports": "on"
 			}
 		}
-	}
+	},
+	"overrides": [
+		{
+			"includes": [
+				"src/core/**/*.ts",
+				"!src/core/**/*.test.ts"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"fs": "Keep core transformations pure; move filesystem access to src/io/.",
+									"fs/promises": "Keep core transformations pure; move filesystem access to src/io/.",
+									"node:fs": "Keep core transformations pure; move filesystem access to src/io/.",
+									"node:fs/promises": "Keep core transformations pure; move filesystem access to src/io/."
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	]
 }

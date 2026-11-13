@@ -5,8 +5,11 @@ pre-commit:
       glob: "src/**/*.{ts,tsx,js,jsx,json}"
       run: pnpm biome check --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
+    lint-config:
+      glob: "biome.json"
+      run: pnpm lint
     typecheck:
-      glob: "src/**/*.ts"
+      glob: "{src/**/*.ts,tsconfig*.json,package.json,pnpm-lock.yaml}"
       run: pnpm typecheck
 
 pre-push:

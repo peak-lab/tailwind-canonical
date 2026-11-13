@@ -30,10 +30,11 @@ Ships three artifacts from one codebase:
 pnpm build        # tsc → dist/
 pnpm dev          # tsc --watch
 pnpm test         # node --import=tsx/esm --test "src/**/*.test.ts"
-pnpm typecheck    # tsc --noEmit
+pnpm typecheck    # typecheck production source and tests (no emit)
 pnpm lint         # biome check src/ scripts/
 pnpm lint:fix     # biome check --write src/ scripts/
 pnpm knip         # dead code/dependency detection
+pnpm check        # lint + source/test typecheck + knip + tests
 ```
 
 Run a single test file:
@@ -76,6 +77,8 @@ src/
 **Key invariant**: core transformations are pure — no file under `src/core/` imports `node:fs` directly.
 The re-exports below load Node modules transitively; the package is Node-only,
 not a browser-safe import graph.
+Biome enforces this boundary with `noRestrictedImports` for production core files
+(integration tests are exempt), including `fs/promises` and unprefixed imports.
 All file I/O lives in `src/io/` (9 wrappers, one per side-effecting `core/` module).
 Each of those `core/X.ts` files re-exports its `io/X.ts` wrapper as its last line
 (e.g. `fixer.ts` ends with `export { fixFile } from '../io/fixer.js';`), so the
