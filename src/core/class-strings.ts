@@ -44,6 +44,33 @@ type StringRange = {
   braceExpressions?: boolean;
 };
 
+function attributeValueStrings(
+  content: string,
+  start: number,
+  name: string,
+  functionNames: string[],
+): StringRange[] {
+  if (content[start] === '{') {
+    const expression = readCallTokens(content, start + 1, '}');
+    return expression.complete
+      ? classExpression(expression.tokens, functionNames)
+      : [];
+  }
+  if (!['"', "'", '`'].includes(content[start])) return [];
+  const quoted = readQuotedString(content, start);
+  if (!quoted) return [];
+  if (!(name.startsWith(':') || name.startsWith('v-bind:')))
+    return [{ ...quoted, braceExpressions: true }];
+
+  // Vue bindings contain JavaScript, not a class list. Entities require an
+  // HTML decoder/source map, so leave those expressions intact for now.
+  if (/&(?:#\d+|#x[\da-f]+|[a-z]+);/i.test(quoted.value)) return [];
+  const expression = readCallTokens(content, quoted.start, content[start]);
+  return expression.complete && expression.next === quoted.next
+    ? classExpression(expression.tokens, functionNames)
+    : [];
+}
+
 function attributeStrings(
   content: string,
   names: string[],
@@ -53,33 +80,11 @@ function attributeStrings(
   for (const match of content.matchAll(buildAttrRegex(names))) {
     const attributeStart = (match.index ?? 0) + match[1].length;
     const start = (match.index ?? 0) + match[0].length;
-    if (content[start] === '{') {
-      const expression = readCallTokens(content, start + 1, '}');
-      if (expression.complete) {
-        result.push(
-          ...classExpression(expression.tokens, functionNames).map(
-            (string) => ({ ...string, attributeStart }),
-          ),
-        );
-      }
-      continue;
-    }
-    if (!['"', "'", '`'].includes(content[start])) continue;
-    const quoted = readQuotedString(content, start);
-    if (!quoted) continue;
-    if (match[2].startsWith(':') || match[2].startsWith('v-bind:')) {
-      // Vue bindings contain JavaScript, not a class list. Entities require an
-      // HTML decoder/source map, so leave those expressions intact for now.
-      if (/&(?:#\d+|#x[\da-f]+|[a-z]+);/i.test(quoted.value)) continue;
-      const expression = readCallTokens(content, quoted.start, content[start]);
-      if (expression.complete && expression.next === quoted.next) {
-        result.push(
-          ...classExpression(expression.tokens, functionNames).map(
-            (string) => ({ ...string, attributeStart }),
-          ),
-        );
-      }
-    } else result.push({ ...quoted, attributeStart, braceExpressions: true });
+    result.push(
+      ...attributeValueStrings(content, start, match[2], functionNames).map(
+        (string) => ({ ...string, attributeStart }),
+      ),
+    );
   }
   return result;
 }
@@ -211,7 +216,9 @@ function transformStaticClasses(
       continue;
     }
     const leading = preserveEdges ? (segment.match(/^\s*/)?.[0] ?? '') : '';
-    const trailing = preserveEdges ? (segment.match(/\s*$/)?.[0] ?? '') : '';
+    const trailing = preserveEdges
+      ? segment.slice(segment.trimEnd().length)
+      : '';
     const inner = segment.slice(
       leading.length,
       segment.length - trailing.length,
@@ -337,6 +344,77 @@ function regexMayStart(previous: string | undefined): boolean {
   return previous === undefined || REGEX_PREFIX_TOKENS.has(previous);
 }
 
+type CallTrivia = { next: number; complete: boolean };
+type ReadCallToken =
+  | { token: CallToken; next: number; complete: true }
+  | { next: number; complete: false };
+
+function skipCallTrivia(content: string, start: number): CallTrivia {
+  let i = start;
+  while (i < content.length) {
+    if (/\s/.test(content[i])) {
+      i++;
+      continue;
+    }
+    if (content.startsWith('//', i)) {
+      const end = content.indexOf('\n', i + 2);
+      i = end < 0 ? content.length : end;
+      continue;
+    }
+    if (content.startsWith('/*', i)) {
+      const end = content.indexOf('*/', i + 2);
+      if (end < 0) return { next: content.length, complete: false };
+      i = end + 2;
+      continue;
+    }
+    break;
+  }
+  return { next: i, complete: true };
+}
+
+function readCallToken(
+  content: string,
+  start: number,
+  previous: string | undefined,
+): ReadCallToken {
+  const ch = content[start];
+  if (ch === '"' || ch === "'" || ch === '`') {
+    const quoted = readQuotedString(content, start);
+    if (!quoted) return { next: content.length, complete: false };
+    return {
+      token: { text: content.slice(start, quoted.next), string: quoted },
+      next: quoted.next,
+      complete: true,
+    };
+  }
+  if (ch === '(' || ch === '[' || ch === '{') {
+    const closing = { '(': ')', '[': ']', '{': '}' }[ch];
+    const group = readCallTokens(content, start + 1, closing);
+    if (!group.complete) return { next: group.next, complete: false };
+    return {
+      token: { text: ch, children: group.tokens },
+      next: group.next,
+      complete: true,
+    };
+  }
+  if (ch === '/' && regexMayStart(previous)) {
+    const end = readRegex(content, start);
+    if (!end) return { next: content.length, complete: false };
+    return {
+      token: { text: content.slice(start, end) },
+      next: end,
+      complete: true,
+    };
+  }
+  const word = /^[\w$]+/.exec(content.slice(start));
+  const operator =
+    /^(?:===|!==|=>|&&|\|\||\?\?|==|!=|<=|>=|\?\.|\+\+|--|\*\*|\.\.\.)/.exec(
+      content.slice(start),
+    );
+  const text = word?.[0] ?? operator?.[0] ?? ch;
+  return { token: { text }, next: start + text.length, complete: true };
+}
+
 // Delimiter groups are enough to identify static class positions. This does
 // not evaluate expressions or interpret arbitrary JavaScript as a class list.
 function readCallTokens(
@@ -351,57 +429,19 @@ function readCallTokens(
   const tokens: CallToken[] = [];
   let i = start;
   while (i < content.length) {
+    const trivia = skipCallTrivia(content, i);
+    if (!trivia.complete)
+      return { tokens: [], next: trivia.next, complete: false };
+    i = trivia.next;
+    if (i === content.length) break;
     const ch = content[i];
-    if (/\s/.test(ch)) {
-      i++;
-      continue;
-    }
-    if (content.startsWith('//', i)) {
-      const end = content.indexOf('\n', i + 2);
-      i = end < 0 ? content.length : end;
-      continue;
-    }
-    if (content.startsWith('/*', i)) {
-      const end = content.indexOf('*/', i + 2);
-      if (end < 0) return { tokens: [], next: content.length, complete: false };
-      i = end + 2;
-      continue;
-    }
     if (ch === closing) return { tokens, next: i + 1, complete: true };
     if (ch === ')' || ch === ']' || ch === '}')
       return { tokens: [], next: i + 1, complete: false };
-    if (ch === '"' || ch === "'" || ch === '`') {
-      const quoted = readQuotedString(content, i);
-      if (!quoted) return { tokens: [], next: content.length, complete: false };
-      tokens.push({ text: content.slice(i, quoted.next), string: quoted });
-      i = quoted.next;
-      continue;
-    }
-    if (ch === '(' || ch === '[' || ch === '{') {
-      const end = { '(': ')', '[': ']', '{': '}' }[ch];
-      const group = readCallTokens(content, i + 1, end);
-      if (!group.complete)
-        return { tokens: [], next: group.next, complete: false };
-      tokens.push({ text: ch, children: group.tokens });
-      i = group.next;
-      continue;
-    }
-    if (ch === '/' && regexMayStart(tokens.at(-1)?.text)) {
-      const end = readRegex(content, i);
-      if (!end) return { tokens: [], next: content.length, complete: false };
-      tokens.push({ text: content.slice(i, end) });
-      i = end;
-      continue;
-    }
-    const word = content.slice(i).match(/^[\w$]+/);
-    const operator = content
-      .slice(i)
-      .match(
-        /^(?:===|!==|=>|&&|\|\||\?\?|==|!=|<=|>=|\?\.|\+\+|--|\*\*|\.\.\.)/,
-      );
-    const text = word?.[0] ?? operator?.[0] ?? ch;
-    tokens.push({ text });
-    i += text.length;
+    const read = readCallToken(content, i, tokens.at(-1)?.text);
+    if (!read.complete) return { tokens: [], next: read.next, complete: false };
+    tokens.push(read.token);
+    i = read.next;
   }
   return { tokens: [], next: content.length, complete: false };
 }
@@ -432,51 +472,70 @@ function propertyName(key: CallToken): string {
   return key.string?.value ?? key.text;
 }
 
+function singleTokenClasses(
+  token: CallToken,
+  functionNames: string[],
+  objects: boolean,
+): StringRange[] {
+  if (token.string) return [token.string];
+  if (token.text === '[' && token.children)
+    return splitTokens(token.children, ',').flatMap((part) =>
+      classExpression(part, functionNames, objects),
+    );
+  if (token.text === '{' && objects) {
+    // Rewriting keys of a multi-property object can create a duplicate key
+    // and discard a predicate. Unknown/spread properties can collide too.
+    const properties = splitTokens(token.children ?? [], ',').filter(
+      (property) => property.length > 0,
+    );
+    if (properties.length !== 1) return [];
+    return objectProperties(token).flatMap(({ key }) =>
+      key.string ? [key.string] : [],
+    );
+  }
+  // A grouping pair does not establish class context, but preserves one.
+  if (token.text === '(' && token.children)
+    return classExpression(token.children, functionNames, objects);
+  return [];
+}
+
+function conditionalColon(tokens: CallToken[], question: number): number {
+  let nested = 0;
+  for (let i = question + 1; i < tokens.length; i++) {
+    if (tokens[i].text === '?') nested++;
+    else if (tokens[i].text === ':' && nested-- === 0) return i;
+  }
+  return -1;
+}
+
+function conditionalClasses(
+  tokens: CallToken[],
+  question: number,
+  functionNames: string[],
+  objects: boolean,
+): StringRange[] {
+  const colon = conditionalColon(tokens, question);
+  if (colon < 0) return [];
+  return [
+    ...classExpression(
+      tokens.slice(question + 1, colon),
+      functionNames,
+      objects,
+    ),
+    ...classExpression(tokens.slice(colon + 1), functionNames, objects),
+  ];
+}
+
 function classExpression(
   tokens: CallToken[],
   functionNames: string[],
   objects = true,
 ): StringRange[] {
-  if (tokens.length === 1) {
-    const token = tokens[0];
-    if (token.string) return [token.string];
-    if (token.text === '[' && token.children)
-      return splitTokens(token.children, ',').flatMap((part) =>
-        classExpression(part, functionNames, objects),
-      );
-    if (token.text === '{' && objects) {
-      // Rewriting keys of a multi-property object can create a duplicate key
-      // and discard a predicate. Unknown/spread properties can collide too.
-      const properties = splitTokens(token.children ?? [], ',').filter(
-        (property) => property.length > 0,
-      );
-      if (properties.length !== 1) return [];
-      return objectProperties(token).flatMap(({ key }) =>
-        key.string ? [key.string] : [],
-      );
-    }
-    // A grouping pair does not establish class context, but preserves one.
-    if (token.text === '(' && token.children)
-      return classExpression(token.children, functionNames, objects);
-    return [];
-  }
+  if (tokens.length === 1)
+    return singleTokenClasses(tokens[0], functionNames, objects);
   const question = tokens.findIndex(({ text }) => text === '?');
-  if (question >= 0) {
-    let nested = 0;
-    for (let i = question + 1; i < tokens.length; i++) {
-      if (tokens[i].text === '?') nested++;
-      else if (tokens[i].text === ':' && nested-- === 0)
-        return [
-          ...classExpression(
-            tokens.slice(question + 1, i),
-            functionNames,
-            objects,
-          ),
-          ...classExpression(tokens.slice(i + 1), functionNames, objects),
-        ];
-    }
-    return [];
-  }
+  if (question >= 0)
+    return conditionalClasses(tokens, question, functionNames, objects);
   const logical = tokens.findIndex(
     ({ text }) => text === '&&' || text === '||' || text === '??',
   );
@@ -497,6 +556,38 @@ function classExpression(
   return [];
 }
 
+function cvaVariantClasses(
+  token: CallToken,
+  functionNames: string[],
+): StringRange[] {
+  const result: StringRange[] = [];
+  for (const variant of objectProperties(token)) {
+    if (variant.value.length !== 1) continue;
+    for (const choice of objectProperties(variant.value[0]))
+      result.push(...classExpression(choice.value, functionNames, false));
+  }
+  return result;
+}
+
+function cvaCompoundClasses(
+  token: CallToken,
+  functionNames: string[],
+): StringRange[] {
+  if (token.text !== '[' || !token.children) return [];
+  const result: StringRange[] = [];
+  for (const entry of splitTokens(token.children, ',')) {
+    if (entry.length !== 1) continue;
+    for (const compound of objectProperties(entry[0])) {
+      if (
+        propertyName(compound.key) === 'class' ||
+        propertyName(compound.key) === 'className'
+      )
+        result.push(...classExpression(compound.value, functionNames, false));
+    }
+  }
+  return result;
+}
+
 function cvaOptions(
   token: CallToken | undefined,
   functionNames: string[],
@@ -505,28 +596,9 @@ function cvaOptions(
   for (const { key, value } of objectProperties(token)) {
     if (value.length !== 1) continue;
     if (propertyName(key) === 'variants') {
-      for (const variant of objectProperties(value[0])) {
-        if (variant.value.length !== 1) continue;
-        for (const choice of objectProperties(variant.value[0]))
-          result.push(...classExpression(choice.value, functionNames, false));
-      }
-    } else if (
-      propertyName(key) === 'compoundVariants' &&
-      value[0].text === '[' &&
-      value[0].children
-    ) {
-      for (const entry of splitTokens(value[0].children, ',')) {
-        if (entry.length !== 1) continue;
-        for (const compound of objectProperties(entry[0])) {
-          if (
-            propertyName(compound.key) === 'class' ||
-            propertyName(compound.key) === 'className'
-          )
-            result.push(
-              ...classExpression(compound.value, functionNames, false),
-            );
-        }
-      }
+      result.push(...cvaVariantClasses(value[0], functionNames));
+    } else if (propertyName(key) === 'compoundVariants') {
+      result.push(...cvaCompoundClasses(value[0], functionNames));
     }
   }
   return result;
@@ -575,136 +647,189 @@ function offsetSuppressor(
   return (offset) => isSuppressed(positionAt(offset).line);
 }
 
+type SourceTag = {
+  end: number;
+  name: string;
+  closing: boolean;
+  selfClosing: boolean;
+};
+
+type MarkupContext = {
+  tags: string[];
+  pendingTag: SourceTag | undefined;
+  expressionEnd: number;
+};
+
+type SourceAdvance = { next: number; protected: boolean };
+
+function sourceTagEnd(content: string, start: number): number {
+  let end = start;
+  while (end < content.length && content[end] !== '>') {
+    if (content[end] === '"' || content[end] === "'" || content[end] === '`') {
+      end = readQuotedString(content, end)?.next ?? content.length;
+    } else if (content[end] === '{') {
+      end = readCallTokens(content, end + 1, '}').next;
+    } else end++;
+  }
+  return end;
+}
+
+function sourceTagAt(
+  content: string,
+  offset: number,
+  hasOpenTag: boolean,
+): SourceTag | undefined {
+  const match = content
+    .slice(offset)
+    .match(/^<(\/?)(?:([A-Za-z][\w:.-]*)(?=[\s/>])|(?=>))/);
+  if (!match) return undefined;
+  const end = sourceTagEnd(content, offset + match[0].length);
+  const name = match[2] ?? '';
+  const selfClosing =
+    content[end - 1] === '/' ||
+    /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(
+      name,
+    );
+  if (
+    end >= content.length ||
+    !(hasOpenTag || selfClosing || content.includes(`</${name}>`, end))
+  )
+    return undefined;
+  return { end, name, closing: match[1] === '/', selfClosing };
+}
+
+function markupTextAdvance(
+  content: string,
+  offset: number,
+  context: MarkupContext,
+): SourceAdvance | undefined {
+  const rawTag = context.tags.at(-1)?.toLowerCase();
+  if (rawTag === 'style' && !content.startsWith('</style', offset)) {
+    const end = content.indexOf('</style', offset);
+    return { next: end < 0 ? content.length : end, protected: true };
+  }
+  if (
+    context.tags.length === 0 ||
+    rawTag === 'script' ||
+    offset < context.expressionEnd ||
+    content[offset] === '<'
+  )
+    return undefined;
+  if (content[offset] === '{') {
+    context.expressionEnd = readCallTokens(content, offset + 1, '}').next;
+    return undefined;
+  }
+  let end = offset;
+  while (end < content.length && content[end] !== '<' && content[end] !== '{')
+    end++;
+  return { next: end, protected: true };
+}
+
+function markupAdvance(
+  content: string,
+  offset: number,
+  context: MarkupContext,
+): SourceAdvance | undefined {
+  const tag = context.pendingTag;
+  if (tag?.end === offset) {
+    if (tag.closing) context.tags.pop();
+    else if (!tag.selfClosing) context.tags.push(tag.name);
+    context.pendingTag = undefined;
+    return { next: offset + 1, protected: false };
+  }
+  if (!tag && content[offset] === '<' && !content.startsWith('<!--', offset)) {
+    context.pendingTag = sourceTagAt(content, offset, context.tags.length > 0);
+  }
+  // A newly discovered tag becomes pending on the next scan iteration. The
+  // current character still belongs to the surrounding markup context.
+  return tag ? undefined : markupTextAdvance(content, offset, context);
+}
+
+function sourceCommentEnd(content: string, offset: number): number | null {
+  if (content.startsWith('//', offset)) {
+    const end = content.indexOf('\n', offset + 2);
+    return end < 0 ? content.length : end;
+  }
+  const html = content.startsWith('<!--', offset);
+  if (!(html || content.startsWith('/*', offset))) return null;
+  const ending = html ? '-->' : '*/';
+  const end = content.indexOf(ending, offset + (html ? 4 : 2));
+  return end < 0 ? content.length : end + ending.length;
+}
+
+function protectedLiteralEnd(
+  content: string,
+  offset: number,
+  lastControlParenEnd: number,
+): number | null {
+  const ch = content[offset];
+  if (ch === '"' || ch === "'" || ch === '`')
+    return readQuotedString(content, offset)?.next ?? content.length;
+  const commentEnd = sourceCommentEnd(content, offset);
+  if (commentEnd !== null) return commentEnd;
+  if (ch !== '/' || content[offset - 1] === '<' || content[offset + 1] === '>')
+    return null;
+  const preceding = previousToken(content, offset);
+  let before = offset - 1;
+  while (before >= 0 && /\s/.test(content[before])) before--;
+  const afterControlCondition =
+    preceding === ')' && before === lastControlParenEnd;
+  return regexMayStart(preceding) || afterControlCondition
+    ? readRegex(content, offset)
+    : null;
+}
+
 // Ignore source comments, quoted prose and regex literals before looking for
 // attribute/function entry points. Ambiguous syntax is deliberately skipped.
 function protectedSourceOffsets(content: string): (offset: number) => boolean {
   const ranges: Array<{ start: number; end: number }> = [];
-  const tags: string[] = [];
-  const pendingTags: Array<{
-    end: number;
-    name: string;
-    closing: boolean;
-    selfClosing: boolean;
-  }> = [];
-  let expressionEnd = 0;
+  const markup: MarkupContext = {
+    tags: [],
+    pendingTag: undefined,
+    expressionEnd: 0,
+  };
   const controlParens: boolean[] = [];
   let lastControlParenEnd = -1;
   let i = 0;
   while (i < content.length) {
     const start = i;
-    const ch = content[i];
-    const tag = pendingTags.at(0);
-    if (tag?.end === i) {
-      if (tag.closing) tags.pop();
-      else if (!tag.selfClosing) tags.push(tag.name);
-      pendingTags.length = 0;
-      i++;
+    const advance = markupAdvance(content, i, markup);
+    if (advance) {
+      if (advance.protected) ranges.push({ start, end: advance.next });
+      i = advance.next;
       continue;
     }
-    if (!tag && ch === '<' && !content.startsWith('<!--', i)) {
-      const match: RegExpMatchArray | null = content
-        .slice(i)
-        .match(/^<(\/?)(?:([A-Za-z][\w:.-]*)(?=[\s/>])|(?=>))/);
-      if (match) {
-        let end: number = i + match[0].length;
-        while (end < content.length && content[end] !== '>') {
-          if (
-            content[end] === '"' ||
-            content[end] === "'" ||
-            content[end] === '`'
-          ) {
-            end = readQuotedString(content, end)?.next ?? content.length;
-          } else if (content[end] === '{') {
-            const expression = readCallTokens(content, end + 1, '}');
-            end = expression.next;
-          } else end++;
-        }
-        const closing: boolean = match[1] === '/';
-        const selfClosing =
-          content[end - 1] === '/' ||
-          /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(
-            match[2] ?? '',
-          );
-        const name: string = match[2] ?? '';
-        if (
-          end < content.length &&
-          (tags.length > 0 ||
-            selfClosing ||
-            content.includes(`</${name}>`, end))
-        )
-          pendingTags.push({ end, name, closing, selfClosing });
-      }
-    }
-    const rawTag = tags.at(-1)?.toLowerCase();
-    if (!tag && rawTag === 'style' && !content.startsWith('</style', i)) {
-      const end = content.indexOf('</style', i);
-      i = end < 0 ? content.length : end;
-      ranges.push({ start, end: i });
-      continue;
-    }
-    if (
-      !tag &&
-      tags.length > 0 &&
-      rawTag !== 'script' &&
-      i >= expressionEnd &&
-      ch !== '<'
-    ) {
-      if (ch === '{') expressionEnd = readCallTokens(content, i + 1, '}').next;
-      else {
-        while (i < content.length && content[i] !== '<' && content[i] !== '{')
-          i++;
-        ranges.push({ start, end: i });
-        continue;
-      }
-    }
-    if (ch === '"' || ch === "'" || ch === '`') {
-      i = readQuotedString(content, i)?.next ?? content.length;
-    } else if (content.startsWith('//', i)) {
-      const end = content.indexOf('\n', i + 2);
-      i = end < 0 ? content.length : end;
-    } else if (content.startsWith('/*', i) || content.startsWith('<!--', i)) {
-      const html = content.startsWith('<!--', i);
-      const ending = html ? '-->' : '*/';
-      const end = content.indexOf(ending, i + (html ? 4 : 2));
-      i = end < 0 ? content.length : end + ending.length;
-    } else if (ch === '/' && content[i - 1] !== '<' && content[i + 1] !== '>') {
-      const preceding = previousToken(content, i);
-      let before = i - 1;
-      while (before >= 0 && /\s/.test(content[before])) before--;
-      const afterControlCondition =
-        preceding === ')' && before === lastControlParenEnd;
-      const end =
-        regexMayStart(preceding) || afterControlCondition
-          ? readRegex(content, i)
-          : null;
-      if (!end) {
-        i++;
-        continue;
-      }
+    const end = protectedLiteralEnd(content, i, lastControlParenEnd);
+    if (end !== null) {
+      ranges.push({ start, end });
       i = end;
-    } else {
-      if (ch === '(') {
-        controlParens.push(
-          ['if', 'while', 'for', 'with', 'switch', 'catch'].includes(
-            previousToken(content, i) ?? '',
-          ),
-        );
-      } else if (ch === ')' && controlParens.pop()) lastControlParenEnd = i;
-      i++;
       continue;
     }
-    ranges.push({ start, end: i });
+    if (content[i] === '(') {
+      controlParens.push(
+        ['if', 'while', 'for', 'with', 'switch', 'catch'].includes(
+          previousToken(content, i) ?? '',
+        ),
+      );
+    } else if (content[i] === ')' && controlParens.pop())
+      lastControlParenEnd = i;
+    i++;
   }
-  return (offset) => {
-    let low = 0;
-    let high = ranges.length;
-    while (low < high) {
-      const mid = (low + high) >>> 1;
-      if (ranges[mid].end <= offset) low = mid + 1;
-      else high = mid;
-    }
-    return low < ranges.length && ranges[low].start <= offset;
-  };
+  return (offset) => sourceRangeContains(ranges, offset);
+}
+
+function sourceRangeContains(
+  ranges: Array<{ start: number; end: number }>,
+  offset: number,
+): boolean {
+  let low = 0;
+  let high = ranges.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (ranges[mid].end <= offset) low = mid + 1;
+    else high = mid;
+  }
+  return low < ranges.length && ranges[low].start <= offset;
 }
 
 /** Collect disjoint ranges against the original source before any rewrite.

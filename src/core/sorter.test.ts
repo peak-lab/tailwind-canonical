@@ -282,3 +282,11 @@ test('sortClasses - template interpolations (#127)', async (t: TestContext) => {
   });
 });
 // biome-ignore-end lint/suspicious/noTemplateCurlyInString: raw template-literal bodies under test
+
+test('sortClasses preserves a long unmatched arbitrary-value delimiter', () => {
+  const unmatched = '['.repeat(120_000);
+  assert.strictEqual(
+    sortClasses(`${unmatched} text-sm flex`),
+    `flex text-sm ${unmatched}`,
+  );
+});

@@ -53,7 +53,9 @@
     "benchmark": "pnpm build && node scripts/benchmark.mjs",
     "test:compat": "node scripts/compatibility.mjs",
     "test:css": "node scripts/css-semantics.mjs",
-    "check": "pnpm lint && pnpm typecheck && pnpm knip && pnpm test"
+    "check": "pnpm lint && pnpm typecheck && pnpm knip && pnpm test:coverage",
+    "test:coverage": "c8 node --import=tsx/esm --test \"src/**/*.test.ts\"",
+    "sonar": "sonar-scanner-npm"
   },
   "keywords": [
     "tailwind",
@@ -71,8 +73,10 @@
   "license": "MIT",
   "devDependencies": {
     "@biomejs/biome": "^2.6.3",
+    "@sonar/scan": "5.1.0",
     "@types/estree": "^1.0.9",
     "@types/node": "^22.20.1",
+    "c8": "12.0.0",
     "knip": "^6.34.0",
     "lefthook": "^2.1.12",
     "tailwind-merge": "^3.6.0",

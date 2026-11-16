@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { glob } from 'node:fs/promises';
 import { isAbsolute, join, matchesGlob, relative, resolve } from 'node:path';
+import { compareCodeUnits } from '../core/compare.js';
 import {
   DEFAULT_EXTENSIONS,
   DEFAULT_IGNORE,
@@ -158,5 +159,5 @@ export async function resolveTargets(
     }
   }
 
-  return [...files].sort();
+  return [...files].sort(compareCodeUnits);
 }

@@ -179,11 +179,20 @@ function getVariantOrder(cls: string): number {
   return 3;
 }
 
-const RE_ARBITRARY = /\[[^\]]*\]/g;
 const RE_IMPLAUSIBLE_CLASS = /^:|:$|["'`{}?]|^[&|]+$/;
 
 function isPlausibleClass(token: string): boolean {
-  return !RE_IMPLAUSIBLE_CLASS.test(token.replace(RE_ARBITRARY, '[]'));
+  let masked = '';
+  let cursor = 0;
+  while (cursor < token.length) {
+    const open = token.indexOf('[', cursor);
+    if (open < 0) break;
+    const close = token.indexOf(']', open + 1);
+    if (close < 0) break;
+    masked += `${token.slice(cursor, open)}[]`;
+    cursor = close + 1;
+  }
+  return !RE_IMPLAUSIBLE_CLASS.test(masked + token.slice(cursor));
 }
 
 type Atom = { text: string; start: number; end: number; fixed: boolean };

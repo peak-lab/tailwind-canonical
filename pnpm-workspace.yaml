@@ -5,3 +5,7 @@ allowBuilds:
 # Patch the ESLint toolchain transitively without adding a runtime dependency.
 overrides:
   brace-expansion@5.0.9: 5.0.12
+  # Patched glob/minimatch APIs used by c8/test-exclude and the ESLint toolchain.
+  # GHSA-3g3m-2fjr-6pw4 and GHSA-g3hv-75wg-m249; dev tooling only.
+  test-exclude>glob: 14.0.6
+  minimatch@10: 11.0.8

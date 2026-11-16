@@ -3,6 +3,7 @@ import {
   extractClassStrings,
   SINGLE_CLASS_REGEX,
 } from './class-strings.js';
+import { compareCodeUnits } from './compare.js';
 import {
   COLOR_FAMILIES,
   parseColorClass,
@@ -169,7 +170,7 @@ function detectColorVariants(
       .map(([token, usage]) => ({
         token,
         count: usage.count,
-        files: [...usage.files].sort(),
+        files: [...usage.files].sort(compareCodeUnits),
       }))
       .sort((a, b) => b.count - a.count || a.token.localeCompare(b.token));
     result.push({
@@ -217,7 +218,7 @@ function detectScaleInconsistencies(
       .map(([value, usage]) => ({
         value,
         count: usage.count,
-        files: [...usage.files].sort(),
+        files: [...usage.files].sort(compareCodeUnits),
       }))
       .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
     result.push({ property, values: sorted });
@@ -287,7 +288,7 @@ function detectCombinations(
   for (const { file, classes: allClasses, classLists } of input) {
     for (const classes of classLists ?? [allClasses]) {
       if (classes.length < minSize) continue;
-      const unique = [...new Set(classes)].sort();
+      const unique = [...new Set(classes)].sort(compareCodeUnits);
       if (unique.length < minSize) continue;
       const key = unique.join(' ');
       let entry = combos.get(key);
@@ -305,7 +306,7 @@ function detectCombinations(
     .map((c) => ({
       classes: c.classes,
       count: c.count,
-      files: [...c.files].sort(),
+      files: [...c.files].sort(compareCodeUnits),
     }))
     .sort(
       (a, b) =>

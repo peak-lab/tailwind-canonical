@@ -861,7 +861,7 @@ same machine; this synthetic corpus is not a promise about every project.
 Run the local quality gate before submitting a change:
 
 ```bash
-pnpm check   # lint, typecheck source and tests, detect dead code, run tests
+pnpm check   # lint, typecheck source and tests, detect dead code, enforce coverage
 pnpm build   # compile the published artifacts (tests are excluded)
 ```
 
@@ -876,8 +876,51 @@ re-exports of I/O wrappers remain supported.
 
 Lefthook runs staged-source formatting and typechecking before a commit, checks
 compiler/package changes too, and runs the full linter when `biome.json` changes.
-Before a push, it runs tests and Knip. CI and publishing both run the expanded
+Before a push, it runs tests with coverage thresholds and Knip. CI and publishing both run the expanded
 typecheck, so test typing errors block delivery too.
+
+### Coverage
+
+```bash
+pnpm test:coverage
+```
+
+Uses c8 with the existing `node:test` + tsx suite. Reports are written to
+`coverage/` (console summary, LCOV and JSON summary). Every production TypeScript
+file under `src/` is included, even if tests never load it; test files are
+excluded. Global minimums in `.c8rc.json` are **95% lines/statements, 95%
+functions and 90% branches**. A threshold failure fails `pnpm check`, the
+pre-push hook and CI. Node 24 CI uploads the LCOV report for SonarQube; Node 22
+continues to run the same tests without instrumentation.
+
+Security updates for transitive tooling dependencies are pinned under
+`overrides` in `pnpm-workspace.yaml`; they do not add runtime dependencies to
+the published package. `pnpm audit` checks the current dependency graph against
+the registry's advisories.
+
+### SonarQube
+
+The [project dashboard](https://sonar.peaklab.fr/dashboard?id=tailwind-canonical)
+uses the existing PeakLab SonarQube Community Build instance. The project is
+private and requires access to that instance. Run the tools with Node.js 24.
+
+```bash
+pnpm test:coverage
+# Export SONAR_HOST_URL and a project-scoped SONAR_TOKEN securely first.
+pnpm sonar -Dsonar.qualitygate.wait=true
+```
+
+`sonar-project.properties` separates production source from tests and imports
+`coverage/lcov.info`. The scanner reads the version from `package.json`.
+Coverage and scanner output are ignored by Git; credentials belong in the
+environment, never in this configuration.
+
+CI analyzes trusted `main` pushes and manual CI runs on `main` only, after both
+Node test jobs pass. It downloads that run's LCOV artifact and waits for the
+Sonar quality gate, failing the job when the gate fails. Pull requests run the
+local checks and coverage thresholds; Community Build has no PR analysis, so
+Sonar is an additional check on `main`. The job uses repository secret
+`SONAR_TOKEN` (project analysis only) and variable `SONAR_HOST_URL`.
 
 ## Dead code detection (knip)
 
