@@ -1,0 +1,26 @@
+{
+  "all": true,
+  "src": [
+    "src"
+  ],
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/**/*.test.ts"
+  ],
+  "extension": [
+    ".ts"
+  ],
+  "exclude-after-remap": true,
+  "reporter": [
+    "text",
+    "lcov",
+    "json-summary"
+  ],
+  "check-coverage": true,
+  "lines": 95,
+  "statements": 95,
+  "functions": 95,
+  "branches": 90
+}

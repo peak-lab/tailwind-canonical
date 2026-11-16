@@ -928,3 +928,137 @@ test('regex statement prefixes preserve literals and continue to the next helper
     assert.strictEqual(analyzeContent('example.ts', input, FN_OPTS).length, 1);
   }
 });
+
+test('preserves long whitespace runs next to interpolation holes', () => {
+  const gap = ' \t\u00a0'.repeat(40_000);
+  const source = `cn(\`p-4 \${classes}${gap}flex\`)`;
+  assert.strictEqual(
+    replaceClassStrings(source, (value) => value.toUpperCase(), FN_OPTS).result,
+    `cn(\`P-4 \${classes}${gap}FLEX\`)`,
+  );
+});
+
+test('tag delimiters inside expressions do not change protection of prose or following code', () => {
+  const input =
+    '<section title={choose(">", {nested:"<"})}>Don\'t // cn("p-[16px]")<img src=">" /><div className="p-[16px]" /></section>\ncn("m-[8px]")';
+  const expected = input
+    .replace('className="p-[16px]"', 'className="p-4"')
+    .replace('cn("m-[8px]")', 'cn("m-2")');
+  assert.strictEqual(fixContent(input, FN_OPTS).result, expected);
+  const ranges = extractClassStrings(input, FN_OPTS);
+  assert.deepStrictEqual(
+    ranges.map(({ value }) => value),
+    ['p-[16px]', 'm-[8px]'],
+  );
+  for (const range of ranges)
+    assert.strictEqual(input.slice(range.start, range.end), range.value);
+});
+
+test('raw styles, control-condition regexes and script division preserve their distinct contexts', () => {
+  const input =
+    '<style>.x {content:"cn(\'p-[16px]\')"}</style><script>if ((ready)) /cn("p-[16px]")/.test(x); const ratio=x/(n+1); cn("m-[8px]")</script><div className="p-[16px]" />';
+  const expected = input
+    .replace('cn("m-[8px]")', 'cn("m-2")')
+    .replace('className="p-[16px]"', 'className="p-4"');
+  assert.strictEqual(fixContent(input, FN_OPTS).result, expected);
+  assert.deepStrictEqual(
+    extractClassStrings(input, FN_OPTS).map(({ value }) => value),
+    ['m-[8px]', 'p-[16px]'],
+  );
+});
+
+test('call parsing keeps comments and regex predicates separate from class tokens', () => {
+  const input =
+    'cn(/* before */ ["p-[16px]", flag && "h-[16px]"], {"m-[8px]": /[)}]/.test(value)}); cn(total / 2, "w-[16px]")';
+  const expected =
+    'cn(/* before */ ["p-4", flag && "h-4"], {"m-2": /[)}]/.test(value)}); cn(total / 2, "w-4")';
+  assert.strictEqual(fixContent(input, FN_OPTS).result, expected);
+  const ranges = extractClassStrings(input, FN_OPTS);
+  assert.deepStrictEqual(
+    ranges.map(({ value }) => value),
+    ['p-[16px]', 'h-[16px]', 'm-[8px]', 'w-[16px]'],
+  );
+  for (const range of ranges)
+    assert.strictEqual(input.slice(range.start, range.end), range.value);
+});
+
+test('malformed call groups discard their class candidates and preserve later calls', () => {
+  for (const input of [
+    'cn(["p-[16px]"}); cn("m-[8px]")',
+    'cn("p-[16px]", ["h-[16px]")); cn("m-[8px]")',
+  ]) {
+    assert.strictEqual(
+      fixContent(input, FN_OPTS).result,
+      input.replace('cn("m-[8px]")', 'cn("m-2")'),
+    );
+    assert.deepStrictEqual(
+      extractClassStrings(input, FN_OPTS).map(({ value }) => value),
+      ['m-[8px]'],
+    );
+  }
+  for (const input of [
+    'cn("p-[16px]", /* unterminated',
+    'cn("p-[16px]", /unterminated',
+  ]) {
+    assert.strictEqual(fixContent(input, FN_OPTS).result, input);
+    assert.deepStrictEqual(extractClassStrings(input, FN_OPTS), []);
+  }
+});
+
+test('nested CVA class branches do not rewrite option identifiers or predicates', () => {
+  const input =
+    'cva("p-[16px]", {variants:{tone:{small:["h-[16px]",flag ? "m-[8px]" : "hidden"]}},compoundVariants:[dynamic,{tone:"h-[16px]",class:"w-[16px]"},{className:active && "gap-[8px]"}],defaultVariants:{tone:"p-[16px]"}})';
+  const expected =
+    'cva("p-4", {variants:{tone:{small:["h-4",flag ? "m-2" : "hidden"]}},compoundVariants:[dynamic,{tone:"h-[16px]",class:"w-4"},{className:active && "gap-2"}],defaultVariants:{tone:"p-[16px]"}})';
+  const config = { functionNames: ['cva'] };
+  const result = fixContent(input, config);
+  assert.strictEqual(result.result, expected);
+  assert.strictEqual(result.count, 5);
+  assert.deepStrictEqual(analyzeContent('example.ts', expected, config), []);
+});
+
+test('mixed markup and bound attributes retain their own class semantics and offsets', () => {
+  const input = `<div class="p-[16px] {suffix}" :class="active ? 'h-[24px]' : 'hidden'" v-bind:class={cn('w-[32px]')} className={flag && 'm-[8px]'} />`;
+  const opts = {
+    attributeNames: ['class', ':class', 'v-bind:class', 'className'],
+    functionNames: ['cn'],
+  };
+  const expected = ['p-[16px] ', 'h-[24px]', 'hidden', 'w-[32px]', 'm-[8px]'];
+  assert.deepStrictEqual(
+    extractClassStrings(input, opts),
+    expected.map((value) => ({
+      value,
+      start: input.indexOf(value),
+      end: input.indexOf(value) + value.length,
+    })),
+  );
+  assert.strictEqual(
+    fixContent(input, opts).result,
+    input
+      .replace('p-[16px]', 'p-4')
+      .replace('h-[24px]', 'h-6')
+      .replace('w-[32px]', 'w-8')
+      .replace('m-[8px]', 'm-2'),
+  );
+});
+
+test('bound attributes preserve encoded or incomplete expressions while later attributes remain fixable', () => {
+  const opts = { attributeNames: [':class', 'v-bind:class', 'class'] };
+  for (const expression of [
+    "'p-[16px]' + '&amp;'",
+    "'p-[16px]' + '&#34;'",
+    "'p-[16px]' + '&#x22;'",
+    "'p-[16px]' /* unfinished",
+    "['p-[16px]'",
+  ]) {
+    const input = `<div :class="${expression}" class="h-[24px]" />`;
+    assert.strictEqual(
+      fixContent(input, opts).result,
+      input.replace('h-[24px]', 'h-6'),
+    );
+    assert.deepStrictEqual(
+      extractClassStrings(input, opts).map(({ value }) => value),
+      ['h-[24px]'],
+    );
+  }
+});

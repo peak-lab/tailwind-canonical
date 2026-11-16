@@ -129,6 +129,25 @@ function isClassContext(node: ContextNode, config: Config): boolean {
   return false;
 }
 
+/** Bound complete tokens without backtracking over long whitespace runs. */
+function templateTokenRange(
+  value: string,
+  skipLeadingToken: boolean,
+  skipTrailingToken: boolean,
+): [number, number] {
+  let start = 0;
+  let end = value.length;
+  if (skipLeadingToken) {
+    while (start < end && /\S/.test(value[start])) start++;
+  }
+  while (start < end && /\s/.test(value[start])) start++;
+  if (skipTrailingToken) {
+    while (end > start && /\S/.test(value[end - 1])) end--;
+  }
+  while (end > start && /\s/.test(value[end - 1])) end--;
+  return [start, end];
+}
+
 function makeStringRuleVisitor(
   checkLiteral: (node: StringNode) => void,
   config: Config = {},
@@ -145,12 +164,11 @@ function makeStringRuleVisitor(
         const value = quasi.value.cooked ?? quasi.value.raw;
         // A token touching an interpolation is incomplete: e.g.
         // `text-[12px]${suffix}` must not become `text-xs${suffix}`.
-        const start =
-          value.match(index > 0 ? /^\S*\s*/ : /^\s*/)?.[0].length ?? 0;
-        const trailing =
-          value.match(index < node.quasis.length - 1 ? /\s*\S*$/ : /\s*$/)?.[0]
-            .length ?? 0;
-        const end = Math.max(start, value.length - trailing);
+        const [start, end] = templateTokenRange(
+          value,
+          index > 0,
+          index < node.quasis.length - 1,
+        );
         const inner = value.slice(start, end);
         checkLiteral({
           type: 'Literal',

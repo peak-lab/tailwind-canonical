@@ -4,3 +4,9 @@ dist/
 *.tgz
 
 .Codex/.worktrees/
+
+coverage/
+.scannerwork/
+.env
+.env.*
+!.env.example

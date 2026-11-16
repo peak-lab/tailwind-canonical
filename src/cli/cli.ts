@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { analyzeFile, type Finding } from '../core/analyzer.js';
 import { toClassStringOpts } from '../core/class-strings.js';
+import { compareCodeUnits } from '../core/compare.js';
 import {
   CONFIG_FILENAMES,
   findConfigPath,
@@ -491,7 +492,7 @@ function findUnconfiguredClassFunctions(
     if (match?.[1]) found.add(match[1]);
   }
 
-  return [...found].sort();
+  return [...found].sort(compareCodeUnits);
 }
 
 function runAnalyze(

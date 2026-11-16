@@ -996,3 +996,21 @@ test('font-size transformations require an explicit line-height opt-in', () => {
     assert.strictEqual(result.output, expected);
   }
 });
+
+test('template fixes handle long whitespace runs and Unicode token boundaries', () => {
+  const gap = ' \t\u00a0'.repeat(40_000);
+  const source = `cn(\`p-[16px]${gap}flex\`)`;
+  const linter = new Linter();
+  const config = [plugin.configs.recommended];
+  const result = linter.verifyAndFix(source, config);
+  assert.deepEqual(result.messages, []);
+  assert.strictEqual(result.output, `cn(\`p-4${gap}flex\`)`);
+
+  const partial = `cn(\`p-[16px]\${suffix}\u00a0px-[8px]\u00a0\${prefix}mt-[8px]\`)`;
+  const fixed = linter.verifyAndFix(partial, config);
+  assert.deepEqual(fixed.messages, []);
+  assert.strictEqual(
+    fixed.output,
+    `cn(\`p-[16px]\${suffix}\u00a0px-2\u00a0\${prefix}mt-[8px]\`)`,
+  );
+});

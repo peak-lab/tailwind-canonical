@@ -34,7 +34,9 @@ pnpm typecheck    # typecheck production source and tests (no emit)
 pnpm lint         # biome check src/ scripts/
 pnpm lint:fix     # biome check --write src/ scripts/
 pnpm knip         # dead code/dependency detection
-pnpm check        # lint + source/test typecheck + knip + tests
+pnpm check        # lint + source/test typecheck + knip + tests with coverage floors
+pnpm test:coverage # c8: text, LCOV and JSON reports in coverage/
+pnpm sonar        # Sonar scan; requires SONAR_HOST_URL and project-scoped SONAR_TOKEN
 ```
 
 Run a single test file:
@@ -113,6 +115,17 @@ or a non-built-in mapping. CLI appends `[custom token]` to the output line.
 The plugin (`src/eslint/plugin.ts`) scopes AST `Literal` / `TemplateLiteral` nodes
 to class attributes and utility calls, then calls `suggestCanonical` directly.
 There is no I/O on this path, so there is nothing to share with `src/io/`. Don't refactor it to route through `src/io/`.
+
+## Quality tooling
+
+- c8 includes all production `src/**/*.ts`, including unexecuted files, and excludes tests.
+  Global floors: 95% lines/statements/functions, 90% branches (`.c8rc.json`).
+- `pnpm check` and pre-push enforce coverage. CI runs coverage on Node 24 and ordinary tests on Node 22.
+- Sonar Community analyzes trusted `main` only, using LCOV from the same CI run;
+  PR code never receives the analysis token. Wait for the remote quality gate.
+- Use Node 24 for development tools. Preserve the package's Node `>=22.6` runtime compatibility.
+- Keep deterministic path/class-key sorting in UTF-16 code-unit order (`compareCodeUnits`);
+  replacing it with locale-aware sorting can change reports and grouping keys.
 
 ## Publishing
 
