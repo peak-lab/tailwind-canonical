@@ -1062,3 +1062,40 @@ test('bound attributes preserve encoded or incomplete expressions while later at
     );
   }
 });
+
+test('nested interpolation literals and comments do not end the surrounding class hole', () => {
+  for (const expression of [
+    `({nested: \`brace \${"}"} p-[16px]\`})`,
+    'flag /* } p-[16px] */ && /[}]/.test(value)',
+    'flag // } p-[16px]\n && value',
+    'total / (count + 1) + ({nested: "}"}).nested',
+  ]) {
+    const input = `cn(\`m-[8px] \${${expression}} h-[24px]\`)`;
+    assert.strictEqual(
+      fixContent(input, FN_OPTS).result,
+      input.replace('m-[8px]', 'm-2').replace('h-[24px]', 'h-6'),
+    );
+    const ranges = extractClassStrings(input, FN_OPTS);
+    assert.deepStrictEqual(
+      ranges.map(({ value }) => value.trim()),
+      ['m-[8px]', 'h-[24px]'],
+    );
+    for (const range of ranges)
+      assert.strictEqual(input.slice(range.start, range.end), range.value);
+  }
+});
+
+test('unterminated interpolation literals keep the enclosing template untouched', () => {
+  for (const expression of [
+    "'p-[16px]",
+    '"p-[16px]',
+    `\`p-[16px] \${value}`,
+    '/* } p-[16px]',
+    '// } p-[16px]',
+    '/[}p-[16px]',
+  ]) {
+    const input = `cn(\`m-[8px] \${${expression}`;
+    assert.strictEqual(fixContent(input, FN_OPTS).result, input);
+    assert.deepStrictEqual(extractClassStrings(input, FN_OPTS), []);
+  }
+});
