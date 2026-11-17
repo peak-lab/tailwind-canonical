@@ -89,6 +89,21 @@ function attributeStrings(
   return result;
 }
 
+function interpolationLiteralEnd(
+  content: string,
+  offset: number,
+): number | null {
+  const ch = content[offset];
+  if (ch === '"' || ch === "'" || ch === '`')
+    return readQuotedString(content, offset)?.next ?? content.length;
+  if (ch !== '/') return null;
+  const commentEnd = sourceCommentEnd(content, offset);
+  if (commentEnd !== null) return commentEnd;
+  return regexMayStart(previousToken(content, offset))
+    ? (readRegex(content, offset) ?? content.length)
+    : null;
+}
+
 // A template expression is JavaScript, never a class list. Keep its adjacent
 // token fragments as well: `text-[12px]${suffix}` is not a static class.
 function interpolationEnd(
@@ -99,29 +114,14 @@ function interpolationEnd(
   let depth = 1;
   let i = start + openingLength;
   while (i < content.length) {
-    const ch = content[i];
-    if (ch === '"' || ch === "'" || ch === '`') {
-      const quoted = readQuotedString(content, i);
-      if (!quoted) return content.length;
-      i = quoted.next;
-    } else if (content.startsWith('//', i)) {
-      const end = content.indexOf('\n', i + 2);
-      i = end < 0 ? content.length : end;
-    } else if (content.startsWith('/*', i)) {
-      const end = content.indexOf('*/', i + 2);
-      i = end < 0 ? content.length : end + 2;
-    } else if (ch === '/') {
-      const preceding = previousToken(content, i);
-      if (regexMayStart(preceding)) {
-        const end = readRegex(content, i);
-        if (!end) return content.length;
-        i = end;
-      } else i++;
-    } else {
-      if (ch === '{') depth++;
-      else if (ch === '}' && --depth === 0) return i + 1;
-      i++;
+    const literalEnd = interpolationLiteralEnd(content, i);
+    if (literalEnd !== null) {
+      i = literalEnd;
+      continue;
     }
+    if (content[i] === '{') depth++;
+    else if (content[i] === '}' && --depth === 0) return i + 1;
+    i++;
   }
   return content.length;
 }
