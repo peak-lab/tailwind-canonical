@@ -1099,3 +1099,55 @@ test('unterminated interpolation literals keep the enclosing template untouched'
     assert.deepStrictEqual(extractClassStrings(input, FN_OPTS), []);
   }
 });
+
+test('markup class delimiters respect escaped braces and escaped or nested brackets', () => {
+  for (const [value, expectedRanges] of [
+    [
+      String.raw`p-[16px] \{value} w-[32px]`,
+      [String.raw`p-[16px] \{value} w-[32px]`],
+    ],
+    [String.raw`p-[16px] \\{value} w-[32px]`, ['p-[16px]', 'w-[32px]']],
+    [
+      String.raw`p-[16px] \[ {value} w-[32px]`,
+      [String.raw`p-[16px] \[`, 'w-[32px]'],
+    ],
+    [
+      String.raw`p-[16px] [--token:\] {value}] w-[32px]`,
+      [String.raw`p-[16px] [--token:\] {value}] w-[32px]`],
+    ],
+    [
+      'p-[16px] [--token:[{value}]] w-[32px]',
+      ['p-[16px] [--token:[{value}]] w-[32px]'],
+    ],
+    ['p-[16px] ] {value} w-[32px]', ['p-[16px] ]', 'w-[32px]']],
+  ] as const) {
+    const input = `<div class="${value}" />`;
+    const opts = { attributeNames: ['class'] };
+    const ranges = extractClassStrings(input, opts);
+    assert.deepStrictEqual(
+      ranges.map(({ value }) => value.trim()),
+      [...expectedRanges],
+    );
+    for (const range of ranges)
+      assert.strictEqual(input.slice(range.start, range.end), range.value);
+    assert.strictEqual(
+      fixContent(input, opts).result,
+      input.replace('p-[16px]', 'p-4').replace('w-[32px]', 'w-8'),
+    );
+  }
+});
+
+test('template holes inside arbitrary values discard adjacent fragments across Unicode whitespace', () => {
+  const input = `cn(\`p-[16px] [--token:\${value}]\u00a0h-[24px]\${suffix}\u2003w-[32px]\`)`;
+  const ranges = extractClassStrings(input, FN_OPTS);
+  assert.deepStrictEqual(
+    ranges.map(({ value }) => value.trim()),
+    ['p-[16px]', '', 'w-[32px]'],
+  );
+  for (const range of ranges)
+    assert.strictEqual(input.slice(range.start, range.end), range.value);
+  assert.strictEqual(
+    fixContent(input, FN_OPTS).result,
+    input.replace('p-[16px]', 'p-4').replace('w-[32px]', 'w-8'),
+  );
+});

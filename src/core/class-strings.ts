@@ -126,6 +126,25 @@ function interpolationEnd(
   return content.length;
 }
 
+function staticClassDelimiter(
+  value: string,
+  offset: number,
+  bracketDepth: number,
+  braceExpressions: boolean,
+): { openingLength: number; bracketDepth: number } {
+  let escapes = 0;
+  for (let j = offset - 1; j >= 0 && value[j] === '\\'; j--) escapes++;
+  if (escapes % 2 === 1) return { openingLength: 0, bracketDepth };
+  if (value.startsWith('${', offset)) return { openingLength: 2, bracketDepth };
+  if (braceExpressions && bracketDepth === 0 && value[offset] === '{')
+    return { openingLength: 1, bracketDepth };
+  if (value[offset] === '[')
+    return { openingLength: 0, bracketDepth: bracketDepth + 1 };
+  if (value[offset] === ']')
+    return { openingLength: 0, bracketDepth: Math.max(0, bracketDepth - 1) };
+  return { openingLength: 0, bracketDepth };
+}
+
 function staticClassRanges(
   value: string,
   braceExpressions = false,
@@ -135,18 +154,14 @@ function staticClassRanges(
   let i = 0;
   let bracketDepth = 0;
   while (i < value.length) {
-    let escapes = 0;
-    for (let j = i - 1; j >= 0 && value[j] === '\\'; j--) escapes++;
-    const openingLength = value.startsWith('${', i)
-      ? 2
-      : braceExpressions && bracketDepth === 0 && value[i] === '{'
-        ? 1
-        : 0;
-    if (!openingLength || escapes % 2 === 1) {
-      if (escapes % 2 === 0) {
-        if (value[i] === '[') bracketDepth++;
-        else if (value[i] === ']') bracketDepth = Math.max(0, bracketDepth - 1);
-      }
+    const delimiter = staticClassDelimiter(
+      value,
+      i,
+      bracketDepth,
+      braceExpressions,
+    );
+    bracketDepth = delimiter.bracketDepth;
+    if (!delimiter.openingLength) {
       i++;
       continue;
     }
@@ -154,7 +169,7 @@ function staticClassRanges(
     while (before > start && !/\s/.test(value[before - 1])) before--;
     if (before > start)
       ranges.push({ value: value.slice(start, before), start, end: before });
-    i = interpolationEnd(value, i, openingLength);
+    i = interpolationEnd(value, i, delimiter.openingLength);
     while (i < value.length && !/\s/.test(value[i])) i++;
     start = i;
   }
