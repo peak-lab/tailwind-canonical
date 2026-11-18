@@ -178,6 +178,24 @@ function staticClassRanges(
   return ranges;
 }
 
+function suppressedLineRanges(
+  value: string,
+  isSuppressedAt: ((offset: number) => boolean) | undefined,
+  offset: number,
+): Array<{ start: number; end: number }> {
+  const suppressed: Array<{ start: number; end: number }> = [];
+  if (!isSuppressedAt) return suppressed;
+  let lineStart = 0;
+  while (lineStart < value.length) {
+    const newline = value.indexOf('\n', lineStart);
+    const end = newline < 0 ? value.length : newline + 1;
+    if (isSuppressedAt(offset + lineStart))
+      suppressed.push({ start: lineStart, end });
+    lineStart = end;
+  }
+  return suppressed;
+}
+
 function transformStaticClasses(
   value: string,
   transform: (s: string) => string,
@@ -185,17 +203,7 @@ function transformStaticClasses(
   offset = 0,
   braceExpressions = false,
 ): string {
-  const suppressed: Array<{ start: number; end: number }> = [];
-  if (isSuppressedAt) {
-    let lineStart = 0;
-    while (lineStart < value.length) {
-      const newline = value.indexOf('\n', lineStart);
-      const end = newline < 0 ? value.length : newline + 1;
-      if (isSuppressedAt(offset + lineStart))
-        suppressed.push({ start: lineStart, end });
-      lineStart = end;
-    }
-  }
+  const suppressed = suppressedLineRanges(value, isSuppressedAt, offset);
   const ranges = staticClassRanges(value, braceExpressions).flatMap((range) => {
     const safe: StringRange[] = [];
     let start = range.start;

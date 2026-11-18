@@ -1151,3 +1151,38 @@ test('template holes inside arbitrary values discard adjacent fragments across U
     input.replace('p-[16px]', 'p-4').replace('w-[32px]', 'w-8'),
   );
 });
+
+test('line suppressions preserve CRLF and Unicode edges without transforming ignored content', () => {
+  const input =
+    '<div className=" \tp-[16px]\r\n h-[24px] \r\n\u00a0w-[32px]\u2003" />';
+  const calls: string[] = [];
+  const result = replaceClassStrings(
+    input,
+    (value) => {
+      calls.push(value);
+      return value.toUpperCase();
+    },
+    { isSuppressed: (line) => line === 2 },
+  );
+  assert.deepStrictEqual(calls, ['p-[16px]', 'w-[32px]']);
+  assert.strictEqual(
+    result.result,
+    input.replace('p-[16px]', 'P-[16PX]').replace('w-[32px]', 'W-[32PX]'),
+  );
+  assert.strictEqual(result.count, 1);
+});
+
+test('suppressed final lines and whitespace-only ranges never invoke the class transform', () => {
+  for (const input of [
+    '<div className="\n p-[16px]\n h-[24px]" />',
+    '<div className="\n p-[16px]\n h-[24px]\n \t" />',
+    `cn(\` \n p-[16px]\n \${value} h-[24px]\`)`,
+  ]) {
+    const result = replaceClassStrings(
+      input,
+      () => assert.fail('suppressed content must not reach the transform'),
+      { functionNames: ['cn'], isSuppressed: (line) => line >= 2 },
+    );
+    assert.deepStrictEqual(result, { result: input, count: 0 });
+  }
+});
